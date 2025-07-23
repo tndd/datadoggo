@@ -97,5 +97,14 @@
 - https://assets.wor.jp/rss/rdf/minkabufx/stock.rdf
 - https://assets.wor.jp/rss/rdf/minkabufx/commodity.rdf
 
+## 航空万能論
+- https://grandfleet.info/feed/
+- https://grandfleet.info/category/us-related/feed
+- https://grandfleet.info/category/european-region/feed
+- https://grandfleet.info/category/russia-related/feed
+- https://grandfleet.info/category/indo-pacific-related/feed
+- https://grandfleet.info/category/japan-related/feed
+- https://grandfleet.info/category/china-related/feed
+
 # 日本政府・省庁
 - https://www.digital.go.jp/rss/news.xml
