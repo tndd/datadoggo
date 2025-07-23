@@ -20,7 +20,16 @@
 - https://www.cbsnews.com/latest/rss/science
 - https://www.cbsnews.com/latest/rss/technology
 - https://www.cbsnews.com/latest/rss/space
-- 
+
+## The Guardian
+- https://www.theguardian.com/world/rss
+- https://www.theguardian.com/us-news/rss
+- https://www.theguardian.com/world/americas/rss
+- https://www.theguardian.com/world/asia/rss
+- https://www.theguardian.com/australia-news/rss
+- https://www.theguardian.com/world/middleeast/rss
+- https://www.theguardian.com/world/africa/rss
+- https://www.theguardian.com/global-development/rss
 
 ## yahoo japan
 - https://news.yahoo.co.jp/rss/topics/top-picks.xml
@@ -88,3 +97,5 @@
 - https://assets.wor.jp/rss/rdf/minkabufx/stock.rdf
 - https://assets.wor.jp/rss/rdf/minkabufx/commodity.rdf
 
+# 日本政府・省庁
+- https://www.digital.go.jp/rss/news.xml
