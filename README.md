@@ -106,5 +106,5 @@
 - https://grandfleet.info/category/japan-related/feed
 - https://grandfleet.info/category/china-related/feed
 
-# 日本政府・省庁
+# 日本政府
 - https://www.digital.go.jp/rss/news.xml
