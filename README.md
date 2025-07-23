@@ -31,7 +31,7 @@
 - https://www.theguardian.com/world/africa/rss
 - https://www.theguardian.com/global-development/rss
 
-## yahoo japan
+## Yahoo Japan
 - https://news.yahoo.co.jp/rss/topics/top-picks.xml
 - https://news.yahoo.co.jp/rss/topics/domestic.xml
 - https://news.yahoo.co.jp/rss/topics/world.xml
