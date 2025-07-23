@@ -55,3 +55,14 @@
 - https://news.yahoo.co.jp/rss/media/toyo/all.xml
 - https://news.yahoo.co.jp/rss/media/nkogyo/all.xml
 - https://news.yahoo.co.jp/rss/media/netdenjd/all.xml
+- https://news.yahoo.co.jp/rss/media/yonnana/all.xml
+
+## rss愛好会
+- https://assets.wor.jp/rss/rdf/bloomberg/top.rdf
+- https://assets.wor.jp/rss/rdf/bloomberg/economy.rdf
+- https://assets.wor.jp/rss/rdf/bloomberg/commentary.rdf
+- https://assets.wor.jp/rss/rdf/nikkei/news.rdf
+- https://assets.wor.jp/rss/rdf/yomiuri/latestnews.rdf
+- https://assets.wor.jp/rss/rdf/minkabufx/statement.rdf
+- https://assets.wor.jp/rss/rdf/minkabufx/stock.rdf
+- https://assets.wor.jp/rss/rdf/minkabufx/commodity.rdf
