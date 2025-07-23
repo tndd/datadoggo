@@ -1,5 +1,26 @@
 # RSS
 ## BBC
+- https://feeds.bbci.co.uk/news/rss.xml
+- https://feeds.bbci.co.uk/news/world/rss.xml
+- https://feeds.bbci.co.uk/news/uk/rss.xml
+- https://feeds.bbci.co.uk/news/business/rss.xml
+- https://feeds.bbci.co.uk/news/business/rss.xml
+- https://feeds.bbci.co.uk/news/politics/rss.xml
+- https://feeds.bbci.co.uk/news/health/rss.xml
+- https://feeds.bbci.co.uk/news/science_and_environment/rss.xml
+- https://feeds.bbci.co.uk/news/technology/rss.xml
+
+## CBS
+- https://www.cbsnews.com/latest/rss/main
+- https://www.cbsnews.com/latest/rss/us
+- https://www.cbsnews.com/latest/rss/politics
+- https://www.cbsnews.com/latest/rss/world
+- https://www.cbsnews.com/latest/rss/health
+- https://www.cbsnews.com/latest/rss/moneywatch
+- https://www.cbsnews.com/latest/rss/science
+- https://www.cbsnews.com/latest/rss/technology
+- https://www.cbsnews.com/latest/rss/space
+- 
 
 ## yahoo japan
 - https://news.yahoo.co.jp/rss/topics/top-picks.xml
@@ -66,3 +87,4 @@
 - https://assets.wor.jp/rss/rdf/minkabufx/statement.rdf
 - https://assets.wor.jp/rss/rdf/minkabufx/stock.rdf
 - https://assets.wor.jp/rss/rdf/minkabufx/commodity.rdf
+
