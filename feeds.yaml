@@ -55,12 +55,6 @@ cnbc:
   invest: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069
   financial_advise: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100646281
   personal_finance: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=21324812
-  charting_asia: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=23103686
-  funny_business: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=17646093
-  market_insider: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20409666
-  net_net: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=38818154
-  trader_talk: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20398120
-  buffet_watch: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19206666
 
 yahoo_japan:
   topics_top: https://news.yahoo.co.jp/rss/topics/top-picks.xml
