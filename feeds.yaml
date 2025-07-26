@@ -5,7 +5,7 @@ bbc:
   business: https://feeds.bbci.co.uk/news/business/rss.xml
   politics: https://feeds.bbci.co.uk/news/politics/rss.xml
   health: https://feeds.bbci.co.uk/news/health/rss.xml
-  science_and_environment: https://feeds.bbci.co.uk/news/science_and_environment/rss.xml
+  science: https://feeds.bbci.co.uk/news/science_and_environment/rss.xml
   technology: https://feeds.bbci.co.uk/news/technology/rss.xml
 cbs:
   top: https://www.cbsnews.com/latest/rss/main
@@ -25,7 +25,7 @@ the_guardian:
   australia: https://www.theguardian.com/australia-news/rss
   middle_east: https://www.theguardian.com/world/middleeast/rss
   africa: https://www.theguardian.com/world/africa/rss
-  global_development: https://www.theguardian.com/global-development/rss
+  development: https://www.theguardian.com/global-development/rss
 cnbc:
   top: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114
   world: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100727362
