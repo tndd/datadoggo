@@ -31,6 +31,16 @@
 - https://www.theguardian.com/world/africa/rss
 - https://www.theguardian.com/global-development/rss
 
+## CNBC
+- https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114
+- https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100727362
+- https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15837362
+- https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19832390
+- https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19794221
+- https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147
+- https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839135
+- 
+
 ## Yahoo Japan
 - https://news.yahoo.co.jp/rss/topics/top-picks.xml
 - https://news.yahoo.co.jp/rss/topics/domestic.xml
