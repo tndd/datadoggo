@@ -43,6 +43,8 @@ cnbc:
   technology: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910
   politics: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000113
   health: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000108
+  real_estate: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000115
+  wealth: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001054
   autos: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000101
   energy: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19836768
   media: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000110
