@@ -7,6 +7,7 @@ bbc:
   health: https://feeds.bbci.co.uk/news/health/rss.xml
   science: https://feeds.bbci.co.uk/news/science_and_environment/rss.xml
   technology: https://feeds.bbci.co.uk/news/technology/rss.xml
+
 cbs:
   top: https://www.cbsnews.com/latest/rss/main
   us: https://www.cbsnews.com/latest/rss/us
@@ -17,6 +18,7 @@ cbs:
   science: https://www.cbsnews.com/latest/rss/science
   technology: https://www.cbsnews.com/latest/rss/technology
   space: https://www.cbsnews.com/latest/rss/space
+
 the_guardian:
   world: https://www.theguardian.com/world/rss
   us: https://www.theguardian.com/us-news/rss
@@ -26,6 +28,7 @@ the_guardian:
   middle_east: https://www.theguardian.com/world/middleeast/rss
   africa: https://www.theguardian.com/world/africa/rss
   development: https://www.theguardian.com/global-development/rss
+
 cnbc:
   top: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114
   world: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100727362
@@ -34,6 +37,29 @@ cnbc:
   europe: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910
   business: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147
   earnings: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839135
+  commentary: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100370673
+  economy: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258
+  finance: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664
+  technology: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910
+  politics: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000113
+  health: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000108
+  autos: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000101
+  energy: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19836768
+  media: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000110
+  retail: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000116
+  travel: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000739
+  small_business: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=44877279
+  make_it: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=103395579
+  invest: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069
+  financial_advise: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100646281
+  personal_finance: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=21324812
+  charting_asia: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=23103686
+  funny_business: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=17646093
+  market_insider: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20409666
+  net_net: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=38818154
+  trader_talk: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20398120
+  buffet_watch: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19206666
+
 yahoo_japan:
   topics_top: https://news.yahoo.co.jp/rss/topics/top-picks.xml
   topics_domestic: https://news.yahoo.co.jp/rss/topics/domestic.xml
@@ -88,6 +114,7 @@ yahoo_japan:
   industrial_daily: https://news.yahoo.co.jp/rss/media/nkogyo/all.xml
   automobile_daily: https://news.yahoo.co.jp/rss/media/netdenjd/all.xml
   47news: https://news.yahoo.co.jp/rss/media/yonnana/all.xml
+
 rss_club:
   bloomberg_top: https://assets.wor.jp/rss/rdf/bloomberg/top.rdf
   bloomberg_economy: https://assets.wor.jp/rss/rdf/bloomberg/economy.rdf
@@ -97,6 +124,7 @@ rss_club:
   minkabu_fx_statement: https://assets.wor.jp/rss/rdf/minkabufx/statement.rdf
   minkabu_fx_stock: https://assets.wor.jp/rss/rdf/minkabufx/stock.rdf
   minkabu_fx_commodity: https://assets.wor.jp/rss/rdf/minkabufx/commodity.rdf
+
 grand_fleet:
   top: https://grandfleet.info/feed/
   us: https://grandfleet.info/category/us-related/feed
@@ -105,5 +133,6 @@ grand_fleet:
   indo_pacific: https://grandfleet.info/category/indo-pacific-related/feed
   japan: https://grandfleet.info/category/japan-related/feed
   china: https://grandfleet.info/category/china-related/feed
+
 japan_government:
   digital_agency_news: https://www.digital.go.jp/rss/news.xml
