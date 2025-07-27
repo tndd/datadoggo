@@ -59,6 +59,18 @@ fn main() {
 mod tests {
     use super::*;
 
+    // 記事の基本構造をチェックするヘルパー関数
+    fn validate_articles(articles: &[RssArticle]) {
+        for article in &articles[..3.min(articles.len())] {
+            assert!(!article.title.is_empty(), "記事のタイトルが空です");
+            assert!(!article.link.is_empty(), "記事のリンクが空です");
+            assert!(
+                article.link.starts_with("http"),
+                "リンクがHTTP形式ではありません"
+            );
+        }
+    }
+
     #[test]
     fn test_extract_links_from_bbc_rss() {
         // BBC RSSファイルからリンクを抽出するテスト
@@ -92,15 +104,7 @@ mod tests {
         assert!(!articles.is_empty(), "抽出された記事が0件でした");
 
         // 記事の構造をチェック
-        for article in &articles[..3.min(articles.len())] {
-            // 最初の3記事をチェック
-            assert!(!article.title.is_empty(), "記事のタイトルが空です");
-            assert!(!article.link.is_empty(), "記事のリンクが空です");
-            assert!(
-                article.link.starts_with("http"),
-                "リンクがHTTP形式ではありません"
-            );
-        }
+        validate_articles(&articles);
 
         println!(
             "CBSテスト結果: {}件の記事を正常に抽出しました",
@@ -122,15 +126,7 @@ mod tests {
         assert!(!articles.is_empty(), "抽出された記事が0件でした");
 
         // 記事の構造をチェック
-        for article in &articles[..3.min(articles.len())] {
-            // 最初の3記事をチェック
-            assert!(!article.title.is_empty(), "記事のタイトルが空です");
-            assert!(!article.link.is_empty(), "記事のリンクが空です");
-            assert!(
-                article.link.starts_with("http"),
-                "リンクがHTTP形式ではありません"
-            );
-        }
+        validate_articles(&articles);
 
         println!(
             "Guardianテスト結果: {}件の記事を正常に抽出しました",
