@@ -1,6 +1,6 @@
 use rss::Channel;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufReader, Cursor};
 
 // RSS記事の情報を格納する構造体
 #[derive(Debug, Clone)]
@@ -30,16 +30,16 @@ pub fn extract_rss_articles_from_channel(channel: &Channel) -> Vec<RssArticle> {
     articles
 }
 
-// 内部ヘルパー関数（プライベート）
-fn parse_channel_from_reader<R: BufRead>(reader: R) -> Result<Channel, Box<dyn std::error::Error>> {
-    Channel::read_from(reader).map_err(Into::into)
-}
-
 // ファイルからRSSを読み込むヘルパー関数
 pub fn read_channel_from_file(file_path: &str) -> Result<Channel, Box<dyn std::error::Error>> {
     let file = File::open(file_path)?;
     let buf_reader = BufReader::new(file);
-    parse_channel_from_reader(buf_reader)
+    Channel::read_from(buf_reader).map_err(Into::into)
+}
+
+// XMLからRSSチャンネルを解析するヘルパー関数
+pub fn parse_channel_from_xml(xml: &str) -> Result<Channel, Box<dyn std::error::Error>> {
+    Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes()))).map_err(Into::into)
 }
 
 fn main() {
@@ -66,12 +66,10 @@ fn main() {
 mod tests {
     use super::*;
     use rss::Channel;
-    use std::io::Cursor;
 
     // テスト用のヘルパー関数: XMLからChannelオブジェクトを作成
-    fn parse_channel_from_str(xml: &str) -> Channel {
-        parse_channel_from_reader(BufReader::new(Cursor::new(xml.as_bytes())))
-            .expect("Failed to create test channel")
+    fn create_test_channel(xml: &str) -> Channel {
+        parse_channel_from_xml(xml).expect("Failed to create test channel")
     }
 
     // 記事の基本構造をチェックするヘルパー関数
@@ -109,7 +107,7 @@ mod tests {
                 </channel>
             </rss>
             "#;
-        let channel = parse_channel_from_str(test_rss);
+        let channel = create_test_channel(test_rss);
         let articles = extract_rss_articles_from_channel(&channel);
 
         assert_eq!(articles.len(), 2, "2件の記事が抽出されるはず");
@@ -136,7 +134,7 @@ mod tests {
             </rss>
             "#;
 
-        let channel = parse_channel_from_str(test_rss);
+        let channel = create_test_channel(test_rss);
         let articles = extract_rss_articles_from_channel(&channel);
 
         assert_eq!(articles.len(), 1, "リンクがない記事は除外されるはず");
