@@ -1,6 +1,6 @@
 use rss::Channel;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader};
 
 // RSS記事の情報を格納する構造体
 #[derive(Debug, Clone)]
@@ -12,7 +12,7 @@ pub struct RssArticle {
 }
 
 // RSSのチャンネルから記事を抽出する関数
-pub fn extract_links_from_rss(channel: &Channel) -> Vec<RssArticle> {
+pub fn extract_rss_articles_from_channel(channel: &Channel) -> Vec<RssArticle> {
     let mut articles = Vec::new();
 
     for item in channel.items() {
@@ -30,17 +30,22 @@ pub fn extract_links_from_rss(channel: &Channel) -> Vec<RssArticle> {
     articles
 }
 
+// 内部ヘルパー関数（プライベート）
+fn parse_channel_from_reader<R: BufRead>(reader: R) -> Result<Channel, Box<dyn std::error::Error>> {
+    Channel::read_from(reader).map_err(Into::into)
+}
+
 // ファイルからRSSを読み込むヘルパー関数
-pub fn read_rss_from_file(file_path: &str) -> Result<Channel, Box<dyn std::error::Error>> {
+pub fn read_channel_from_file(file_path: &str) -> Result<Channel, Box<dyn std::error::Error>> {
     let file = File::open(file_path)?;
     let buf_reader = BufReader::new(file);
-    Channel::read_from(buf_reader).map_err(Into::into)
+    parse_channel_from_reader(buf_reader)
 }
 
 fn main() {
-    match read_rss_from_file("mock/rss/bbc.rss") {
+    match read_channel_from_file("mock/rss/bbc.rss") {
         Ok(channel) => {
-            let articles = extract_links_from_rss(&channel);
+            let articles = extract_rss_articles_from_channel(&channel);
             println!("BBCのRSSから{}件の記事を抽出しました:", articles.len());
             for (i, article) in articles.iter().enumerate() {
                 println!("{}. {}", i + 1, article.title);
@@ -63,9 +68,10 @@ mod tests {
     use rss::Channel;
     use std::io::Cursor;
 
-    // テスト用のヘルパー関数: 文字列からChannelオブジェクトを作成
-    fn str_to_channel(xml: &str) -> Channel {
-        Channel::read_from(Cursor::new(xml.as_bytes())).expect("Failed to create test channel")
+    // テスト用のヘルパー関数: XMLからChannelオブジェクトを作成
+    fn parse_channel_from_str(xml: &str) -> Channel {
+        parse_channel_from_reader(BufReader::new(Cursor::new(xml.as_bytes())))
+            .expect("Failed to create test channel")
     }
 
     // 記事の基本構造をチェックするヘルパー関数
@@ -103,9 +109,9 @@ mod tests {
                 </channel>
             </rss>
             "#;
-        let channel = str_to_channel(test_rss);
-        let articles = extract_links_from_rss(&channel);
-        
+        let channel = parse_channel_from_str(test_rss);
+        let articles = extract_rss_articles_from_channel(&channel);
+
         assert_eq!(articles.len(), 2, "2件の記事が抽出されるはず");
         assert_eq!(articles[0].title, "Test Article 1");
         assert_eq!(articles[0].link, "http://example.com/article1");
@@ -129,23 +135,23 @@ mod tests {
                 </channel>
             </rss>
             "#;
-        
-        let channel = str_to_channel(test_rss);
-        let articles = extract_links_from_rss(&channel);
-        
+
+        let channel = parse_channel_from_str(test_rss);
+        let articles = extract_rss_articles_from_channel(&channel);
+
         assert_eq!(articles.len(), 1, "リンクがない記事は除外されるはず");
         assert_eq!(articles[0].title, "Article With Link");
     }
-    
+
     #[test]
     fn test_extract_links_from_bbc_rss() {
         // BBC RSSファイルからリンクを抽出するテスト
-        let result = read_rss_from_file("mock/rss/bbc.rss");
+        let result = read_channel_from_file("mock/rss/bbc.rss");
 
         assert!(result.is_ok(), "RSSファイルの読み込みに失敗しました");
 
         let channel = result.unwrap();
-        let articles = extract_links_from_rss(&channel);
+        let articles = extract_rss_articles_from_channel(&channel);
         assert!(!articles.is_empty(), "抽出された記事が0件でした");
 
         // 最初の記事をチェック
@@ -163,12 +169,12 @@ mod tests {
     #[test]
     fn test_extract_links_from_cbs_rss() {
         // CBS RSSファイルからリンクを抽出するテスト
-        let result = read_rss_from_file("mock/rss/cbs.rss");
+        let result = read_channel_from_file("mock/rss/cbs.rss");
 
         assert!(result.is_ok(), "CBS RSSファイルの読み込みに失敗しました");
 
         let channel = result.unwrap();
-        let articles = extract_links_from_rss(&channel);
+        let articles = extract_rss_articles_from_channel(&channel);
         assert!(!articles.is_empty(), "抽出された記事が0件でした");
 
         // 記事の構造をチェック
@@ -183,7 +189,7 @@ mod tests {
     #[test]
     fn test_extract_links_from_guardian_rss() {
         // Guardian RSSファイルからリンクを抽出するテスト
-        let result = read_rss_from_file("mock/rss/guardian.rss");
+        let result = read_channel_from_file("mock/rss/guardian.rss");
 
         assert!(
             result.is_ok(),
@@ -191,7 +197,7 @@ mod tests {
         );
 
         let channel = result.unwrap();
-        let articles = extract_links_from_rss(&channel);
+        let articles = extract_rss_articles_from_channel(&channel);
         assert!(!articles.is_empty(), "抽出された記事が0件でした");
 
         // 記事の構造をチェック
@@ -206,7 +212,7 @@ mod tests {
     #[test]
     fn test_invalid_file_path() {
         // 存在しないファイルのテスト
-        let result = read_rss_from_file("non_existent_file.rss");
+        let result = read_channel_from_file("non_existent_file.rss");
         assert!(result.is_err(), "存在しないファイルでエラーにならなかった");
     }
 
