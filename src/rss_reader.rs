@@ -59,8 +59,9 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_links_from_rss() {
-        let test_rss: &str = r#"
+    fn test_extract_rss_articles_from_xml() {
+        // TODO: xml->channel->rss_articleの流れの確認
+        let xml: &str = r#"
             <rss version="2.0">
                 <channel>
                     <title>Test Feed</title>
@@ -81,7 +82,7 @@ mod tests {
                 </channel>
             </rss>
             "#;
-        let channel = parse_channel_from_xml(test_rss).expect("Failed to parse test RSS");
+        let channel = parse_channel_from_xml(xml).expect("Failed to parse test RSS");
         let articles = extract_rss_articles_from_channel(&channel);
 
         assert_eq!(articles.len(), 2, "2件の記事が抽出されるはず");
@@ -92,8 +93,9 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_links_from_missing_link_rss() {
-        let test_rss = r#"
+    fn test_extract_rss_articles_from_xml_missing_link() {
+        // TODO: xml(リンクがない)->channel->rss_articleの流れの確認
+        let xml_missing_link = r#"
             <rss version="2.0">
                 <channel>
                     <title>Test Feed</title>
@@ -108,7 +110,7 @@ mod tests {
             </rss>
             "#;
 
-        let channel = parse_channel_from_xml(test_rss).expect("Failed to parse test RSS");
+        let channel = parse_channel_from_xml(xml_missing_link).expect("Failed to parse test RSS");
         let articles = extract_rss_articles_from_channel(&channel);
 
         assert_eq!(articles.len(), 1, "リンクがない記事は除外されるはず");
@@ -116,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_links_from_real_rss_feeds() {
+    fn test_extract_rss_articles_from_files() {
         // 複数の実際のRSSファイルからリンクを抽出するテスト
         let test_feeds = [
             ("mock/rss/bbc.rss", "BBC"),
@@ -138,10 +140,9 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_file_path() {
-        // 存在しないファイルのテスト
+    fn test_read_non_existing_file() {
+        // 存在しないファイルを読み込もうとする
         let result = read_channel_from_file("non_existent_file.rss");
         assert!(result.is_err(), "存在しないファイルでエラーにならなかった");
     }
-
 }
