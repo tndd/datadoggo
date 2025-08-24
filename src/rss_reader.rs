@@ -1,6 +1,6 @@
 use rss::Channel;
 use std::fs::File;
-use std::io::{BufReader, Cursor};
+use std::io::BufReader;
 
 // RSS記事の情報を格納する構造体
 #[derive(Debug, Clone)]
@@ -37,14 +37,15 @@ pub fn read_channel_from_file(file_path: &str) -> Result<Channel, Box<dyn std::e
     Channel::read_from(buf_reader).map_err(Into::into)
 }
 
-// XMLからRSSチャンネルを解析するヘルパー関数
-pub fn parse_channel_from_xml(xml: &str) -> Result<Channel, Box<dyn std::error::Error>> {
-    Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes()))).map_err(Into::into)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
+
+    // XMLからRSSチャンネルを解析するヘルパー関数
+    fn parse_channel_from_xml(xml: &str) -> Result<Channel, Box<dyn std::error::Error>> {
+        Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes()))).map_err(Into::into)
+    }
 
     // 記事の基本構造をチェックするヘルパー関数
     fn validate_articles(articles: &[RssArticle]) {
