@@ -1,15 +1,16 @@
 use crate::rss_reader::RssArticle;
 use std::env;
-use tokio_postgres::{NoTls, Error};
+use tokio_postgres::{Error, NoTls};
 
 pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), Error> {
     // 環境変数からPostgreSQL接続情報を取得
-    let database_url = env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "host=localhost port=15432 user=datadoggo password=datadoggo dbname=datadoggo".to_string());
-    
+    let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "host=localhost port=15432 user=datadoggo password=datadoggo dbname=datadoggo".to_string()
+    });
+
     // PostgreSQLに接続
     let (client, connection) = tokio_postgres::connect(&database_url, NoTls).await?;
-    
+
     // 接続を別タスクで処理
     tokio::spawn(async move {
         if let Err(e) = connection.await {
@@ -18,35 +19,41 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), Error> {
     });
 
     // テーブルが存在しない場合にのみ作成する
-    client.execute(
-        "CREATE TABLE IF NOT EXISTS articles (
+    client
+        .execute(
+            "CREATE TABLE IF NOT EXISTS articles (
              title       TEXT NOT NULL,
              link        TEXT PRIMARY KEY,
              description TEXT,
              pub_date    TEXT
          )",
-        &[],
-    ).await?;
+            &[],
+        )
+        .await?;
 
     // 挿入用のプリペアドステートメントを作成
-    let stmt = client.prepare(
-        "INSERT INTO articles (title, link, description, pub_date) 
+    let stmt = client
+        .prepare(
+            "INSERT INTO articles (title, link, description, pub_date) 
          VALUES ($1, $2, $3, $4) 
-         ON CONFLICT (link) DO NOTHING"
-    ).await?;
+         ON CONFLICT (link) DO NOTHING",
+        )
+        .await?;
 
     let mut inserted_count = 0;
     for article in articles {
-        let result = client.execute(
-            &stmt,
-            &[
-                &article.title,
-                &article.link,
-                &article.description.as_deref().unwrap_or(""),
-                &article.pub_date.as_deref().unwrap_or(""),
-            ],
-        ).await;
-        
+        let result = client
+            .execute(
+                &stmt,
+                &[
+                    &article.title,
+                    &article.link,
+                    &article.description.as_deref().unwrap_or(""),
+                    &article.pub_date.as_deref().unwrap_or(""),
+                ],
+            )
+            .await;
+
         match result {
             Ok(affected_rows) => {
                 inserted_count += affected_rows;
@@ -88,7 +95,7 @@ mod tests {
 
         // データベースに保存をテスト
         let result = save_articles_to_db(&test_articles).await;
-        
+
         match result {
             Ok(_) => println!("✅ データベーステスト成功"),
             Err(e) => {

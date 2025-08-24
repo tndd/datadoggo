@@ -1,8 +1,8 @@
-mod rss_reader;
 mod db_writer;
+mod rss_reader;
 
-use rss_reader::*;
 use db_writer::*;
+use rss_reader::*;
 
 #[tokio::main]
 async fn main() {
