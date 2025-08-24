@@ -57,6 +57,7 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), SqlxErro
 }
 
 // 一括挿入版（パフォーマンス重視）
+#[allow(dead_code)]
 pub async fn save_articles_to_db_batch(articles: &[RssArticle]) -> Result<(), SqlxError> {
     let pool = create_pool().await?;
     ensure_table_exists(&pool).await?;
