@@ -1,66 +1,67 @@
 use crate::rss_reader::RssArticle;
 use std::env;
-use tokio_postgres::{Error, NoTls};
+use tokio_postgres::{types::ToSql, Error, NoTls};
 
-pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), Error> {
-    // 環境変数からPostgreSQL接続情報を取得
+// 構造体のフィールドを自動的にINSERTするマクロ
+macro_rules! insert_article {
+    ($client:expr, $article:expr) => {
+        {
+            let params: &[&(dyn ToSql + Sync)] = &[
+                &$article.title,
+                &$article.link,
+                &$article.description.as_deref().unwrap_or(""),
+                &$article.pub_date.as_deref().unwrap_or("")
+            ];
+            $client.execute(
+                "INSERT INTO articles (title, link, description, pub_date) VALUES ($1, $2, $3, $4) ON CONFLICT (link) DO NOTHING",
+                params
+            ).await
+        }
+    };
+}
+
+// データベース接続を確立するヘルパー関数
+async fn establish_connection() -> Result<tokio_postgres::Client, Error> {
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
         "host=localhost port=15432 user=datadoggo password=datadoggo dbname=datadoggo".to_string()
     });
 
-    // PostgreSQLに接続
     let (client, connection) = tokio_postgres::connect(&database_url, NoTls).await?;
 
-    // 接続を別タスクで処理
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             eprintln!("データベース接続エラー: {}", e);
         }
     });
 
-    // テーブルが存在しない場合にのみ作成する
+    Ok(client)
+}
+
+// テーブル作成のヘルパー関数
+async fn ensure_table_exists(client: &tokio_postgres::Client) -> Result<(), Error> {
     client
         .execute(
             "CREATE TABLE IF NOT EXISTS articles (
-             title       TEXT NOT NULL,
-             link        TEXT PRIMARY KEY,
-             description TEXT,
-             pub_date    TEXT
-         )",
+         title       TEXT NOT NULL,
+         link        TEXT PRIMARY KEY,
+         description TEXT,
+         pub_date    TEXT
+     )",
             &[],
         )
         .await?;
+    Ok(())
+}
 
-    // 挿入用のプリペアドステートメントを作成
-    let stmt = client
-        .prepare(
-            "INSERT INTO articles (title, link, description, pub_date) 
-         VALUES ($1, $2, $3, $4) 
-         ON CONFLICT (link) DO NOTHING",
-        )
-        .await?;
+pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), Error> {
+    let client = establish_connection().await?;
+    ensure_table_exists(&client).await?;
 
     let mut inserted_count = 0;
     for article in articles {
-        let result = client
-            .execute(
-                &stmt,
-                &[
-                    &article.title,
-                    &article.link,
-                    &article.description.as_deref().unwrap_or(""),
-                    &article.pub_date.as_deref().unwrap_or(""),
-                ],
-            )
-            .await;
-
-        match result {
-            Ok(affected_rows) => {
-                inserted_count += affected_rows;
-            }
-            Err(e) => {
-                eprintln!("記事の挿入に失敗しました: {} - エラー: {}", article.link, e);
-            }
+        match insert_article!(client, article) {
+            Ok(affected_rows) => inserted_count += affected_rows,
+            Err(e) => eprintln!("記事の挿入に失敗しました: {} - エラー: {}", article.link, e),
         }
     }
 
