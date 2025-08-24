@@ -38,7 +38,6 @@ pub fn read_channel_from_file(file_path: &str) -> Result<Channel, Box<dyn std::e
 }
 
 // XMLからRSSチャンネルを解析するヘルパー関数
-#[allow(dead_code)]
 pub fn parse_channel_from_xml(xml: &str) -> Result<Channel, Box<dyn std::error::Error>> {
     Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes()))).map_err(Into::into)
 }
@@ -117,69 +116,25 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_links_from_bbc_rss() {
-        // BBC RSSファイルからリンクを抽出するテスト
-        let result = read_channel_from_file("mock/rss/bbc.rss");
+    fn test_extract_links_from_real_rss_feeds() {
+        // 複数の実際のRSSファイルからリンクを抽出するテスト
+        let test_feeds = [
+            ("mock/rss/bbc.rss", "BBC"),
+            ("mock/rss/cbs.rss", "CBS"),
+            ("mock/rss/guardian.rss", "Guardian"),
+        ];
 
-        assert!(result.is_ok(), "RSSファイルの読み込みに失敗しました");
+        for (file_path, feed_name) in &test_feeds {
+            let result = read_channel_from_file(file_path);
+            assert!(result.is_ok(), "{}のRSSファイル読み込みに失敗", feed_name);
 
-        let channel = result.unwrap();
-        let articles = extract_rss_articles_from_channel(&channel);
-        assert!(!articles.is_empty(), "抽出された記事が0件でした");
+            let channel = result.unwrap();
+            let articles = extract_rss_articles_from_channel(&channel);
+            assert!(!articles.is_empty(), "{}の記事が0件", feed_name);
 
-        // 最初の記事をチェック
-        let first_article = &articles[0];
-        assert!(!first_article.title.is_empty(), "記事のタイトルが空です");
-        assert!(!first_article.link.is_empty(), "記事のリンクが空です");
-        assert!(
-            first_article.link.starts_with("http"),
-            "リンクがHTTP形式ではありません"
-        );
-
-        println!("テスト結果: {}件の記事を正常に抽出しました", articles.len());
-    }
-
-    #[test]
-    fn test_extract_links_from_cbs_rss() {
-        // CBS RSSファイルからリンクを抽出するテスト
-        let result = read_channel_from_file("mock/rss/cbs.rss");
-
-        assert!(result.is_ok(), "CBS RSSファイルの読み込みに失敗しました");
-
-        let channel = result.unwrap();
-        let articles = extract_rss_articles_from_channel(&channel);
-        assert!(!articles.is_empty(), "抽出された記事が0件でした");
-
-        // 記事の構造をチェック
-        validate_articles(&articles);
-
-        println!(
-            "CBSテスト結果: {}件の記事を正常に抽出しました",
-            articles.len()
-        );
-    }
-
-    #[test]
-    fn test_extract_links_from_guardian_rss() {
-        // Guardian RSSファイルからリンクを抽出するテスト
-        let result = read_channel_from_file("mock/rss/guardian.rss");
-
-        assert!(
-            result.is_ok(),
-            "Guardian RSSファイルの読み込みに失敗しました"
-        );
-
-        let channel = result.unwrap();
-        let articles = extract_rss_articles_from_channel(&channel);
-        assert!(!articles.is_empty(), "抽出された記事が0件でした");
-
-        // 記事の構造をチェック
-        validate_articles(&articles);
-
-        println!(
-            "Guardianテスト結果: {}件の記事を正常に抽出しました",
-            articles.len()
-        );
+            validate_articles(&articles);
+            println!("{}テスト結果: {}件の記事を抽出", feed_name, articles.len());
+        }
     }
 
     #[test]
@@ -189,19 +144,4 @@ mod tests {
         assert!(result.is_err(), "存在しないファイルでエラーにならなかった");
     }
 
-    #[test]
-    fn test_rss_article_structure() {
-        // RssArticle構造体のテスト
-        let article = RssArticle {
-            title: "テスト記事".to_string(),
-            link: "https://example.com/test".to_string(),
-            description: Some("テスト説明".to_string()),
-            pub_date: Some("2025-07-27".to_string()),
-        };
-
-        assert_eq!(article.title, "テスト記事");
-        assert_eq!(article.link, "https://example.com/test");
-        assert_eq!(article.description, Some("テスト説明".to_string()));
-        assert_eq!(article.pub_date, Some("2025-07-27".to_string()));
-    }
 }
