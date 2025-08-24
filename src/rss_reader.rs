@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_extract_rss_articles_from_xml() {
-        // TODO: xml->channel->rss_articleの流れの確認
+        // xml->channel->rss_articleの流れの確認
         let xml: &str = r#"
             <rss version="2.0">
                 <channel>
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_extract_rss_articles_from_xml_missing_link() {
-        // TODO: xml(リンクがない)->channel->rss_articleの流れの確認
+        // xml(リンク欠落)->channel->rss_articleの流れの確認
         let xml_missing_link = r#"
             <rss version="2.0">
                 <channel>
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_read_non_existing_file() {
-        // 存在しないファイルを読み込もうとする
+        // 存在しないファイルを読み込もうとするテスト
         let result = read_channel_from_file("non_existent_file.rss");
         assert!(result.is_err(), "存在しないファイルでエラーにならなかった");
     }
