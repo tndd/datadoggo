@@ -65,12 +65,6 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rss::Channel;
-
-    // テスト用のヘルパー関数: XMLからChannelオブジェクトを作成
-    fn create_test_channel(xml: &str) -> Channel {
-        parse_channel_from_xml(xml).expect("Failed to create test channel")
-    }
 
     // 記事の基本構造をチェックするヘルパー関数
     fn validate_articles(articles: &[RssArticle]) {
@@ -107,7 +101,7 @@ mod tests {
                 </channel>
             </rss>
             "#;
-        let channel = create_test_channel(test_rss);
+        let channel = parse_channel_from_xml(test_rss).expect("Failed to parse test RSS");
         let articles = extract_rss_articles_from_channel(&channel);
 
         assert_eq!(articles.len(), 2, "2件の記事が抽出されるはず");
@@ -134,7 +128,7 @@ mod tests {
             </rss>
             "#;
 
-        let channel = create_test_channel(test_rss);
+        let channel = parse_channel_from_xml(test_rss).expect("Failed to parse test RSS");
         let articles = extract_rss_articles_from_channel(&channel);
 
         assert_eq!(articles.len(), 1, "リンクがない記事は除外されるはず");
