@@ -101,24 +101,30 @@ mod tests {
         // テスト用データベース接続を作成
         async fn new() -> Result<Self, SqlxError> {
             let _ = dotenvy::dotenv();
-            
+
             let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
                 "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo".to_string()
             });
-            
+
             let pool = PgPool::connect(&database_url).await?;
             sqlx::migrate!("./migrations").run(&pool).await?;
-            
+
             // テストごとにユニークな識別子を生成
-            let test_id = format!("test_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
-            
+            let test_id = format!(
+                "test_{}",
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            );
+
             Ok(TestDb { pool, test_id })
         }
 
         // テスト用記事を挿入（プレフィックス付き）
-        async fn insert_test_articles(&self, articles: &[RssArticle]) -> Result<Vec<RssArticle>, SqlxError> {
+        async fn insert_test_articles(
+            &self,
+            articles: &[RssArticle],
+        ) -> Result<Vec<RssArticle>, SqlxError> {
             let mut test_articles = Vec::new();
-            
+
             for article in articles {
                 let test_article = RssArticle {
                     title: format!("[{}] {}", self.test_id, article.title),
@@ -126,10 +132,10 @@ mod tests {
                     description: article.description.clone(),
                     pub_date: article.pub_date.clone(),
                 };
-                
+
                 sqlx::query(
                     "INSERT INTO rss_articles (title, link, description, pub_date) 
-                     VALUES ($1, $2, $3, $4)"
+                     VALUES ($1, $2, $3, $4)",
                 )
                 .bind(&test_article.title)
                 .bind(&test_article.link)
@@ -137,17 +143,17 @@ mod tests {
                 .bind(test_article.pub_date.as_deref().unwrap_or(""))
                 .execute(&self.pool)
                 .await?;
-                
+
                 test_articles.push(test_article);
             }
-            
+
             Ok(test_articles)
         }
 
         // 記事数を取得（テスト用データのみ）
         async fn count_test_articles(&self) -> Result<i64, SqlxError> {
             let row = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM rss_articles WHERE title LIKE $1 OR link LIKE $2"
+                "SELECT COUNT(*) FROM rss_articles WHERE title LIKE $1 OR link LIKE $2",
             )
             .bind(format!("[{}]%", self.test_id))
             .bind(format!("%test_id={}", self.test_id))
@@ -162,13 +168,14 @@ mod tests {
             // クリーンアップを非同期で実行（ベストエフォート）
             let pool = self.pool.clone();
             let test_id = self.test_id.clone();
-            
+
             tokio::spawn(async move {
-                if let Err(e) = sqlx::query("DELETE FROM rss_articles WHERE title LIKE $1 OR link LIKE $2")
-                    .bind(format!("[{}]%", test_id))
-                    .bind(format!("%test_id={}", test_id))
-                    .execute(&pool)
-                    .await 
+                if let Err(e) =
+                    sqlx::query("DELETE FROM rss_articles WHERE title LIKE $1 OR link LIKE $2")
+                        .bind(format!("[{}]%", test_id))
+                        .bind(format!("%test_id={}", test_id))
+                        .execute(&pool)
+                        .await
                 {
                     eprintln!("テストデータクリーンアップエラー: {}", e);
                 }
@@ -227,19 +234,28 @@ mod tests {
     db_test!(test_save_articles_to_db, |test_db: TestDb| async move {
         // テスト前の件数を確認
         let count_before = test_db.count_test_articles().await?;
-        assert_eq!(count_before, 0, "テスト開始前にテストデータが存在しています");
+        assert_eq!(
+            count_before, 0,
+            "テスト開始前にテストデータが存在しています"
+        );
 
         // テスト用記事データを作成
         let test_articles = vec![
             RssArticle {
                 title: format!("[{}] Test Article 1", test_db.test_id),
-                link: format!("https://test.example.com/article1?test_id={}", test_db.test_id),
+                link: format!(
+                    "https://test.example.com/article1?test_id={}",
+                    test_db.test_id
+                ),
                 description: Some("Test description 1".to_string()),
                 pub_date: Some("2025-08-24T00:00:00Z".to_string()),
             },
             RssArticle {
                 title: format!("[{}] Test Article 2", test_db.test_id),
-                link: format!("https://test.example.com/article2?test_id={}", test_db.test_id),
+                link: format!(
+                    "https://test.example.com/article2?test_id={}",
+                    test_db.test_id
+                ),
                 description: Some("Test description 2".to_string()),
                 pub_date: Some("2025-08-24T01:00:00Z".to_string()),
             },
@@ -247,13 +263,17 @@ mod tests {
 
         // データベースに保存をテスト
         save_articles_to_db(&test_articles).await?;
-        
+
         // 保存後の件数を確認
         let count_after = test_db.count_test_articles().await?;
-        assert_eq!(count_after, 2, "期待する件数(2件)が保存されませんでした。実際の件数: {}", count_after);
-        
+        assert_eq!(
+            count_after, 2,
+            "期待する件数(2件)が保存されませんでした。実際の件数: {}",
+            count_after
+        );
+
         println!("✅ 保存件数検証成功: {}件", count_after);
-        
+
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
     });
 
@@ -274,10 +294,10 @@ mod tests {
         // 同じ記事を再度挿入（重複）
         save_articles_to_db(&initial_articles).await?;
         let final_count = test_db.count_test_articles().await?;
-        
+
         // 重複なので挿入されない（countは変わらない）
         assert_eq!(final_count, 1);
-        
+
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
     });
 
