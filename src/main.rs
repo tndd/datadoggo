@@ -14,7 +14,9 @@ async fn main() {
             println!("BBCのRSSから{}件の記事を抽出しました。", articles.len());
 
             match save_articles_to_db(&articles).await {
-                Ok(_) => println!("{}件の記事をPostgreSQLに保存しました。", articles.len()),
+                Ok(result) => {
+                    println!("{}", result);
+                }
                 Err(e) => eprintln!("データベースへの保存中にエラーが発生しました: {}", e),
             }
         }

@@ -1,6 +1,44 @@
 use crate::rss_reader::RssArticle;
 use sqlx::{Error as SqlxError, PgPool};
 use std::env;
+use std::fmt;
+
+/// データベースへの保存結果を格納する構造体
+#[derive(Debug, Clone)]
+pub struct SaveResult {
+    /// 処理対象の総記事数
+    pub total_processed: usize,
+    /// 新規にデータベースに挿入された記事数
+    pub newly_inserted: u64,
+    /// 重複によりスキップされた記事数
+    pub skipped_duplicates: usize,
+    /// 挿入に失敗した記事のリンクとエラーメッセージのペア
+    pub failed_articles: Vec<(String, String)>,
+}
+
+impl fmt::Display for SaveResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "処理完了: 総記事数{}件中、新規保存{}件、重複スキップ{}件、失敗{}件",
+            self.total_processed,
+            self.newly_inserted,
+            self.skipped_duplicates,
+            self.failed_articles.len()
+        )?;
+
+        if !self.failed_articles.is_empty() {
+            writeln!(f, "失敗した記事:")?;
+            for (link, error) in self.failed_articles.iter().take(5) {
+                writeln!(f, "  - {}: {}", link, error)?;
+            }
+            if self.failed_articles.len() > 5 {
+                writeln!(f, "  ... 他{}件", self.failed_articles.len() - 5)?;
+            }
+        }
+        Ok(())
+    }
+}
 
 // データベース接続プールを作成
 async fn create_pool() -> Result<PgPool, SqlxError> {
@@ -21,7 +59,11 @@ async fn create_pool() -> Result<PgPool, SqlxError> {
 /// - `articles`: 保存するRSS記事のスライス
 ///
 /// ## 戻り値
-/// 成功時は戻り値なしで、引数の構造体がデータベースに保存される。
+/// 成功時は`SaveResult`構造体を返し、保存結果の詳細情報を提供する。
+/// - `total_processed`: 処理対象の総記事数
+/// - `newly_inserted`: 新規に挿入された記事数
+/// - `skipped_duplicates`: 重複によりスキップされた記事数
+/// - `failed_articles`: 挿入失敗した記事のリンクとエラーメッセージ
 ///
 /// ## エラー
 /// - SqlxError: データベース操作中に発生したエラー
@@ -29,16 +71,16 @@ async fn create_pool() -> Result<PgPool, SqlxError> {
 /// # 動作
 /// - 1000件ずつのchunkに分けて一括INSERT
 /// - 重複記事は保存をスキップ
-/// ## 結果の報告
-/// - 新規保存された件数
-/// - スキップされた重複記事の件数
-/// - 失敗した個別INSERTの記事のリンクとエラーメッセージ
-pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), SqlxError> {
+pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, SqlxError> {
     let pool = create_pool().await?;
 
     if articles.is_empty() {
-        println!("挿入する記事がありません");
-        return Ok(());
+        return Ok(SaveResult {
+            total_processed: 0,
+            newly_inserted: 0,
+            skipped_duplicates: 0,
+            failed_articles: Vec::new(),
+        });
     }
 
     const CHUNK_SIZE: usize = 1000; // 一括処理のチャンクサイズ
@@ -90,19 +132,16 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), SqlxErro
         }
     }
 
-    // 結果レポート
-    println!("新規挿入された記事数: {}", total_inserted);
-    if !failed_articles.is_empty() {
-        eprintln!("挿入失敗した記事数: {}", failed_articles.len());
-        for (link, error) in failed_articles.iter().take(5) {
-            eprintln!("  - {}: {}", link, error);
-        }
-        if failed_articles.len() > 5 {
-            eprintln!("  ... 他{}件", failed_articles.len() - 5);
-        }
-    }
+    // 結果を構造体として返す
+    let total_processed = articles.len();
+    let skipped_duplicates = total_processed - total_inserted as usize - failed_articles.len();
 
-    Ok(())
+    Ok(SaveResult {
+        total_processed,
+        newly_inserted: total_inserted,
+        skipped_duplicates,
+        failed_articles,
+    })
 }
 
 #[cfg(test)]
@@ -263,7 +302,25 @@ mod tests {
         ];
 
         // データベースに保存をテスト
-        save_articles_to_db(&test_articles).await?;
+        let result = save_articles_to_db(&test_articles).await?;
+
+        // SaveResultの検証
+        assert_eq!(
+            result.total_processed, 2,
+            "処理対象の記事数が期待と異なります"
+        );
+        assert_eq!(
+            result.newly_inserted, 2,
+            "新規挿入された記事数が期待と異なります"
+        );
+        assert_eq!(
+            result.skipped_duplicates, 0,
+            "重複スキップ数が期待と異なります"
+        );
+        assert!(
+            result.failed_articles.is_empty(),
+            "失敗記事が存在するべきではありません"
+        );
 
         // 保存後の件数を確認
         let count_after = test_db.count_test_articles().await?;
@@ -273,7 +330,8 @@ mod tests {
             count_after
         );
 
-        println!("✅ 保存件数検証成功: {}件", count_after);
+        println!("✅ 保存件数検証成功: {}件", result.newly_inserted);
+        println!("✅ SaveResult検証成功: {}", result);
         Ok(())
     }
 
@@ -301,11 +359,31 @@ mod tests {
         assert_eq!(initial_count, 1);
 
         // 同じ記事を再度挿入（重複）
-        save_articles_to_db(&initial_articles).await?;
+        let result = save_articles_to_db(&initial_articles).await?;
         let final_count = test_db.count_test_articles().await?;
+
+        // SaveResultの検証
+        assert_eq!(
+            result.total_processed, 1,
+            "処理対象の記事数が期待と異なります"
+        );
+        assert_eq!(
+            result.newly_inserted, 0,
+            "重複記事が新規挿入されるべきではありません"
+        );
+        assert_eq!(
+            result.skipped_duplicates, 1,
+            "重複スキップ数が期待と異なります"
+        );
+        assert!(
+            result.failed_articles.is_empty(),
+            "失敗記事が存在するべきではありません"
+        );
 
         // 重複なので挿入されない（countは変わらない）
         assert_eq!(final_count, 1);
+
+        println!("✅ 重複スキップ検証成功: {}", result);
 
         Ok(())
     }
@@ -322,7 +400,27 @@ mod tests {
         };
 
         let empty_articles: Vec<RssArticle> = vec![];
-        save_articles_to_db(&empty_articles).await?;
+        let result = save_articles_to_db(&empty_articles).await?;
+
+        // 空配列の結果検証
+        assert_eq!(
+            result.total_processed, 0,
+            "空配列の処理対象数は0であるべきです"
+        );
+        assert_eq!(
+            result.newly_inserted, 0,
+            "空配列の新規挿入数は0であるべきです"
+        );
+        assert_eq!(
+            result.skipped_duplicates, 0,
+            "空配列の重複スキップ数は0であるべきです"
+        );
+        assert!(
+            result.failed_articles.is_empty(),
+            "空配列で失敗記事が存在するべきではありません"
+        );
+
+        println!("✅ 空配列処理検証成功: {}", result);
         Ok(())
     }
 }
