@@ -18,11 +18,13 @@ async fn create_pool() -> Result<PgPool, SqlxError> {
 /// RssArticleの配列をデータベースに保存する。
 ///
 /// ## 引数
-/// - `articles` - 保存するRSS記事のスライス
+/// - `articles`: 保存するRSS記事のスライス
 ///
 /// ## 戻り値
-/// - `Ok(())` - 正常に保存完了
-/// - `Err(SqlxError)` - データベースエラー
+/// 成功時は戻り値なしで、引数の構造体がデータベースに保存される。
+///
+/// ## エラー
+/// - SqlxError: データベース操作中に発生したエラー
 ///
 /// # 動作
 /// - 1000件ずつのchunkに分けて一括INSERT
