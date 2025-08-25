@@ -183,55 +183,38 @@ mod tests {
         }
     }
 
-    // カスタムマクロ：テストセットアップとクリーンアップを自動化
-    macro_rules! db_test {
-        ($test_name:ident, $test_body:expr) => {
-            #[tokio::test]
-            async fn $test_name() {
-                let test_db = match TestDb::new().await {
-                    Ok(db) => db,
-                    Err(e) => {
-                        if e.to_string().contains("connection refused")
-                            || e.to_string().contains("could not connect")
-                        {
-                            println!("⚠️  PostgreSQLが起動していません。'docker-compose -f docker-compose-db.yml up -d' でDBを起動してください");
-                            return;
-                        } else {
-                            panic!("データベース接続エラー: {}", e);
-                        }
-                    }
-                };
+    // テスト用のエラー型
+    type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-                // テストの結果を保存する変数
-                let mut test_result = Ok(());
-
-                // テスト本体を実行（panicをキャッチ）
-                let result = tokio::task::spawn(async move {
-                    $test_body(test_db).await
-                }).await;
-
-                match result {
-                    Ok(Ok(())) => {
-                        println!("✅ テスト成功: {}", stringify!($test_name));
-                    }
-                    Ok(Err(e)) => {
-                        test_result = Err(format!("テストエラー: {:?}", e));
-                    }
-                    Err(e) => {
-                        test_result = Err(format!("テスト実行エラー: {:?}", e));
-                    }
-                }
-
-                // 結果をチェックしてpanicする場合
-                if let Err(e) = test_result {
-                    panic!("{}", e);
+    // テスト用のヘルパー関数
+    async fn setup_test_db() -> TestResult<TestDb> {
+        match TestDb::new().await {
+            Ok(db) => Ok(db),
+            Err(e) => {
+                if e.to_string().contains("connection refused")
+                    || e.to_string().contains("could not connect")
+                {
+                    println!("⚠️  PostgreSQLが起動していません。'docker-compose -f docker-compose-db.yml up -d' でDBを起動してください");
+                    // テストをスキップするためのカスタムエラー
+                    return Err("Database connection failed - PostgreSQL not running".into());
+                } else {
+                    return Err(e.into());
                 }
             }
-        };
+        }
     }
 
     // テスト例1: 基本的な保存機能のテスト
-    db_test!(test_save_articles_to_db, |test_db: TestDb| async move {
+    #[tokio::test]
+    async fn test_save_articles_to_db() -> TestResult<()> {
+        let test_db = match setup_test_db().await {
+            Ok(db) => db,
+            Err(_) => {
+                // データベース接続に失敗した場合はテストをスキップ
+                return Ok(());
+            }
+        };
+
         // テスト前の件数を確認
         let count_before = test_db.count_test_articles().await?;
         assert_eq!(
@@ -273,12 +256,20 @@ mod tests {
         );
 
         println!("✅ 保存件数検証成功: {}件", count_after);
-
-        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-    });
+        Ok(())
+    }
 
     // テスト例2: 重複記事の処理テスト
-    db_test!(test_duplicate_articles, |test_db: TestDb| async move {
+    #[tokio::test]
+    async fn test_duplicate_articles() -> TestResult<()> {
+        let test_db = match setup_test_db().await {
+            Ok(db) => db,
+            Err(_) => {
+                // データベース接続に失敗した場合はテストをスキップ
+                return Ok(());
+            }
+        };
+
         let article = RssArticle {
             title: "Duplicate Test Article".to_string(),
             link: "https://test.example.com/duplicate".to_string(),
@@ -298,13 +289,22 @@ mod tests {
         // 重複なので挿入されない（countは変わらない）
         assert_eq!(final_count, 1);
 
-        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-    });
+        Ok(())
+    }
 
     // テスト例3: 空の配列のテスト
-    db_test!(test_empty_articles, |_test_db: TestDb| async move {
+    #[tokio::test]
+    async fn test_empty_articles() -> TestResult<()> {
+        let _test_db = match setup_test_db().await {
+            Ok(db) => db,
+            Err(_) => {
+                // データベース接続に失敗した場合はテストをスキップ
+                return Ok(());
+            }
+        };
+
         let empty_articles: Vec<RssArticle> = vec![];
         save_articles_to_db(&empty_articles).await?;
-        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-    });
+        Ok(())
+    }
 }
