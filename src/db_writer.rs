@@ -29,11 +29,10 @@ async fn create_pool() -> Result<PgPool, SqlxError> {
 /// # 動作
 /// - 1000件ずつのchunkに分けて一括INSERT
 /// - 重複記事は保存をスキップ
-/// - チャンク失敗時は個別処理にフォールバック
-///
-/// ## チャンク失敗時の動作
-/// - 個別処理で失敗した記事は`failed_articles`に格納
-/// - `failed_articles`の内容を出力
+/// ## 結果の報告
+/// - 新規保存された件数
+/// - スキップされた重複記事の件数
+/// - 失敗した個別INSERTの記事のリンクとエラーメッセージ
 pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), SqlxError> {
     let pool = create_pool().await?;
 
