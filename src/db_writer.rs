@@ -29,8 +29,9 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), SqlxErro
 
     // チャンクごとに一括処理
     for chunk in articles.chunks(CHUNK_SIZE) {
-        let mut query_builder =
-            sqlx::QueryBuilder::new("INSERT INTO articles (title, link, description, pub_date) ");
+        let mut query_builder = sqlx::QueryBuilder::new(
+            "INSERT INTO rss_articles (title, link, description, pub_date) ",
+        );
 
         query_builder.push_values(chunk, |mut b, article| {
             b.push_bind(&article.title)
@@ -49,7 +50,7 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), SqlxErro
                 // チャンク全体の挿入が失敗した場合、個別に処理
                 for article in chunk {
                     let result = sqlx::query(
-                        "INSERT INTO articles (title, link, description, pub_date) 
+                        "INSERT INTO rss_articles (title, link, description, pub_date) 
                          VALUES ($1, $2, $3, $4) 
                          ON CONFLICT (link) DO NOTHING",
                     )

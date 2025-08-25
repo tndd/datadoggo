@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS articles (
+CREATE TABLE IF NOT EXISTS rss_articles (
     title       TEXT NOT NULL,
     link        TEXT PRIMARY KEY,
     description TEXT,
