@@ -45,7 +45,7 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<(), SqlxErro
             Ok(result) => total_inserted += result.rows_affected(),
             Err(e) => {
                 eprintln!("チャンク挿入エラー: {} - 個別処理に切り替えます", e);
-                
+
                 // チャンク全体の挿入が失敗した場合、個別に処理
                 for article in chunk {
                     let result = sqlx::query(
@@ -128,5 +128,4 @@ mod tests {
             }
         }
     }
-
 }
