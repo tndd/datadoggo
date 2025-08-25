@@ -225,17 +225,21 @@ mod tests {
 
     // テスト例1: 基本的な保存機能のテスト
     db_test!(test_save_articles_to_db, |test_db: TestDb| async move {
+        // テスト前の件数を確認
+        let count_before = test_db.count_test_articles().await?;
+        assert_eq!(count_before, 0, "テスト開始前にテストデータが存在しています");
+
         // テスト用記事データを作成
         let test_articles = vec![
             RssArticle {
-                title: "Test Article 1".to_string(),
-                link: "https://test.example.com/article1".to_string(),
+                title: format!("[{}] Test Article 1", test_db.test_id),
+                link: format!("https://test.example.com/article1?test_id={}", test_db.test_id),
                 description: Some("Test description 1".to_string()),
                 pub_date: Some("2025-08-24T00:00:00Z".to_string()),
             },
             RssArticle {
-                title: "Test Article 2".to_string(),
-                link: "https://test.example.com/article2".to_string(),
+                title: format!("[{}] Test Article 2", test_db.test_id),
+                link: format!("https://test.example.com/article2?test_id={}", test_db.test_id),
                 description: Some("Test description 2".to_string()),
                 pub_date: Some("2025-08-24T01:00:00Z".to_string()),
             },
@@ -243,6 +247,12 @@ mod tests {
 
         // データベースに保存をテスト
         save_articles_to_db(&test_articles).await?;
+        
+        // 保存後の件数を確認
+        let count_after = test_db.count_test_articles().await?;
+        assert_eq!(count_after, 2, "期待する件数(2件)が保存されませんでした。実際の件数: {}", count_after);
+        
+        println!("✅ 保存件数検証成功: {}件", count_after);
         
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
     });
