@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::BufReader;
 
 // RSS記事の情報を格納する構造体
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone)]
 pub struct RssArticle {
     pub title: String,
     pub link: String,

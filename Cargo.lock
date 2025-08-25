@@ -263,7 +263,6 @@ version = "0.1.0"
 dependencies = [
  "dotenvy",
  "rss",
- "serde",
  "sqlx",
  "tokio",
  "tokio-test",
