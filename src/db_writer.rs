@@ -119,7 +119,7 @@ mod tests {
     // テストモジュール初期化時にDATABASE_URLを設定
     #[ctor::ctor]
     fn init_test_env() {
-        std::env::set_var(
+        env::set_var(
             "DATABASE_URL",
             "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo",
         );
