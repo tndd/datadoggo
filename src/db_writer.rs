@@ -6,37 +6,19 @@ use std::fmt;
 /// データベースへの保存結果を格納する構造体
 #[derive(Debug, Clone)]
 pub struct SaveResult {
-    /// 処理対象の総記事数
-    pub total_processed: usize,
     /// 新規にデータベースに挿入された記事数
-    pub newly_inserted: u64,
+    pub inserted: u64,
     /// 重複によりスキップされた記事数
-    pub skipped_duplicates: usize,
-    /// 挿入に失敗した記事のリンクとエラーメッセージのペア
-    pub failed_articles: Vec<(String, String)>,
+    pub skipped: usize,
 }
 
 impl fmt::Display for SaveResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "処理完了: 総記事数{}件中、新規保存{}件、重複スキップ{}件、失敗{}件",
-            self.total_processed,
-            self.newly_inserted,
-            self.skipped_duplicates,
-            self.failed_articles.len()
-        )?;
-
-        if !self.failed_articles.is_empty() {
-            writeln!(f, "失敗した記事:")?;
-            for (link, error) in self.failed_articles.iter().take(5) {
-                writeln!(f, "  - {}: {}", link, error)?;
-            }
-            if self.failed_articles.len() > 5 {
-                writeln!(f, "  ... 他{}件", self.failed_articles.len() - 5)?;
-            }
-        }
-        Ok(())
+            "処理完了: 新規保存{}件、重複スキップ{}件",
+            self.inserted, self.skipped
+        )
     }
 }
 
@@ -74,16 +56,16 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, 
 
     if articles.is_empty() {
         return Ok(SaveResult {
-            total_processed: 0,
-            newly_inserted: 0,
-            skipped_duplicates: 0,
-            failed_articles: Vec::new(),
+            inserted: 0,
+            skipped: 0,
         });
     }
 
+    // トランザクションを開始
+    let mut tx = pool.begin().await?;
+
     const CHUNK_SIZE: usize = 1000; // 一括処理のチャンクサイズ
     let mut total_inserted = 0u64;
-    let mut failed_articles = Vec::new();
 
     // チャンクごとに一括処理
     for chunk in articles.chunks(CHUNK_SIZE) {
@@ -100,45 +82,20 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, 
 
         query_builder.push(" ON CONFLICT (link) DO NOTHING");
 
-        match query_builder.build().execute(&pool).await {
-            Ok(result) => total_inserted += result.rows_affected(),
-            Err(e) => {
-                eprintln!("チャンク挿入エラー: {} - 個別処理に切り替えます", e);
-
-                // チャンク全体の挿入が失敗した場合、個別に処理
-                for article in chunk {
-                    let result = sqlx::query(
-                        "INSERT INTO rss_articles (title, link, description, pub_date) 
-                         VALUES ($1, $2, $3, $4) 
-                         ON CONFLICT (link) DO NOTHING",
-                    )
-                    .bind(&article.title)
-                    .bind(&article.link)
-                    .bind(article.description.as_deref().unwrap_or(""))
-                    .bind(article.pub_date.as_deref().unwrap_or(""))
-                    .execute(&pool)
-                    .await;
-
-                    match result {
-                        Ok(result) => total_inserted += result.rows_affected(),
-                        Err(e) => {
-                            failed_articles.push((article.link.clone(), e.to_string()));
-                        }
-                    }
-                }
-            }
-        }
+        let result = query_builder.build().execute(&mut *tx).await?;
+        total_inserted += result.rows_affected();
     }
+
+    // トランザクションをコミット
+    tx.commit().await?;
 
     // 結果を構造体として返す
     let total_processed = articles.len();
-    let skipped_duplicates = total_processed - total_inserted as usize - failed_articles.len();
+    let skipped = total_processed - total_inserted as usize;
 
     Ok(SaveResult {
-        total_processed,
-        newly_inserted: total_inserted,
-        skipped_duplicates,
-        failed_articles,
+        inserted: total_inserted,
+        skipped,
     })
 }
 
@@ -303,22 +260,8 @@ mod tests {
         let result = save_articles_to_db(&test_articles).await?;
 
         // SaveResultの検証
-        assert_eq!(
-            result.total_processed, 2,
-            "処理対象の記事数が期待と異なります"
-        );
-        assert_eq!(
-            result.newly_inserted, 2,
-            "新規挿入された記事数が期待と異なります"
-        );
-        assert_eq!(
-            result.skipped_duplicates, 0,
-            "重複スキップ数が期待と異なります"
-        );
-        assert!(
-            result.failed_articles.is_empty(),
-            "失敗記事が存在するべきではありません"
-        );
+        assert_eq!(result.inserted, 2, "新規挿入された記事数が期待と異なります");
+        assert_eq!(result.skipped, 0, "重複スキップ数が期待と異なります");
 
         // 保存後の件数を確認
         let count_after = test_db.count_test_articles().await?;
@@ -328,7 +271,7 @@ mod tests {
             count_after
         );
 
-        println!("✅ 保存件数検証成功: {}件", result.newly_inserted);
+        println!("✅ 保存件数検証成功: {}件", result.inserted);
         println!("✅ SaveResult検証成功: {}", result);
         Ok(())
     }
@@ -362,21 +305,10 @@ mod tests {
 
         // SaveResultの検証
         assert_eq!(
-            result.total_processed, 1,
-            "処理対象の記事数が期待と異なります"
-        );
-        assert_eq!(
-            result.newly_inserted, 0,
+            result.inserted, 0,
             "重複記事が新規挿入されるべきではありません"
         );
-        assert_eq!(
-            result.skipped_duplicates, 1,
-            "重複スキップ数が期待と異なります"
-        );
-        assert!(
-            result.failed_articles.is_empty(),
-            "失敗記事が存在するべきではありません"
-        );
+        assert_eq!(result.skipped, 1, "重複スキップ数が期待と異なります");
 
         // 重複なので挿入されない（countは変わらない）
         assert_eq!(final_count, 1);
@@ -401,22 +333,8 @@ mod tests {
         let result = save_articles_to_db(&empty_articles).await?;
 
         // 空配列の結果検証
-        assert_eq!(
-            result.total_processed, 0,
-            "空配列の処理対象数は0であるべきです"
-        );
-        assert_eq!(
-            result.newly_inserted, 0,
-            "空配列の新規挿入数は0であるべきです"
-        );
-        assert_eq!(
-            result.skipped_duplicates, 0,
-            "空配列の重複スキップ数は0であるべきです"
-        );
-        assert!(
-            result.failed_articles.is_empty(),
-            "空配列で失敗記事が存在するべきではありません"
-        );
+        assert_eq!(result.inserted, 0, "空配列の新規挿入数は0であるべきです");
+        assert_eq!(result.skipped, 0, "空配列の重複スキップ数は0であるべきです");
 
         println!("✅ 空配列処理検証成功: {}", result);
         Ok(())
