@@ -123,6 +123,12 @@ pub async fn save_articles_to_db_with_pool(articles: &[RssArticle], pool: &PgPoo
 #[cfg(test)]
 mod tests {
     use super::*;
+    
+    // テストモジュール初期化時にDATABASE_URLを設定
+    #[ctor::ctor]
+    fn init_test_env() {
+        std::env::set_var("DATABASE_URL", "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo");
+    }
 
     // テスト例1: 基本的な保存機能のテスト
     #[sqlx::test]
