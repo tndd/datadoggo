@@ -6,10 +6,8 @@ use std::fmt;
 /// データベースへの保存結果を格納する構造体
 #[derive(Debug)]
 pub struct SaveResult {
-    /// 新規にデータベースに挿入された記事数
-    pub inserted: usize,
-    /// 重複によりスキップされた記事数
-    pub skipped: usize,
+    pub inserted: usize,    // 新規にデータベースに挿入された記事
+    pub skipped: usize,     // 重複によりスキップされた記事数
 }
 
 impl fmt::Display for SaveResult {
@@ -22,7 +20,7 @@ impl fmt::Display for SaveResult {
     }
 }
 
-// データベース接続プールを作成
+/// データベース接続プールを作成
 async fn create_pool() -> Result<PgPool, SqlxError> {
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
         "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo".to_string()
@@ -30,7 +28,7 @@ async fn create_pool() -> Result<PgPool, SqlxError> {
     PgPool::connect(&database_url).await
 }
 
-// データベースの初期化（マイグレーション実行）
+/// データベースの初期化（マイグレーション実行）
 async fn initialize_database(pool: &PgPool) -> Result<(), SqlxError> {
     sqlx::migrate!("./migrations")
         .run(pool)
