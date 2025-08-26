@@ -60,13 +60,12 @@ async fn create_pool() -> Result<PgPool, SqlxError> {
 ///
 /// ## 戻り値
 /// 成功時は`SaveResult`構造体を返し、保存結果の詳細情報を提供する。
-/// - `total_processed`: 処理対象の総記事数
-/// - `newly_inserted`: 新規に挿入された記事数
-/// - `skipped_duplicates`: 重複によりスキップされた記事数
-/// - `failed_articles`: 挿入失敗した記事のリンクとエラーメッセージ
+/// - `inserted`: 新規に挿入された記事数
+/// - `skipped`: 重複によりスキップされた記事数
 ///
 /// ## エラー
-/// - SqlxError: データベース操作中に発生したエラー
+/// 操作失敗時にはSqlxErrorを返す。
+/// 操作失敗時には全てのインサートはロールバックされる。
 ///
 /// # 動作
 /// - 1000件ずつのchunkに分けて一括INSERT
