@@ -61,18 +61,8 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, 
     save_articles_to_db_with_pool(articles, &pool).await
 }
 
-/// # 概要
-/// RssArticleの配列を指定されたデータベースプールに保存する。
-///
-/// ## 引数
-/// - `articles`: 保存するRSS記事のスライス
-/// - `pool`: データベース接続プール
-///
-/// ## 戻り値
-/// 成功時は`SaveResult`構造体を返し、保存結果の詳細情報を提供する。
-///
-/// ## エラー
-/// 操作失敗時にはSqlxErrorを返し、全ての操作をロールバックする。
+/// RssArticleの配列を指定されたデータベースプールに保存する。\
+/// 既にコネクションプールを準備している場合は `save_articles_to_db` ではなく、この関数を使用する。
 pub async fn save_articles_to_db_with_pool(
     articles: &[RssArticle],
     pool: &PgPool,
