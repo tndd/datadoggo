@@ -103,7 +103,12 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, 
 mod tests {
     use super::*;
 
-    // テスト用のデータベースヘルパー
+    /// # 概要
+    /// テスト用のデータベースを扱うための構造体
+    ///
+    /// # 主要機能
+    /// - テスト用の接続先を作成する
+    /// - テスト後のクリーンアップを行う
     struct TestDb {
         pool: PgPool,
         test_id: String,
