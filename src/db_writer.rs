@@ -73,8 +73,10 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, 
 ///
 /// ## エラー
 /// 操作失敗時にはSqlxErrorを返し、全ての操作をロールバックする。
-pub async fn save_articles_to_db_with_pool(articles: &[RssArticle], pool: &PgPool) -> Result<SaveResult, SqlxError> {
-
+pub async fn save_articles_to_db_with_pool(
+    articles: &[RssArticle],
+    pool: &PgPool,
+) -> Result<SaveResult, SqlxError> {
     if articles.is_empty() {
         return Ok(SaveResult {
             inserted: 0,
@@ -123,11 +125,14 @@ pub async fn save_articles_to_db_with_pool(articles: &[RssArticle], pool: &PgPoo
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     // テストモジュール初期化時にDATABASE_URLを設定
     #[ctor::ctor]
     fn init_test_env() {
-        std::env::set_var("DATABASE_URL", "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo");
+        std::env::set_var(
+            "DATABASE_URL",
+            "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo",
+        );
     }
 
     // テスト例1: 基本的な保存機能のテスト
