@@ -4,10 +4,10 @@ use std::env;
 use std::fmt;
 
 /// データベースへの保存結果を格納する構造体
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SaveResult {
     /// 新規にデータベースに挿入された記事数
-    pub inserted: u64,
+    pub inserted: usize,
     /// 重複によりスキップされた記事数
     pub skipped: usize,
 }
@@ -27,11 +27,15 @@ async fn create_pool() -> Result<PgPool, SqlxError> {
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
         "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo".to_string()
     });
-    let pool = PgPool::connect(&database_url).await?;
-    // マイグレーションを実行
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    PgPool::connect(&database_url).await
+}
 
-    Ok(pool)
+// データベースの初期化（マイグレーション実行）
+async fn initialize_database(pool: &PgPool) -> Result<(), SqlxError> {
+    sqlx::migrate!("./migrations")
+        .run(pool)
+        .await
+        .map_err(SqlxError::from)
 }
 
 /// # 概要
@@ -53,6 +57,7 @@ async fn create_pool() -> Result<PgPool, SqlxError> {
 /// 操作失敗時にはSqlxErrorを返し、全ての操作をロールバックする。
 pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, SqlxError> {
     let pool = create_pool().await?;
+    initialize_database(&pool).await?;
 
     if articles.is_empty() {
         return Ok(SaveResult {
@@ -65,7 +70,7 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, 
     let mut tx = pool.begin().await?;
 
     const CHUNK_SIZE: usize = 1000; // 一括処理のチャンクサイズ
-    let mut total_inserted = 0u64;
+    let mut total_inserted = 0usize;
 
     // チャンクごとに一括処理
     for chunk in articles.chunks(CHUNK_SIZE) {
@@ -83,7 +88,7 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, 
         query_builder.push(" ON CONFLICT (link) DO NOTHING");
 
         let result = query_builder.build().execute(&mut *tx).await?;
-        total_inserted += result.rows_affected();
+        total_inserted += result.rows_affected() as usize;
     }
 
     // トランザクションをコミット
@@ -91,7 +96,7 @@ pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, 
 
     // 結果を構造体として返す
     let total_processed = articles.len();
-    let skipped = total_processed - total_inserted as usize;
+    let skipped = total_processed - total_inserted;
 
     Ok(SaveResult {
         inserted: total_inserted,
@@ -119,12 +124,8 @@ mod tests {
         async fn new() -> Result<Self, SqlxError> {
             let _ = dotenvy::dotenv();
 
-            let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
-                "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo".to_string()
-            });
-
-            let pool = PgPool::connect(&database_url).await?;
-            sqlx::migrate!("./migrations").run(&pool).await?;
+            let pool = create_pool().await?;
+            initialize_database(&pool).await?;
 
             // テストごとにユニークな識別子を生成
             let test_id = format!(
@@ -180,57 +181,37 @@ mod tests {
         }
     }
 
-    impl Drop for TestDb {
-        fn drop(&mut self) {
-            // クリーンアップを非同期で実行（ベストエフォート）
-            let pool = self.pool.clone();
-            let test_id = self.test_id.clone();
-
-            tokio::spawn(async move {
-                if let Err(e) =
-                    sqlx::query("DELETE FROM rss_articles WHERE title LIKE $1 OR link LIKE $2")
-                        .bind(format!("[{}]%", test_id))
-                        .bind(format!("%test_id={}", test_id))
-                        .execute(&pool)
-                        .await
-                {
-                    eprintln!("テストデータクリーンアップエラー: {}", e);
-                }
-            });
+    impl TestDb {
+        // テストデータクリーンアップ（手動実行）
+        async fn cleanup(&self) -> Result<(), SqlxError> {
+            sqlx::query("DELETE FROM rss_articles WHERE title LIKE $1 OR link LIKE $2")
+                .bind(format!("[{}]%", self.test_id))
+                .bind(format!("%test_id={}", self.test_id))
+                .execute(&self.pool)
+                .await?;
+            Ok(())
         }
     }
 
-    // テスト用のエラー型
-    type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+    // テスト用のエラー型をSqlxErrorに統一
+    type TestResult<T> = Result<T, SqlxError>;
 
     // テスト用のヘルパー関数
     async fn setup_test_db() -> TestResult<TestDb> {
-        match TestDb::new().await {
-            Ok(db) => Ok(db),
-            Err(e) => {
-                if e.to_string().contains("connection refused")
-                    || e.to_string().contains("could not connect")
-                {
-                    println!("⚠️  PostgreSQLが起動していません。'docker-compose -f docker-compose-db.yml up -d' でDBを起動してください");
-                    // テストをスキップするためのカスタムエラー
-                    return Err("Database connection failed - PostgreSQL not running".into());
-                } else {
-                    return Err(e.into());
-                }
+        TestDb::new().await.map_err(|e| {
+            if e.to_string().contains("connection refused")
+                || e.to_string().contains("could not connect")
+            {
+                eprintln!("⚠️  PostgreSQLが起動していません。'docker-compose -f docker-compose-db.yml up -d' でDBを起動してください");
             }
-        }
+            e
+        })
     }
 
     // テスト例1: 基本的な保存機能のテスト
     #[tokio::test]
     async fn test_save_articles_to_db() -> TestResult<()> {
-        let test_db = match setup_test_db().await {
-            Ok(db) => db,
-            Err(_) => {
-                // データベース接続に失敗した場合はテストをスキップ
-                return Ok(());
-            }
-        };
+        let test_db = setup_test_db().await?;
 
         // テスト前の件数を確認
         let count_before = test_db.count_test_articles().await?;
@@ -278,19 +259,16 @@ mod tests {
 
         println!("✅ 保存件数検証成功: {}件", result.inserted);
         println!("✅ SaveResult検証成功: {}", result);
+
+        // クリーンアップ
+        test_db.cleanup().await?;
         Ok(())
     }
 
     // テスト例2: 重複記事の処理テスト
     #[tokio::test]
     async fn test_duplicate_articles() -> TestResult<()> {
-        let test_db = match setup_test_db().await {
-            Ok(db) => db,
-            Err(_) => {
-                // データベース接続に失敗した場合はテストをスキップ
-                return Ok(());
-            }
-        };
+        let test_db = setup_test_db().await?;
 
         let article = RssArticle {
             title: "Duplicate Test Article".to_string(),
@@ -320,19 +298,15 @@ mod tests {
 
         println!("✅ 重複スキップ検証成功: {}", result);
 
+        // クリーンアップ
+        test_db.cleanup().await?;
         Ok(())
     }
 
     // テスト例3: 空の配列のテスト
     #[tokio::test]
     async fn test_empty_articles() -> TestResult<()> {
-        let _test_db = match setup_test_db().await {
-            Ok(db) => db,
-            Err(_) => {
-                // データベース接続に失敗した場合はテストをスキップ
-                return Ok(());
-            }
-        };
+        let test_db = setup_test_db().await?;
 
         let empty_articles: Vec<RssArticle> = vec![];
         let result = save_articles_to_db(&empty_articles).await?;
@@ -342,6 +316,9 @@ mod tests {
         assert_eq!(result.skipped, 0, "空配列の重複スキップ数は0であるべきです");
 
         println!("✅ 空配列処理検証成功: {}", result);
+
+        // クリーンアップ
+        test_db.cleanup().await?;
         Ok(())
     }
 }
