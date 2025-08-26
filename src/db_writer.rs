@@ -1,5 +1,5 @@
 use crate::rss_reader::RssArticle;
-use sqlx::{Error as SqlxError, PgPool};
+use sqlx::{Error as SqlxError, PgPool, QueryBuilder};
 use std::env;
 use std::fmt;
 
@@ -42,7 +42,9 @@ async fn initialize_database(pool: &PgPool) -> Result<(), SqlxError> {
 /// RssArticleの配列をデータベースに保存する。
 ///
 /// ## 動作
-/// - 1000件ずつのチャンクに分けて一括INSERT
+/// - 自動でデータベース接続プールを作成
+/// - マイグレーションを実行
+/// - RSS記事を一括保存
 /// - 重複記事は保存をスキップ
 ///
 /// ## 引数
@@ -55,15 +57,15 @@ async fn initialize_database(pool: &PgPool) -> Result<(), SqlxError> {
 ///
 /// ## エラー
 /// 操作失敗時にはSqlxErrorを返し、全ての操作をロールバックする。
-pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, SqlxError> {
+pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, SqlxError> {
     let pool = create_pool().await?;
     initialize_database(&pool).await?;
-    save_articles_to_db_with_pool(articles, &pool).await
+    save_rss_articles_with_pool(articles, &pool).await
 }
 
 /// RssArticleの配列を指定されたデータベースプールに保存する。\
-/// 既にコネクションプールを準備している場合は `save_articles_to_db` ではなく、この関数を使用する。
-pub async fn save_articles_to_db_with_pool(
+/// 既にプールを準備している場合は `save_rss_articles_to_db` ではなく、この関数を使用する。
+pub async fn save_rss_articles_with_pool(
     articles: &[RssArticle],
     pool: &PgPool,
 ) -> Result<SaveResult, SqlxError> {
@@ -73,18 +75,21 @@ pub async fn save_articles_to_db_with_pool(
             skipped: 0,
         });
     }
+    // PostgreSQL制限を考慮した定数
+    const MAX_BIND_PARAMS: usize = 65535; // PostgreSQL maximum
+    const FIELDS_PER_ROW: usize = 4; // title, link, description, pub_date
+    const SAFE_CHUNK_SIZE: usize = MAX_BIND_PARAMS / FIELDS_PER_ROW;
+    // RSS記事テーブル用の定数
+    const RSS_TABLE: &str = "rss_articles";
+    const RSS_COLUMNS: &str = "title, link, description, pub_date";
+    const RSS_CONFLICT: &str = "ON CONFLICT (link) DO NOTHING";
 
-    // トランザクションを開始
     let mut tx = pool.begin().await?;
+    let mut total_inserted = 0;
 
-    const CHUNK_SIZE: usize = 1000; // 一括処理のチャンクサイズ
-    let mut total_inserted = 0usize;
-
-    // チャンクごとに一括処理
-    for chunk in articles.chunks(CHUNK_SIZE) {
-        let mut query_builder = sqlx::QueryBuilder::new(
-            "INSERT INTO rss_articles (title, link, description, pub_date) ",
-        );
+    for chunk in articles.chunks(SAFE_CHUNK_SIZE.min(1000)) {
+        let mut query_builder =
+            QueryBuilder::new(format!("INSERT INTO {} ({})", RSS_TABLE, RSS_COLUMNS));
 
         query_builder.push_values(chunk, |mut b, article| {
             b.push_bind(&article.title)
@@ -93,22 +98,17 @@ pub async fn save_articles_to_db_with_pool(
                 .push_bind(article.pub_date.as_deref().unwrap_or(""));
         });
 
-        query_builder.push(" ON CONFLICT (link) DO NOTHING");
+        query_builder.push(" ").push(RSS_CONFLICT);
 
         let result = query_builder.build().execute(&mut *tx).await?;
         total_inserted += result.rows_affected() as usize;
     }
 
-    // トランザクションをコミット
     tx.commit().await?;
-
-    // 結果を構造体として返す
-    let total_processed = articles.len();
-    let skipped = total_processed - total_inserted;
 
     Ok(SaveResult {
         inserted: total_inserted,
-        skipped,
+        skipped: articles.len() - total_inserted,
     })
 }
 
@@ -145,7 +145,7 @@ mod tests {
         ];
 
         // データベースに保存をテスト
-        let result = save_articles_to_db_with_pool(&test_articles, &pool).await?;
+        let result = save_rss_articles_with_pool(&test_articles, &pool).await?;
 
         // SaveResultの検証
         assert_eq!(result.inserted, 2, "新規挿入された記事数が期待と異なります");
@@ -177,7 +177,7 @@ mod tests {
         };
 
         // 重複記事を保存しようとする
-        let result = save_articles_to_db_with_pool(&[duplicate_article], &pool).await?;
+        let result = save_rss_articles_with_pool(&[duplicate_article], &pool).await?;
 
         // SaveResultの検証
         assert_eq!(
@@ -201,7 +201,7 @@ mod tests {
     #[sqlx::test]
     async fn test_empty_articles(pool: PgPool) -> sqlx::Result<()> {
         let empty_articles: Vec<RssArticle> = vec![];
-        let result = save_articles_to_db_with_pool(&empty_articles, &pool).await?;
+        let result = save_rss_articles_with_pool(&empty_articles, &pool).await?;
 
         // 空配列の結果検証
         assert_eq!(result.inserted, 0, "空配列の新規挿入数は0であるべきです");
@@ -239,7 +239,7 @@ mod tests {
             },
         ];
 
-        let result = save_articles_to_db_with_pool(&mixed_articles, &pool).await?;
+        let result = save_rss_articles_with_pool(&mixed_articles, &pool).await?;
 
         // SaveResultの検証
         assert_eq!(result.inserted, 1, "新規記事1件が挿入されるべきです");

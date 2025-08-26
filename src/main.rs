@@ -13,7 +13,7 @@ async fn main() {
             let articles = extract_rss_articles_from_channel(&channel);
             println!("BBCのRSSから{}件の記事を抽出しました。", articles.len());
 
-            match save_articles_to_db(&articles).await {
+            match save_rss_articles_to_db(&articles).await {
                 Ok(result) => {
                     println!("{}", result);
                 }
