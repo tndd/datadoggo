@@ -55,6 +55,10 @@ async fn create_pool() -> Result<PgPool, SqlxError> {
 /// # 概要
 /// RssArticleの配列をデータベースに保存する。
 ///
+/// ## 動作
+/// - 1000件ずつのチャンクに分けて一括INSERT
+/// - 重複記事は保存をスキップ
+///
 /// ## 引数
 /// - `articles`: 保存するRSS記事のスライス
 ///
@@ -64,12 +68,7 @@ async fn create_pool() -> Result<PgPool, SqlxError> {
 /// - `skipped`: 重複によりスキップされた記事数
 ///
 /// ## エラー
-/// 操作失敗時にはSqlxErrorを返す。
-/// 操作失敗時には全てのインサートはロールバックされる。
-///
-/// # 動作
-/// - 1000件ずつのchunkに分けて一括INSERT
-/// - 重複記事は保存をスキップ
+/// 操作失敗時にはSqlxErrorを返し、全ての操作をロールバックする。
 pub async fn save_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, SqlxError> {
     let pool = create_pool().await?;
 
