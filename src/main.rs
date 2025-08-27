@@ -1,10 +1,13 @@
-mod db_writer;
+mod db_common;
 mod rss_reader;
+mod rss_db_writer;
 mod firecrawl_reader;
+mod firecrawl_db_writer;
 
-use db_writer::*;
 use rss_reader::*;
+use rss_db_writer::*;
 use firecrawl_reader::*;
+use firecrawl_db_writer::*;
 
 #[tokio::main]
 async fn main() {
