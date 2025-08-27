@@ -1,5 +1,5 @@
-use crate::db::{create_pool, initialize_database, SaveResult};
-use crate::loader::FileLoader;
+use crate::services::db::{create_pool, initialize_database, SaveResult};
+use crate::services::loader::FileLoader;
 use rss::Channel;
 use sqlx::{Error as SqlxError, PgPool};
 
