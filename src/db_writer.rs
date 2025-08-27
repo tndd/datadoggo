@@ -1,5 +1,5 @@
 use crate::rss_reader::RssArticle;
-use sqlx::{Error as SqlxError, PgPool, QueryBuilder};
+use sqlx::{Error as SqlxError, PgPool};
 use std::env;
 use std::fmt;
 
@@ -61,8 +61,12 @@ pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> Result<SaveResu
     save_rss_articles_with_pool(articles, &pool).await
 }
 
-/// RssArticleの配列を指定されたデータベースプールに保存する。\
+/// # 概要
+/// RssArticleの配列を指定されたデータベースプールに保存する。
 /// 既にプールを準備している場合は `save_rss_articles_to_db` ではなく、この関数を使用する。
+/// 
+/// # Note
+/// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
 pub async fn save_rss_articles_with_pool(
     articles: &[RssArticle],
     pool: &PgPool,
@@ -73,33 +77,29 @@ pub async fn save_rss_articles_with_pool(
             skipped: 0,
         });
     }
-    // PostgreSQL制限を考慮した定数
-    const MAX_BIND_PARAMS: usize = 65535; // PostgreSQL maximum
-    const FIELDS_PER_ROW: usize = 4; // title, link, description, pub_date
-    const SAFE_CHUNK_SIZE: usize = MAX_BIND_PARAMS / FIELDS_PER_ROW;
-    // RSS記事テーブル用の定数
-    const RSS_TABLE: &str = "rss_articles";
-    const RSS_COLUMNS: &str = "title, link, description, pub_date";
-    const RSS_CONFLICT: &str = "ON CONFLICT (link) DO NOTHING";
 
     let mut tx = pool.begin().await?;
     let mut total_inserted = 0;
 
-    for chunk in articles.chunks(SAFE_CHUNK_SIZE.min(1000)) {
-        let mut query_builder =
-            QueryBuilder::new(format!("INSERT INTO {} ({})", RSS_TABLE, RSS_COLUMNS));
-
-        query_builder.push_values(chunk, |mut b, article| {
-            b.push_bind(&article.title)
-                .push_bind(&article.link)
-                .push_bind(article.description.as_deref().unwrap_or(""))
-                .push_bind(article.pub_date.as_deref().unwrap_or(""));
-        });
-
-        query_builder.push(" ").push(RSS_CONFLICT);
-
-        let result = query_builder.build().execute(&mut *tx).await?;
-        total_inserted += result.rows_affected() as usize;
+    // sqlx::query!マクロを使用してコンパイル時にSQLを検証
+    for article in articles {
+        let result = sqlx::query!(
+            r#"
+            INSERT INTO rss_articles (title, link, description, pub_date)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (link) DO NOTHING
+            "#,
+            article.title,
+            article.link,
+            article.description,
+            article.pub_date
+        )
+        .execute(&mut *tx)
+        .await?;
+        
+        if result.rows_affected() > 0 {
+            total_inserted += 1;
+        }
     }
 
     tx.commit().await?;
