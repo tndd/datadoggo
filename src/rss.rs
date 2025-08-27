@@ -1,5 +1,5 @@
 use crate::services::db::{create_pool, initialize_database, SaveResult};
-use crate::services::loader::FileLoader;
+use crate::services::loader::load_file;
 use rss::Channel;
 use sqlx::{Error as SqlxError, PgPool};
 
@@ -33,7 +33,7 @@ pub fn extract_rss_articles_from_channel(channel: &Channel) -> Vec<RssArticle> {
 
 // ファイルからRSSを読み込むヘルパー関数（loaderを使用）
 pub fn read_channel_from_file(file_path: &str) -> Result<Channel, Box<dyn std::error::Error>> {
-    let buf_reader = FileLoader::load_file(file_path)?;
+    let buf_reader = load_file(file_path)?;
     Channel::read_from(buf_reader).map_err(Into::into)
 }
 
