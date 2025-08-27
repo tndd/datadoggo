@@ -1,4 +1,4 @@
-use crate::services::db::{create_pool, initialize_database, SaveResult};
+use crate::services::db::{setup_database, SaveResult};
 use crate::services::loader::load_file;
 use serde::{Deserialize, Serialize};
 use sqlx::{Error as SqlxError, PgPool};
@@ -133,8 +133,7 @@ pub fn read_firecrawl_from_file(
 /// ## エラー
 /// 操作失敗時にはSqlxErrorを返し、全ての操作をロールバックする。
 pub async fn save_firecrawl_article_to_db(article: &FirecrawlArticle) -> Result<SaveResult, SqlxError> {
-    let pool = create_pool().await?;
-    initialize_database(&pool).await?;
+    let pool = setup_database().await?;
     save_firecrawl_article_with_pool(article, &pool).await
 }
 

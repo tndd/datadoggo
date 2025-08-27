@@ -35,5 +35,9 @@ pub async fn initialize_database(pool: &PgPool) -> Result<(), SqlxError> {
         .map_err(SqlxError::from)
 }
 
-// データベースセットアップのヘルパー関数群
-// 各モジュールで共通して使用される基本的な機能を提供
+/// プールの作成とデータベース初期化を一括で行う便利関数
+pub async fn setup_database() -> Result<PgPool, SqlxError> {
+    let pool = create_pool().await?;
+    initialize_database(&pool).await?;
+    Ok(pool)
+}
