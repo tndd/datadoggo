@@ -1,7 +1,8 @@
+name: datadoggo
+
 services:
   postgres:
     image: postgres:16
-    container_name: datadoggo-postgres
     environment:
       POSTGRES_DB: datadoggo
       POSTGRES_USER: datadoggo
@@ -19,7 +20,6 @@ services:
   # Firecrawl services
   firecrawl-redis:
     image: redis:alpine
-    container_name: firecrawl-redis
     command: redis-server --bind 0.0.0.0 --port 6379
     ports:
       - "16379:6379"
@@ -34,7 +34,6 @@ services:
   firecrawl-playwright:
     image: ghcr.io/firecrawl/firecrawl:latest
     platform: linux/amd64
-    container_name: firecrawl-playwright
     environment:
       - PORT=3000
       - PROXY_SERVER=
@@ -51,7 +50,6 @@ services:
   firecrawl-api:
     image: ghcr.io/firecrawl/firecrawl:latest
     platform: linux/amd64
-    container_name: firecrawl-api
     depends_on:
       - firecrawl-redis
       - firecrawl-playwright
@@ -71,7 +69,6 @@ services:
   firecrawl-worker:
     image: ghcr.io/firecrawl/firecrawl:latest
     platform: linux/amd64
-    container_name: firecrawl-worker
     depends_on:
       - firecrawl-redis
       - firecrawl-playwright
