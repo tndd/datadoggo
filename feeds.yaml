@@ -19,7 +19,7 @@ cbs:
   technology: https://www.cbsnews.com/latest/rss/technology
   space: https://www.cbsnews.com/latest/rss/space
 
-the_guardian:
+guardian:
   world: https://www.theguardian.com/world/rss
   us: https://www.theguardian.com/us-news/rss
   americas: https://www.theguardian.com/world/americas/rss

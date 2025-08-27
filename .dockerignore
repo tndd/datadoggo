@@ -1,0 +1,33 @@
+# ビルド成果物
+target/
+*.db
+*.db-*
+
+# Git関連
+.git/
+.gitignore
+
+# Docker関連
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 開発用ファイル
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# データファイル
+data/
+
+# ログファイル
+*.log
+
+# テンポラリファイル
+tmp/
+temp/
