@@ -16,22 +16,5 @@ services:
       timeout: 3s
       retries: 3
 
-  datadoggo:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: datadoggo:latest
-    container_name: datadoggo-app
-    environment:
-      # PostgreSQL接続設定
-      - DATABASE_URL=host=postgres user=datadoggo password=datadoggo dbname=datadoggo
-    depends_on:
-      postgres:
-        condition: service_healthy
-    # ワンショット実行（必要に応じてコメントアウト）
-    restart: "no"
-    profiles:
-      - full
-
 volumes:
   postgres_data:
