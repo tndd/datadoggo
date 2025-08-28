@@ -63,7 +63,7 @@ pub fn read_channel_from_file(file_path: &str) -> Result<Channel> {
 /// - `skipped`: 重複によりスキップされた記事数
 ///
 /// ## エラー
-/// 操作失敗時にはDatadoggoErrorを返し、全ての操作をロールバックする。
+/// 操作失敗時には全ての操作をロールバックする。
 pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> Result<RssOperationResult> {
     let pool = setup_database().await?;
     save_rss_articles_with_pool(articles, &pool).await

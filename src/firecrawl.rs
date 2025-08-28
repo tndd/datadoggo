@@ -137,7 +137,7 @@ pub fn read_firecrawl_from_file(file_path: &str) -> Result<FirecrawlArticle> {
 /// 成功時は`SaveResult`構造体を返し、保存結果の詳細情報を提供する。
 ///
 /// ## エラー
-/// 操作失敗時にはDatadoggoErrorを返し、全ての操作をロールバックする。
+/// 操作失敗時には全ての操作をロールバックする。
 pub async fn save_firecrawl_article_to_db(
     article: &FirecrawlArticle,
 ) -> Result<FirecrawlOperationResult> {
