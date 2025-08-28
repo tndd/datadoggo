@@ -17,42 +17,8 @@ pub enum FirecrawlProcessingError {
     #[error(transparent)]
     Config(#[from] ConfigError),
 
-    /// ドキュメント解析エラー
-    #[error("Firecrawlドキュメント解析エラー: {source_file} - {reason}")]
-    DocumentParseFailure {
-        source_file: String,
-        reason: String,
-        #[source]
-        source: Option<Box<dyn std::error::Error + Send + Sync>>,
-    },
-
-    /// メタデータ不正エラー
-    #[error("Firecrawlメタデータが不正: {reason}")]
-    InvalidMetadata { reason: String },
 }
 
-impl FirecrawlProcessingError {
-    /// ドキュメント解析エラーを作成
-    pub fn document_parse_failure<F, R, E>(source_file: F, reason: R, source: Option<E>) -> Self
-    where
-        F: Into<String>,
-        R: Into<String>,
-        E: std::error::Error + Send + Sync + 'static,
-    {
-        Self::DocumentParseFailure {
-            source_file: source_file.into(),
-            reason: reason.into(),
-            source: source.map(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
-        }
-    }
-
-    /// メタデータ不正エラーを作成
-    pub fn invalid_metadata<R: Into<String>>(reason: R) -> Self {
-        Self::InvalidMetadata {
-            reason: reason.into(),
-        }
-    }
-}
 
 /// Firecrawl処理のResult型エイリアス
 pub type FirecrawlResult<T> = std::result::Result<T, FirecrawlProcessingError>;

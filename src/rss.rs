@@ -25,9 +25,6 @@ pub enum RssProcessingError {
         source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
 
-    /// RSS必須フィールド不足
-    #[error("RSS必須フィールドが不足: {field}")]
-    MissingRequiredField { field: String },
 }
 
 impl RssProcessingError {
@@ -45,12 +42,6 @@ impl RssProcessingError {
         }
     }
 
-    /// RSS必須フィールド不足エラーを作成
-    pub fn missing_required_field<F: Into<String>>(field: F) -> Self {
-        Self::MissingRequiredField {
-            field: field.into(),
-        }
-    }
 }
 
 /// RSS処理のResult型エイリアス

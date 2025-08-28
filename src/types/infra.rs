@@ -102,10 +102,6 @@ impl DatabaseInsertResult {
         Self::new(0, 0, 0)
     }
 
-    /// 処理された総件数を取得
-    pub fn total_processed(&self) -> usize {
-        self.inserted + self.skipped_duplicate + self.updated
-    }
 
     /// ドメイン名を指定して表示用の文字列を生成
     pub fn display_with_domain(&self, domain_name: &str) -> String {
