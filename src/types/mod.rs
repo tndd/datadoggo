@@ -8,5 +8,5 @@ pub mod infra;
 pub mod config;
 
 // 便利な再エクスポート
-pub use infra::{InfraError, InfraResult};
+pub use infra::{DatabaseInsertResult, InfraError, InfraResult};
 pub use config::ConfigError;

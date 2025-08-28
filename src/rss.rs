@@ -1,6 +1,6 @@
 use crate::infra::db::setup_database;
 use crate::infra::loader::load_file;
-use crate::types::{ConfigError, InfraError};
+use crate::types::{ConfigError, DatabaseInsertResult, InfraError};
 use rss::Channel;
 use sqlx::PgPool;
 use thiserror::Error;
@@ -56,35 +56,13 @@ impl RssProcessingError {
 /// RSS処理のResult型エイリアス
 pub type RssResult<T> = std::result::Result<T, RssProcessingError>;
 
-/// RSS操作の結果型
-#[derive(Debug, Clone)]
-pub struct RssOperationResult {
-    pub articles_inserted: usize,
-    pub articles_skipped_duplicate: usize,
-    pub articles_updated: usize,
-}
+/// RSS操作の結果型（DatabaseInsertResultの型エイリアス）
+pub type RssOperationResult = DatabaseInsertResult;
 
+/// RSS用のカスタムDisplay実装
 impl RssOperationResult {
-    pub fn new(inserted: usize, skipped: usize, updated: usize) -> Self {
-        Self {
-            articles_inserted: inserted,
-            articles_skipped_duplicate: skipped,
-            articles_updated: updated,
-        }
-    }
-
-    pub fn empty() -> Self {
-        Self::new(0, 0, 0)
-    }
-}
-
-impl std::fmt::Display for RssOperationResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "RSS記事処理完了: 新規{}件、重複スキップ{}件、更新{}件",
-            self.articles_inserted, self.articles_skipped_duplicate, self.articles_updated
-        )
+    pub fn display_rss(&self) -> String {
+        self.display_with_domain("RSS記事")
     }
 }
 
@@ -338,8 +316,8 @@ mod tests {
         let result = save_rss_articles_with_pool(&test_articles, &pool).await?;
 
         // SaveResultの検証
-        assert_eq!(result.articles_inserted, 2, "新規挿入された記事数が期待と異なります");
-        assert_eq!(result.articles_skipped_duplicate, 0, "重複スキップ数が期待と異なります");
+        assert_eq!(result.inserted, 2, "新規挿入された記事数が期待と異なります");
+        assert_eq!(result.skipped_duplicate, 0, "重複スキップ数が期待と異なります");
 
         // 実際にデータベースに保存されたことを確認
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
@@ -347,8 +325,8 @@ mod tests {
             .await?;
         assert_eq!(count, 2, "期待する件数(2件)が保存されませんでした");
 
-        println!("✅ RSS保存件数検証成功: {}件", result.articles_inserted);
-        println!("✅ RSS SaveResult検証成功: {}", result);
+        println!("✅ RSS保存件数検証成功: {}件", result.inserted);
+        println!("✅ RSS SaveResult検証成功: {}", result.display_rss());
 
         Ok(())
     }
@@ -371,10 +349,10 @@ mod tests {
 
         // SaveResultの検証
         assert_eq!(
-            result.articles_inserted, 0,
+            result.inserted, 0,
             "重複記事が新規挿入されるべきではありません"
         );
-        assert_eq!(result.articles_skipped_duplicate, 1, "重複スキップ数が期待と異なります");
+        assert_eq!(result.skipped_duplicate, 1, "重複スキップ数が期待と異なります");
 
         // データベースの件数は変わらない
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
@@ -394,8 +372,8 @@ mod tests {
         let result = save_rss_articles_with_pool(&empty_articles, &pool).await?;
 
         // 空配列の結果検証
-        assert_eq!(result.articles_inserted, 0, "空配列の新規挿入数は0であるべきです");
-        assert_eq!(result.articles_skipped_duplicate, 0, "空配列の重複スキップ数は0であるべきです");
+        assert_eq!(result.inserted, 0, "空配列の新規挿入数は0であるべきです");
+        assert_eq!(result.skipped_duplicate, 0, "空配列の重複スキップ数は0であるべきです");
 
         // データベースには何も挿入されていない
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
@@ -432,8 +410,8 @@ mod tests {
         let result = save_rss_articles_with_pool(&mixed_articles, &pool).await?;
 
         // SaveResultの検証
-        assert_eq!(result.articles_inserted, 1, "新規記事1件が挿入されるべきです");
-        assert_eq!(result.articles_skipped_duplicate, 1, "既存記事1件がスキップされるべきです");
+        assert_eq!(result.inserted, 1, "新規記事1件が挿入されるべきです");
+        assert_eq!(result.skipped_duplicate, 1, "既存記事1件がスキップされるべきです");
 
         // 最終的にデータベースには3件（fixture 2件 + 新規 1件）
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")

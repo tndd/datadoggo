@@ -1,6 +1,6 @@
 use crate::infra::db::setup_database;
 use crate::infra::loader::load_file;
-use crate::types::{ConfigError, InfraError};
+use crate::types::{ConfigError, DatabaseInsertResult, InfraError};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -57,35 +57,13 @@ impl FirecrawlProcessingError {
 /// Firecrawl処理のResult型エイリアス
 pub type FirecrawlResult<T> = std::result::Result<T, FirecrawlProcessingError>;
 
-/// Firecrawl操作の結果型
-#[derive(Debug, Clone)]
-pub struct FirecrawlOperationResult {
-    pub documents_inserted: usize,
-    pub documents_skipped_duplicate: usize,
-    pub documents_updated: usize,
-}
+/// Firecrawl操作の結果型（DatabaseInsertResultの型エイリアス）
+pub type FirecrawlOperationResult = DatabaseInsertResult;
 
+/// Firecrawl用のカスタムDisplay実装  
 impl FirecrawlOperationResult {
-    pub fn new(inserted: usize, skipped: usize, updated: usize) -> Self {
-        Self {
-            documents_inserted: inserted,
-            documents_skipped_duplicate: skipped,
-            documents_updated: updated,
-        }
-    }
-
-    pub fn empty() -> Self {
-        Self::new(0, 0, 0)
-    }
-}
-
-impl std::fmt::Display for FirecrawlOperationResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Firecrawlドキュメント処理完了: 新規{}件、重複スキップ{}件、更新{}件",
-            self.documents_inserted, self.documents_skipped_duplicate, self.documents_updated
-        )
+    pub fn display_firecrawl(&self) -> String {
+        self.display_with_domain("Firecrawlドキュメント")
     }
 }
 
@@ -384,8 +362,8 @@ mod tests {
         let result = save_firecrawl_article_with_pool(&test_article, &pool).await?;
 
         // SaveResultの検証
-        assert_eq!(result.documents_inserted, 1, "新規挿入された記事数が期待と異なります");
-        assert_eq!(result.documents_skipped_duplicate, 0, "重複スキップ数が期待と異なります");
+        assert_eq!(result.inserted, 1, "新規挿入された記事数が期待と異なります");
+        assert_eq!(result.skipped_duplicate, 0, "重複スキップ数が期待と異なります");
 
         // 実際にデータベースに保存されたことを確認
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM firecrawl_articles")
@@ -393,8 +371,8 @@ mod tests {
             .await?;
         assert_eq!(count, 1, "期待する件数(1件)が保存されませんでした");
 
-        println!("✅ Firecrawl記事保存件数検証成功: {}件", result.documents_inserted);
-        println!("✅ Firecrawl SaveResult検証成功: {}", result);
+        println!("✅ Firecrawl記事保存件数検証成功: {}件", result.inserted);
+        println!("✅ Firecrawl SaveResult検証成功: {}", result.display_firecrawl());
 
         Ok(())
     }
@@ -463,7 +441,7 @@ mod tests {
 
         // 最初の記事を保存
         let result1 = save_firecrawl_article_with_pool(&original_article, &pool).await?;
-        assert_eq!(result1.documents_inserted, 1);
+        assert_eq!(result1.inserted, 1);
 
         // 同じURLで違うタイトルの記事を作成（重複）
         metadata.title = Some("Different Title".to_string());
@@ -477,10 +455,10 @@ mod tests {
 
         // SaveResultの検証
         assert_eq!(
-            result2.documents_inserted, 0,
+            result2.inserted, 0,
             "重複記事が新規挿入されるべきではありません"
         );
-        assert_eq!(result2.documents_skipped_duplicate, 1, "重複スキップ数が期待と異なります");
+        assert_eq!(result2.skipped_duplicate, 1, "重複スキップ数が期待と異なります");
 
         // データベースの件数は1件のまま
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM firecrawl_articles")
