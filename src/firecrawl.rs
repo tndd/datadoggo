@@ -1,6 +1,6 @@
 use crate::infra::db::setup_database;
 use crate::infra::loader::load_file;
-use crate::types::DatabaseInsertResult;
+use crate::infra::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
