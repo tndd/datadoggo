@@ -1,7 +1,49 @@
-use crate::services::db::{setup_database, SaveResult};
+use crate::types::{CommonError, SaveResult};
+use crate::services::db::setup_database;
 use crate::services::loader::load_file;
 use rss::Channel;
-use sqlx::{Error as SqlxError, PgPool};
+use sqlx::PgPool;
+use thiserror::Error;
+
+/// RSS関連のエラー型
+#[derive(Error, Debug)]
+pub enum RssError {
+    /// 共通エラー（ファイルI/O、DB、JSON等）
+    #[error(transparent)]
+    Common(#[from] CommonError),
+
+    /// RSS解析エラー
+    #[error("RSS解析エラー: {message}")]
+    Parse {
+        message: String,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
+}
+
+impl RssError {
+    /// RSS解析エラーを作成
+    pub fn parse<M: Into<String>>(message: M) -> Self {
+        Self::Parse {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    /// RSS解析エラー（ソース付き）を作成
+    pub fn parse_with_source<M: Into<String>, E>(message: M, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::Parse {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+}
+
+/// RSS関連のResult型エイリアス
+pub type RssResult<T> = std::result::Result<T, RssError>;
 
 // RSS記事の情報を格納する構造体
 #[derive(Debug, Clone)]
@@ -32,9 +74,10 @@ pub fn extract_rss_articles_from_channel(channel: &Channel) -> Vec<RssArticle> {
 }
 
 // ファイルからRSSを読み込むヘルパー関数（loaderを使用）
-pub fn read_channel_from_file(file_path: &str) -> Result<Channel, Box<dyn std::error::Error>> {
+pub fn read_channel_from_file(file_path: &str) -> RssResult<Channel> {
     let buf_reader = load_file(file_path)?;
-    Channel::read_from(buf_reader).map_err(Into::into)
+    Channel::read_from(buf_reader)
+        .map_err(|e| RssError::parse_with_source(format!("RSSファイルの解析に失敗: {}", file_path), e))
 }
 
 /// # 概要
@@ -55,8 +98,8 @@ pub fn read_channel_from_file(file_path: &str) -> Result<Channel, Box<dyn std::e
 /// - `skipped`: 重複によりスキップされた記事数
 ///
 /// ## エラー
-/// 操作失敗時にはSqlxErrorを返し、全ての操作をロールバックする。
-pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> Result<SaveResult, SqlxError> {
+/// 操作失敗時にはDatadoggoErrorを返し、全ての操作をロールバックする。
+pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> RssResult<SaveResult> {
     let pool = setup_database().await?;
     save_rss_articles_with_pool(articles, &pool).await
 }
@@ -70,15 +113,13 @@ pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> Result<SaveResu
 pub async fn save_rss_articles_with_pool(
     articles: &[RssArticle],
     pool: &PgPool,
-) -> Result<SaveResult, SqlxError> {
+) -> RssResult<SaveResult> {
     if articles.is_empty() {
-        return Ok(SaveResult {
-            inserted: 0,
-            skipped: 0,
-        });
+        return Ok(SaveResult::empty());
     }
 
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin().await
+        .map_err(|e| CommonError::database("トランザクション開始", e))?;
     let mut total_inserted = 0;
 
     // sqlx::query!マクロを使用してコンパイル時にSQLを検証
@@ -95,19 +136,22 @@ pub async fn save_rss_articles_with_pool(
             article.pub_date
         )
         .execute(&mut *tx)
-        .await?;
+        .await
+        .map_err(|e| CommonError::database("記事挿入", e))?;
         
         if result.rows_affected() > 0 {
             total_inserted += 1;
         }
     }
 
-    tx.commit().await?;
+    tx.commit().await
+        .map_err(|e| CommonError::database("トランザクションコミット", e))?;
 
-    Ok(SaveResult {
-        inserted: total_inserted,
-        skipped: articles.len() - total_inserted,
-    })
+    Ok(SaveResult::new(
+        total_inserted,
+        articles.len() - total_inserted,
+        0,
+    ))
 }
 
 #[cfg(test)]
@@ -116,8 +160,9 @@ mod tests {
     use std::io::{BufReader, Cursor};
 
     // XMLからRSSチャンネルを解析するヘルパー関数
-    fn parse_channel_from_xml(xml: &str) -> Result<Channel, Box<dyn std::error::Error>> {
-        Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes()))).map_err(Into::into)
+    fn parse_channel_from_xml(xml: &str) -> RssResult<Channel> {
+        Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes())))
+            .map_err(|e| RssError::parse_with_source("XMLからのRSSチャンネル解析", e))
     }
 
     // 記事の基本構造をチェックするヘルパー関数
@@ -224,7 +269,7 @@ mod tests {
     
     // テスト例1: 基本的な保存機能のテスト
     #[sqlx::test]
-    async fn test_save_articles_to_db(pool: PgPool) -> sqlx::Result<()> {
+    async fn test_save_articles_to_db(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
         // テスト用記事データを作成
         let test_articles = vec![
             RssArticle {
@@ -262,7 +307,7 @@ mod tests {
 
     // テスト例2: 重複記事の処理テスト
     #[sqlx::test(fixtures("duplicate_articles"))]
-    async fn test_duplicate_articles(pool: PgPool) -> sqlx::Result<()> {
+    async fn test_duplicate_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
         // fixtureで既に1件のデータが存在している状態
 
         // 同じリンクの記事を作成（重複）
@@ -296,7 +341,7 @@ mod tests {
 
     // テスト例3: 空の配列のテスト
     #[sqlx::test]
-    async fn test_empty_articles(pool: PgPool) -> sqlx::Result<()> {
+    async fn test_empty_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
         let empty_articles: Vec<RssArticle> = vec![];
         let result = save_rss_articles_with_pool(&empty_articles, &pool).await?;
 
@@ -317,7 +362,7 @@ mod tests {
 
     // テスト例4: 既存データと新規データが混在した場合のテスト
     #[sqlx::test(fixtures("test_articles"))]
-    async fn test_mixed_new_and_existing_articles(pool: PgPool) -> sqlx::Result<()> {
+    async fn test_mixed_new_and_existing_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
         // fixtureで既に2件のデータが存在している状態
 
         // 1件は既存（重複）、1件は新規のデータを作成
