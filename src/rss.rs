@@ -1,51 +1,12 @@
 use crate::infra::db::setup_database;
 use crate::infra::loader::load_file;
-use crate::types::{ConfigError, DatabaseInsertResult, InfraError};
+use crate::types::DatabaseInsertResult;
+use anyhow::{Context, Result};
 use rss::Channel;
 use sqlx::PgPool;
-use thiserror::Error;
-
-/// RSS処理のエラー型
-#[derive(Error, Debug)]
-pub enum RssProcessingError {
-    /// インフラエラー（自動変換）
-    #[error(transparent)]
-    Infra(#[from] InfraError),
-
-    /// 設定エラー（自動変換）
-    #[error(transparent)]
-    Config(#[from] ConfigError),
-
-    /// RSSフィード解析エラー
-    #[error("RSSフィード解析エラー: {source_file} - {reason}")]
-    FeedParseFailure {
-        source_file: String,
-        reason: String,
-        #[source]
-        source: Option<Box<dyn std::error::Error + Send + Sync>>,
-    },
-
-}
-
-impl RssProcessingError {
-    /// RSSフィード解析エラーを作成
-    pub fn feed_parse_failure<F, R, E>(source_file: F, reason: R, source: Option<E>) -> Self
-    where
-        F: Into<String>,
-        R: Into<String>,
-        E: std::error::Error + Send + Sync + 'static,
-    {
-        Self::FeedParseFailure {
-            source_file: source_file.into(),
-            reason: reason.into(),
-            source: source.map(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
-        }
-    }
-
-}
 
 /// RSS処理のResult型エイリアス
-pub type RssResult<T> = std::result::Result<T, RssProcessingError>;
+pub type RssResult<T> = Result<T>;
 
 /// RSS操作の結果型（DatabaseInsertResultの型エイリアス）
 pub type RssOperationResult = DatabaseInsertResult;
@@ -82,13 +43,8 @@ pub fn extract_rss_articles_from_channel(channel: &Channel) -> Vec<RssArticle> {
 // ファイルからRSSを読み込むヘルパー関数（loaderを使用）
 pub fn read_channel_from_file(file_path: &str) -> RssResult<Channel> {
     let buf_reader = load_file(file_path)?;
-    Channel::read_from(buf_reader).map_err(|e| {
-        RssProcessingError::feed_parse_failure(
-            file_path,
-            "RSSファイルの解析に失敗",
-            Some(e),
-        )
-    })
+    Channel::read_from(buf_reader)
+        .with_context(|| format!("RSSファイルの解析に失敗: {}", file_path))
 }
 
 /// # 概要
@@ -130,7 +86,7 @@ pub async fn save_rss_articles_with_pool(
     }
 
     let mut tx = pool.begin().await
-        .map_err(|e| InfraError::database_query("トランザクション開始", e))?;
+        .context("トランザクションの開始に失敗しました")?;
     let mut total_inserted = 0;
 
     // sqlx::query!マクロを使用してコンパイル時にSQLを検証
@@ -148,7 +104,7 @@ pub async fn save_rss_articles_with_pool(
         )
         .execute(&mut *tx)
         .await
-        .map_err(|e| InfraError::database_query("記事挿入", e))?;
+        .context("記事のデータベースへの挿入に失敗しました")?;
         
         if result.rows_affected() > 0 {
             total_inserted += 1;
@@ -156,7 +112,7 @@ pub async fn save_rss_articles_with_pool(
     }
 
     tx.commit().await
-        .map_err(|e| InfraError::database_query("トランザクションコミット", e))?;
+        .context("トランザクションのコミットに失敗しました")?;
 
     Ok(RssOperationResult::new(
         total_inserted,
@@ -173,7 +129,7 @@ mod tests {
     // XMLからRSSチャンネルを解析するヘルパー関数
     fn parse_channel_from_xml(xml: &str) -> RssResult<Channel> {
         Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes())))
-            .map_err(|e| RssProcessingError::feed_parse_failure("XML", "XMLからのRSSチャンネル解析", Some(e)))
+            .context("XMLからのRSSチャンネル解析に失敗")
     }
 
     // 記事の基本構造をチェックするヘルパー関数

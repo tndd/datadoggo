@@ -1,12 +1,12 @@
-use crate::types::{InfraError, InfraResult};
+use anyhow::{Context, Result};
 use std::fs::File;
 use std::io::BufReader;
 
 /// ファイルパスからBufReaderを作成する
 /// パースやデータ変換は各ドメインで行う
-pub fn load_file(file_path: &str) -> InfraResult<BufReader<File>> {
+pub fn load_file(file_path: &str) -> Result<BufReader<File>> {
     let file = File::open(file_path)
-        .map_err(|e| InfraError::file_system(file_path, e))?;
+        .with_context(|| format!("ファイルの読み込みに失敗しました: {}", file_path))?;
     let buf_reader = BufReader::new(file);
     Ok(buf_reader)
 }

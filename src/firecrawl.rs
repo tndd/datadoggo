@@ -1,27 +1,13 @@
 use crate::infra::db::setup_database;
 use crate::infra::loader::load_file;
-use crate::types::{ConfigError, DatabaseInsertResult, InfraError};
+use crate::types::DatabaseInsertResult;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
-use thiserror::Error;
-
-/// Firecrawl処理のエラー型
-#[derive(Error, Debug)]
-pub enum FirecrawlProcessingError {
-    /// インフラエラー（自動変換）
-    #[error(transparent)]
-    Infra(#[from] InfraError),
-
-    /// 設定エラー（自動変換）
-    #[error(transparent)]
-    Config(#[from] ConfigError),
-
-}
-
 
 /// Firecrawl処理のResult型エイリアス
-pub type FirecrawlResult<T> = std::result::Result<T, FirecrawlProcessingError>;
+pub type FirecrawlResult<T> = Result<T>;
 
 /// Firecrawl操作の結果型（DatabaseInsertResultの型エイリアス）
 pub type FirecrawlOperationResult = DatabaseInsertResult;
@@ -133,7 +119,7 @@ pub struct FirecrawlMetadata {
 pub fn read_firecrawl_from_file(file_path: &str) -> FirecrawlResult<FirecrawlArticle> {
     let buf_reader = load_file(file_path)?;
     let article: FirecrawlArticle = serde_json::from_reader(buf_reader)
-        .map_err(|e| InfraError::serialization(format!("Firecrawlファイルの解析: {}", file_path), e))?;
+        .with_context(|| format!("Firecrawlファイルの解析に失敗: {}", file_path))?;
     Ok(article)
 }
 
@@ -174,11 +160,11 @@ pub async fn save_firecrawl_article_with_pool(
     let mut tx = pool
         .begin()
         .await
-        .map_err(|e| InfraError::database_query("トランザクション開始", e))?;
+        .context("トランザクションの開始に失敗しました")?;
 
     // メタデータをJSONに変換
     let metadata_json = serde_json::to_value(&article.metadata)
-        .map_err(|e| InfraError::serialization("メタデータのJSONシリアライズ", e))?;
+        .context("メタデータのJSONシリアライズに失敗しました")?;
 
     // URLを取得（存在しない場合はデフォルト値を使用）
     let url = article
@@ -213,13 +199,13 @@ pub async fn save_firecrawl_article_with_pool(
     )
     .execute(&mut *tx)
     .await
-    .map_err(|e| InfraError::database_query("Firecrawl記事挿入", e))?;
+    .context("Firecrawl記事のデータベースへの挿入に失敗しました")?;
 
     let inserted = if result.rows_affected() > 0 { 1 } else { 0 };
 
     tx.commit()
         .await
-        .map_err(|e| InfraError::database_query("トランザクションコミット", e))?;
+        .context("トランザクションのコミットに失敗しました")?;
 
     Ok(FirecrawlOperationResult::new(inserted, 1 - inserted, 0))
 }
