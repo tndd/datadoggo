@@ -13,18 +13,9 @@ pub enum FirecrawlError {
     #[error(transparent)]
     Common(#[from] CommonError),
 
-    /// Firecrawl処理エラー
-    #[error("Firecrawl処理エラー: {message}")]
-    Processing { message: String },
 }
 
 impl FirecrawlError {
-    /// Firecrawl処理エラーを作成
-    pub fn processing<M: Into<String>>(message: M) -> Self {
-        Self::Processing {
-            message: message.into(),
-        }
-    }
 }
 
 /// Firecrawl関連のResult型エイリアス

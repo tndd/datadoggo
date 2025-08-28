@@ -31,13 +31,4 @@ impl SaveResult {
         Self::new(0, 0, 0)
     }
 
-    /// 処理された総件数を取得
-    pub fn total_processed(&self) -> usize {
-        self.inserted + self.skipped + self.updated
-    }
-
-    /// 変更が発生したかどうか
-    pub fn has_changes(&self) -> bool {
-        self.inserted > 0 || self.updated > 0
-    }
 }

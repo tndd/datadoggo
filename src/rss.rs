@@ -22,13 +22,6 @@ pub enum RssError {
 }
 
 impl RssError {
-    /// RSS解析エラーを作成
-    pub fn parse<M: Into<String>>(message: M) -> Self {
-        Self::Parse {
-            message: message.into(),
-            source: None,
-        }
-    }
 
     /// RSS解析エラー（ソース付き）を作成
     pub fn parse_with_source<M: Into<String>, E>(message: M, source: E) -> Self
