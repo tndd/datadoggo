@@ -1,42 +1,92 @@
-use crate::types::{CommonError, SaveResult};
-use crate::services::db::setup_database;
-use crate::services::loader::load_file;
+use crate::infra::db::setup_database;
+use crate::infra::loader::load_file;
+use crate::types::{ConfigError, InfraError};
 use rss::Channel;
 use sqlx::PgPool;
 use thiserror::Error;
 
-/// RSS関連のエラー型
+/// RSS処理のエラー型
 #[derive(Error, Debug)]
-pub enum RssError {
-    /// 共通エラー（ファイルI/O、DB、JSON等）
+pub enum RssProcessingError {
+    /// インフラエラー（自動変換）
     #[error(transparent)]
-    Common(#[from] CommonError),
+    Infra(#[from] InfraError),
 
-    /// RSS解析エラー
-    #[error("RSS解析エラー: {message}")]
-    Parse {
-        message: String,
+    /// 設定エラー（自動変換）
+    #[error(transparent)]
+    Config(#[from] ConfigError),
+
+    /// RSSフィード解析エラー
+    #[error("RSSフィード解析エラー: {source_file} - {reason}")]
+    FeedParseFailure {
+        source_file: String,
+        reason: String,
         #[source]
         source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
+
+    /// RSS必須フィールド不足
+    #[error("RSS必須フィールドが不足: {field}")]
+    MissingRequiredField { field: String },
 }
 
-impl RssError {
-
-    /// RSS解析エラー（ソース付き）を作成
-    pub fn parse_with_source<M: Into<String>, E>(message: M, source: E) -> Self
+impl RssProcessingError {
+    /// RSSフィード解析エラーを作成
+    pub fn feed_parse_failure<F, R, E>(source_file: F, reason: R, source: Option<E>) -> Self
     where
+        F: Into<String>,
+        R: Into<String>,
         E: std::error::Error + Send + Sync + 'static,
     {
-        Self::Parse {
-            message: message.into(),
-            source: Some(Box::new(source)),
+        Self::FeedParseFailure {
+            source_file: source_file.into(),
+            reason: reason.into(),
+            source: source.map(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
+        }
+    }
+
+    /// RSS必須フィールド不足エラーを作成
+    pub fn missing_required_field<F: Into<String>>(field: F) -> Self {
+        Self::MissingRequiredField {
+            field: field.into(),
         }
     }
 }
 
-/// RSS関連のResult型エイリアス
-pub type RssResult<T> = std::result::Result<T, RssError>;
+/// RSS処理のResult型エイリアス
+pub type RssResult<T> = std::result::Result<T, RssProcessingError>;
+
+/// RSS操作の結果型
+#[derive(Debug, Clone)]
+pub struct RssOperationResult {
+    pub articles_inserted: usize,
+    pub articles_skipped_duplicate: usize,
+    pub articles_updated: usize,
+}
+
+impl RssOperationResult {
+    pub fn new(inserted: usize, skipped: usize, updated: usize) -> Self {
+        Self {
+            articles_inserted: inserted,
+            articles_skipped_duplicate: skipped,
+            articles_updated: updated,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self::new(0, 0, 0)
+    }
+}
+
+impl std::fmt::Display for RssOperationResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "RSS記事処理完了: 新規{}件、重複スキップ{}件、更新{}件",
+            self.articles_inserted, self.articles_skipped_duplicate, self.articles_updated
+        )
+    }
+}
 
 // RSS記事の情報を格納する構造体
 #[derive(Debug, Clone)]
@@ -69,8 +119,13 @@ pub fn extract_rss_articles_from_channel(channel: &Channel) -> Vec<RssArticle> {
 // ファイルからRSSを読み込むヘルパー関数（loaderを使用）
 pub fn read_channel_from_file(file_path: &str) -> RssResult<Channel> {
     let buf_reader = load_file(file_path)?;
-    Channel::read_from(buf_reader)
-        .map_err(|e| RssError::parse_with_source(format!("RSSファイルの解析に失敗: {}", file_path), e))
+    Channel::read_from(buf_reader).map_err(|e| {
+        RssProcessingError::feed_parse_failure(
+            file_path,
+            "RSSファイルの解析に失敗",
+            Some(e),
+        )
+    })
 }
 
 /// # 概要
@@ -92,7 +147,7 @@ pub fn read_channel_from_file(file_path: &str) -> RssResult<Channel> {
 ///
 /// ## エラー
 /// 操作失敗時にはDatadoggoErrorを返し、全ての操作をロールバックする。
-pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> RssResult<SaveResult> {
+pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> RssResult<RssOperationResult> {
     let pool = setup_database().await?;
     save_rss_articles_with_pool(articles, &pool).await
 }
@@ -106,13 +161,13 @@ pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> RssResult<SaveR
 pub async fn save_rss_articles_with_pool(
     articles: &[RssArticle],
     pool: &PgPool,
-) -> RssResult<SaveResult> {
+) -> RssResult<RssOperationResult> {
     if articles.is_empty() {
-        return Ok(SaveResult::empty());
+        return Ok(RssOperationResult::empty());
     }
 
     let mut tx = pool.begin().await
-        .map_err(|e| CommonError::database("トランザクション開始", e))?;
+        .map_err(|e| InfraError::database_query("トランザクション開始", e))?;
     let mut total_inserted = 0;
 
     // sqlx::query!マクロを使用してコンパイル時にSQLを検証
@@ -130,7 +185,7 @@ pub async fn save_rss_articles_with_pool(
         )
         .execute(&mut *tx)
         .await
-        .map_err(|e| CommonError::database("記事挿入", e))?;
+        .map_err(|e| InfraError::database_query("記事挿入", e))?;
         
         if result.rows_affected() > 0 {
             total_inserted += 1;
@@ -138,9 +193,9 @@ pub async fn save_rss_articles_with_pool(
     }
 
     tx.commit().await
-        .map_err(|e| CommonError::database("トランザクションコミット", e))?;
+        .map_err(|e| InfraError::database_query("トランザクションコミット", e))?;
 
-    Ok(SaveResult::new(
+    Ok(RssOperationResult::new(
         total_inserted,
         articles.len() - total_inserted,
         0,
@@ -155,7 +210,7 @@ mod tests {
     // XMLからRSSチャンネルを解析するヘルパー関数
     fn parse_channel_from_xml(xml: &str) -> RssResult<Channel> {
         Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes())))
-            .map_err(|e| RssError::parse_with_source("XMLからのRSSチャンネル解析", e))
+            .map_err(|e| RssProcessingError::feed_parse_failure("XML", "XMLからのRSSチャンネル解析", Some(e)))
     }
 
     // 記事の基本構造をチェックするヘルパー関数
@@ -283,8 +338,8 @@ mod tests {
         let result = save_rss_articles_with_pool(&test_articles, &pool).await?;
 
         // SaveResultの検証
-        assert_eq!(result.inserted, 2, "新規挿入された記事数が期待と異なります");
-        assert_eq!(result.skipped, 0, "重複スキップ数が期待と異なります");
+        assert_eq!(result.articles_inserted, 2, "新規挿入された記事数が期待と異なります");
+        assert_eq!(result.articles_skipped_duplicate, 0, "重複スキップ数が期待と異なります");
 
         // 実際にデータベースに保存されたことを確認
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
@@ -292,7 +347,7 @@ mod tests {
             .await?;
         assert_eq!(count, 2, "期待する件数(2件)が保存されませんでした");
 
-        println!("✅ RSS保存件数検証成功: {}件", result.inserted);
+        println!("✅ RSS保存件数検証成功: {}件", result.articles_inserted);
         println!("✅ RSS SaveResult検証成功: {}", result);
 
         Ok(())
@@ -316,10 +371,10 @@ mod tests {
 
         // SaveResultの検証
         assert_eq!(
-            result.inserted, 0,
+            result.articles_inserted, 0,
             "重複記事が新規挿入されるべきではありません"
         );
-        assert_eq!(result.skipped, 1, "重複スキップ数が期待と異なります");
+        assert_eq!(result.articles_skipped_duplicate, 1, "重複スキップ数が期待と異なります");
 
         // データベースの件数は変わらない
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
@@ -339,8 +394,8 @@ mod tests {
         let result = save_rss_articles_with_pool(&empty_articles, &pool).await?;
 
         // 空配列の結果検証
-        assert_eq!(result.inserted, 0, "空配列の新規挿入数は0であるべきです");
-        assert_eq!(result.skipped, 0, "空配列の重複スキップ数は0であるべきです");
+        assert_eq!(result.articles_inserted, 0, "空配列の新規挿入数は0であるべきです");
+        assert_eq!(result.articles_skipped_duplicate, 0, "空配列の重複スキップ数は0であるべきです");
 
         // データベースには何も挿入されていない
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
@@ -377,8 +432,8 @@ mod tests {
         let result = save_rss_articles_with_pool(&mixed_articles, &pool).await?;
 
         // SaveResultの検証
-        assert_eq!(result.inserted, 1, "新規記事1件が挿入されるべきです");
-        assert_eq!(result.skipped, 1, "既存記事1件がスキップされるべきです");
+        assert_eq!(result.articles_inserted, 1, "新規記事1件が挿入されるべきです");
+        assert_eq!(result.articles_skipped_duplicate, 1, "既存記事1件がスキップされるべきです");
 
         // 最終的にデータベースには3件（fixture 2件 + 新規 1件）
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")

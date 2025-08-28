@@ -1,12 +1,12 @@
-use crate::types::{CommonError, CommonResult};
+use crate::types::{InfraError, InfraResult};
 use std::fs::File;
 use std::io::BufReader;
 
 /// ファイルパスからBufReaderを作成する
 /// パースやデータ変換は各ドメインで行う
-pub fn load_file(file_path: &str) -> CommonResult<BufReader<File>> {
+pub fn load_file(file_path: &str) -> InfraResult<BufReader<File>> {
     let file = File::open(file_path)
-        .map_err(|e| CommonError::file_io(file_path, e))?;
+        .map_err(|e| InfraError::file_system(file_path, e))?;
     let buf_reader = BufReader::new(file);
     Ok(buf_reader)
 }

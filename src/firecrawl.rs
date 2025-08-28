@@ -1,21 +1,93 @@
-use crate::services::db::setup_database;
-use crate::services::loader::load_file;
-use crate::types::{CommonError, SaveResult};
+use crate::infra::db::setup_database;
+use crate::infra::loader::load_file;
+use crate::types::{ConfigError, InfraError};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use thiserror::Error;
 
-/// Firecrawl関連のエラー型
+/// Firecrawl処理のエラー型
 #[derive(Error, Debug)]
-pub enum FirecrawlError {
-    /// 共通エラー（ファイルI/O、DB、JSON等）
+pub enum FirecrawlProcessingError {
+    /// インフラエラー（自動変換）
     #[error(transparent)]
-    Common(#[from] CommonError),
+    Infra(#[from] InfraError),
+
+    /// 設定エラー（自動変換）
+    #[error(transparent)]
+    Config(#[from] ConfigError),
+
+    /// ドキュメント解析エラー
+    #[error("Firecrawlドキュメント解析エラー: {source_file} - {reason}")]
+    DocumentParseFailure {
+        source_file: String,
+        reason: String,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
+
+    /// メタデータ不正エラー
+    #[error("Firecrawlメタデータが不正: {reason}")]
+    InvalidMetadata { reason: String },
 }
 
-/// Firecrawl関連のResult型エイリアス
-pub type FirecrawlResult<T> = std::result::Result<T, FirecrawlError>;
+impl FirecrawlProcessingError {
+    /// ドキュメント解析エラーを作成
+    pub fn document_parse_failure<F, R, E>(source_file: F, reason: R, source: Option<E>) -> Self
+    where
+        F: Into<String>,
+        R: Into<String>,
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::DocumentParseFailure {
+            source_file: source_file.into(),
+            reason: reason.into(),
+            source: source.map(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
+        }
+    }
+
+    /// メタデータ不正エラーを作成
+    pub fn invalid_metadata<R: Into<String>>(reason: R) -> Self {
+        Self::InvalidMetadata {
+            reason: reason.into(),
+        }
+    }
+}
+
+/// Firecrawl処理のResult型エイリアス
+pub type FirecrawlResult<T> = std::result::Result<T, FirecrawlProcessingError>;
+
+/// Firecrawl操作の結果型
+#[derive(Debug, Clone)]
+pub struct FirecrawlOperationResult {
+    pub documents_inserted: usize,
+    pub documents_skipped_duplicate: usize,
+    pub documents_updated: usize,
+}
+
+impl FirecrawlOperationResult {
+    pub fn new(inserted: usize, skipped: usize, updated: usize) -> Self {
+        Self {
+            documents_inserted: inserted,
+            documents_skipped_duplicate: skipped,
+            documents_updated: updated,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self::new(0, 0, 0)
+    }
+}
+
+impl std::fmt::Display for FirecrawlOperationResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Firecrawlドキュメント処理完了: 新規{}件、重複スキップ{}件、更新{}件",
+            self.documents_inserted, self.documents_skipped_duplicate, self.documents_updated
+        )
+    }
+}
 
 // Firecrawl記事の情報を格納する構造体
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,7 +195,7 @@ pub struct FirecrawlMetadata {
 pub fn read_firecrawl_from_file(file_path: &str) -> FirecrawlResult<FirecrawlArticle> {
     let buf_reader = load_file(file_path)?;
     let article: FirecrawlArticle = serde_json::from_reader(buf_reader)
-        .map_err(|e| CommonError::json(format!("Firecrawlファイルの解析: {}", file_path), e))?;
+        .map_err(|e| InfraError::serialization(format!("Firecrawlファイルの解析: {}", file_path), e))?;
     Ok(article)
 }
 
@@ -146,7 +218,7 @@ pub fn read_firecrawl_from_file(file_path: &str) -> FirecrawlResult<FirecrawlArt
 /// 操作失敗時にはDatadoggoErrorを返し、全ての操作をロールバックする。
 pub async fn save_firecrawl_article_to_db(
     article: &FirecrawlArticle,
-) -> FirecrawlResult<SaveResult> {
+) -> FirecrawlResult<FirecrawlOperationResult> {
     let pool = setup_database().await?;
     save_firecrawl_article_with_pool(article, &pool).await
 }
@@ -160,15 +232,15 @@ pub async fn save_firecrawl_article_to_db(
 pub async fn save_firecrawl_article_with_pool(
     article: &FirecrawlArticle,
     pool: &PgPool,
-) -> FirecrawlResult<SaveResult> {
+) -> FirecrawlResult<FirecrawlOperationResult> {
     let mut tx = pool
         .begin()
         .await
-        .map_err(|e| CommonError::database("トランザクション開始", e))?;
+        .map_err(|e| InfraError::database_query("トランザクション開始", e))?;
 
     // メタデータをJSONに変換
     let metadata_json = serde_json::to_value(&article.metadata)
-        .map_err(|e| CommonError::json("メタデータのJSONシリアライズ", e))?;
+        .map_err(|e| InfraError::serialization("メタデータのJSONシリアライズ", e))?;
 
     // URLを取得（存在しない場合はデフォルト値を使用）
     let url = article
@@ -203,15 +275,15 @@ pub async fn save_firecrawl_article_with_pool(
     )
     .execute(&mut *tx)
     .await
-    .map_err(|e| CommonError::database("Firecrawl記事挿入", e))?;
+    .map_err(|e| InfraError::database_query("Firecrawl記事挿入", e))?;
 
     let inserted = if result.rows_affected() > 0 { 1 } else { 0 };
 
     tx.commit()
         .await
-        .map_err(|e| CommonError::database("トランザクションコミット", e))?;
+        .map_err(|e| InfraError::database_query("トランザクションコミット", e))?;
 
-    Ok(SaveResult::new(inserted, 1 - inserted, 0))
+    Ok(FirecrawlOperationResult::new(inserted, 1 - inserted, 0))
 }
 
 #[cfg(test)]
@@ -312,8 +384,8 @@ mod tests {
         let result = save_firecrawl_article_with_pool(&test_article, &pool).await?;
 
         // SaveResultの検証
-        assert_eq!(result.inserted, 1, "新規挿入された記事数が期待と異なります");
-        assert_eq!(result.skipped, 0, "重複スキップ数が期待と異なります");
+        assert_eq!(result.documents_inserted, 1, "新規挿入された記事数が期待と異なります");
+        assert_eq!(result.documents_skipped_duplicate, 0, "重複スキップ数が期待と異なります");
 
         // 実際にデータベースに保存されたことを確認
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM firecrawl_articles")
@@ -321,7 +393,7 @@ mod tests {
             .await?;
         assert_eq!(count, 1, "期待する件数(1件)が保存されませんでした");
 
-        println!("✅ Firecrawl記事保存件数検証成功: {}件", result.inserted);
+        println!("✅ Firecrawl記事保存件数検証成功: {}件", result.documents_inserted);
         println!("✅ Firecrawl SaveResult検証成功: {}", result);
 
         Ok(())
@@ -391,7 +463,7 @@ mod tests {
 
         // 最初の記事を保存
         let result1 = save_firecrawl_article_with_pool(&original_article, &pool).await?;
-        assert_eq!(result1.inserted, 1);
+        assert_eq!(result1.documents_inserted, 1);
 
         // 同じURLで違うタイトルの記事を作成（重複）
         metadata.title = Some("Different Title".to_string());
@@ -405,10 +477,10 @@ mod tests {
 
         // SaveResultの検証
         assert_eq!(
-            result2.inserted, 0,
+            result2.documents_inserted, 0,
             "重複記事が新規挿入されるべきではありません"
         );
-        assert_eq!(result2.skipped, 1, "重複スキップ数が期待と異なります");
+        assert_eq!(result2.documents_skipped_duplicate, 1, "重複スキップ数が期待と異なります");
 
         // データベースの件数は1件のまま
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM firecrawl_articles")
