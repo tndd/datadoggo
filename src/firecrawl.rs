@@ -26,12 +26,6 @@ pub type FirecrawlResult<T> = std::result::Result<T, FirecrawlProcessingError>;
 /// Firecrawl操作の結果型（DatabaseInsertResultの型エイリアス）
 pub type FirecrawlOperationResult = DatabaseInsertResult;
 
-/// Firecrawl用のカスタムDisplay実装  
-impl FirecrawlOperationResult {
-    pub fn display_firecrawl(&self) -> String {
-        self.display_with_domain("Firecrawlドキュメント")
-    }
-}
 
 // Firecrawl記事の情報を格納する構造体
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -338,7 +332,7 @@ mod tests {
         assert_eq!(count, 1, "期待する件数(1件)が保存されませんでした");
 
         println!("✅ Firecrawl記事保存件数検証成功: {}件", result.inserted);
-        println!("✅ Firecrawl SaveResult検証成功: {}", result.display_firecrawl());
+        println!("✅ Firecrawl SaveResult検証成功: {}", result.display_with_domain("Firecrawlドキュメント"));
 
         Ok(())
     }

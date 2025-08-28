@@ -50,12 +50,6 @@ pub type RssResult<T> = std::result::Result<T, RssProcessingError>;
 /// RSS操作の結果型（DatabaseInsertResultの型エイリアス）
 pub type RssOperationResult = DatabaseInsertResult;
 
-/// RSS用のカスタムDisplay実装
-impl RssOperationResult {
-    pub fn display_rss(&self) -> String {
-        self.display_with_domain("RSS記事")
-    }
-}
 
 // RSS記事の情報を格納する構造体
 #[derive(Debug, Clone)]
@@ -317,7 +311,7 @@ mod tests {
         assert_eq!(count, 2, "期待する件数(2件)が保存されませんでした");
 
         println!("✅ RSS保存件数検証成功: {}件", result.inserted);
-        println!("✅ RSS SaveResult検証成功: {}", result.display_rss());
+        println!("✅ RSS SaveResult検証成功: {}", result.display_with_domain("RSS記事"));
 
         Ok(())
     }
