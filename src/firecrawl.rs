@@ -100,7 +100,7 @@ pub struct FirecrawlMetadata {
     pub cached_at: Option<String>,
     #[serde(rename = "creditsUsed")]
     pub credits_used: Option<i32>,
-    
+
     // その他のフィールドをキャッチするため
     #[serde(flatten)]
     pub additional_fields: HashMap<String, serde_json::Value>,
@@ -132,7 +132,9 @@ pub fn read_firecrawl_from_file(
 ///
 /// ## エラー
 /// 操作失敗時にはSqlxErrorを返し、全ての操作をロールバックする。
-pub async fn save_firecrawl_article_to_db(article: &FirecrawlArticle) -> Result<SaveResult, SqlxError> {
+pub async fn save_firecrawl_article_to_db(
+    article: &FirecrawlArticle,
+) -> Result<SaveResult, SqlxError> {
     let pool = setup_database().await?;
     save_firecrawl_article_with_pool(article, &pool).await
 }
@@ -140,7 +142,7 @@ pub async fn save_firecrawl_article_to_db(article: &FirecrawlArticle) -> Result<
 /// # 概要
 /// FirecrawlArticleを指定されたデータベースプールに保存する。
 /// 既にプールを準備している場合は `save_firecrawl_article_to_db` ではなく、この関数を使用する。
-/// 
+///
 /// # Note
 /// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
 pub async fn save_firecrawl_article_with_pool(
@@ -148,21 +150,27 @@ pub async fn save_firecrawl_article_with_pool(
     pool: &PgPool,
 ) -> Result<SaveResult, SqlxError> {
     let mut tx = pool.begin().await?;
-    
+
     // メタデータをJSONに変換
-    let metadata_json = serde_json::to_value(&article.metadata)
-        .map_err(|e| SqlxError::Decode(Box::new(e)))?;
-    
+    let metadata_json =
+        serde_json::to_value(&article.metadata).map_err(|e| SqlxError::Decode(Box::new(e)))?;
+
     // URLを取得（存在しない場合はデフォルト値を使用）
-    let url = article.metadata.url.as_deref()
+    let url = article
+        .metadata
+        .url
+        .as_deref()
         .or(article.metadata.source_url.as_deref())
         .unwrap_or("unknown");
-    
+
     // タイトルを取得
-    let title = article.metadata.title.as_deref()
+    let title = article
+        .metadata
+        .title
+        .as_deref()
         .or(article.metadata.og_title.as_deref())
         .or(article.metadata.og_title_alt.as_deref());
-    
+
     // cached_atを解析してTimestamp用の値を作成
     let scraped_at_str = article.metadata.cached_at.as_deref();
 
@@ -180,9 +188,9 @@ pub async fn save_firecrawl_article_with_pool(
     )
     .execute(&mut *tx)
     .await?;
-    
+
     let inserted = if result.rows_affected() > 0 { 1 } else { 0 };
-    
+
     tx.commit().await?;
 
     Ok(SaveResult {
@@ -202,12 +210,12 @@ mod tests {
         assert!(result.is_ok(), "Firecrawl JSONファイルの読み込みに失敗");
 
         let article = result.unwrap();
-        
+
         // 基本的なフィールドの検証
         assert!(!article.markdown.is_empty(), "markdownが空です");
         assert!(article.metadata.title.is_some(), "タイトルがありません");
         assert!(article.metadata.url.is_some(), "URLがありません");
-        
+
         println!("✅ Firecrawlデータの読み込みテスト成功");
         println!("タイトル: {:?}", article.metadata.title);
         println!("URL: {:?}", article.metadata.url);
@@ -222,7 +230,7 @@ mod tests {
     }
 
     // データベース保存機能のテスト
-    
+
     // テスト例1: Firecrawl記事の基本的な保存機能のテスト
     #[sqlx::test]
     async fn test_save_firecrawl_article_to_db(pool: PgPool) -> sqlx::Result<()> {
@@ -377,7 +385,10 @@ mod tests {
         let result2 = save_firecrawl_article_with_pool(&duplicate_article, &pool).await?;
 
         // SaveResultの検証
-        assert_eq!(result2.inserted, 0, "重複記事が新規挿入されるべきではありません");
+        assert_eq!(
+            result2.inserted, 0,
+            "重複記事が新規挿入されるべきではありません"
+        );
         assert_eq!(result2.skipped, 1, "重複スキップ数が期待と異なります");
 
         // データベースの件数は1件のまま
