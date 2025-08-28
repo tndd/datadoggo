@@ -3,37 +3,34 @@
 //! データベース操作の結果型など、インフラ層で使用される型を定義
 
 /// データベースインサート操作の結果を表す構造体
-/// 新規挿入、重複スキップ、更新の件数を記録
+/// 新規挿入、重複スキップの件数を記録
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DatabaseInsertResult {
     /// 新規挿入された件数
     pub inserted: usize,
     /// 重複によりスキップされた件数
     pub skipped_duplicate: usize,
-    /// 更新された件数
-    pub updated: usize,
 }
 
 impl DatabaseInsertResult {
     /// 新しい操作結果を作成
-    pub fn new(inserted: usize, skipped: usize, updated: usize) -> Self {
+    pub fn new(inserted: usize, skipped: usize) -> Self {
         Self {
             inserted,
             skipped_duplicate: skipped,
-            updated,
         }
     }
 
     /// 空の結果（全て0）を作成
     pub fn empty() -> Self {
-        Self::new(0, 0, 0)
+        Self::new(0, 0)
     }
 
     /// ドメイン名を指定して表示用の文字列を生成
     pub fn display_with_domain(&self, domain_name: &str) -> String {
         format!(
-            "{}処理完了: 新規{}件、重複スキップ{}件、更新{}件",
-            domain_name, self.inserted, self.skipped_duplicate, self.updated
+            "{}処理完了: 新規{}件、重複スキップ{}件",
+            domain_name, self.inserted, self.skipped_duplicate
         )
     }
 }

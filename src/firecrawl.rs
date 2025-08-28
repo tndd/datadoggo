@@ -205,7 +205,7 @@ pub async fn save_firecrawl_article_with_pool(
         .await
         .context("トランザクションのコミットに失敗しました")?;
 
-    Ok(FirecrawlOperationResult::new(inserted, 1 - inserted, 0))
+    Ok(FirecrawlOperationResult::new(inserted, 1 - inserted))
 }
 
 #[cfg(test)]

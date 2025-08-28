@@ -115,7 +115,6 @@ pub async fn save_rss_articles_with_pool(
     Ok(RssOperationResult::new(
         total_inserted,
         articles.len() - total_inserted,
-        0,
     ))
 }
 
