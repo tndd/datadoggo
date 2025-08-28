@@ -6,10 +6,6 @@ use rss::Channel;
 use sqlx::PgPool;
 
 
-/// RSS操作の結果型（DatabaseInsertResultの型エイリアス）
-pub type RssOperationResult = DatabaseInsertResult;
-
-
 // RSS記事の情報を格納する構造体
 #[derive(Debug, Clone)]
 pub struct RssArticle {
@@ -58,13 +54,11 @@ pub fn read_channel_from_file(file_path: &str) -> Result<Channel> {
 /// - `articles`: 保存するRSS記事のスライス
 ///
 /// ## 戻り値
-/// 成功時は`SaveResult`構造体を返し、保存結果の詳細情報を提供する。
-/// - `inserted`: 新規に挿入された記事数
-/// - `skipped`: 重複によりスキップされた記事数
+/// - `DatabaseInsertResult`: 保存件数の詳細
 ///
 /// ## エラー
 /// 操作失敗時には全ての操作をロールバックする。
-pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> Result<RssOperationResult> {
+pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> Result<DatabaseInsertResult> {
     let pool = setup_database().await?;
     save_rss_articles_with_pool(articles, &pool).await
 }
@@ -78,9 +72,9 @@ pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> Result<RssOpera
 pub async fn save_rss_articles_with_pool(
     articles: &[RssArticle],
     pool: &PgPool,
-) -> Result<RssOperationResult> {
+) -> Result<DatabaseInsertResult> {
     if articles.is_empty() {
-        return Ok(RssOperationResult::empty());
+        return Ok(DatabaseInsertResult::empty());
     }
 
     let mut tx = pool.begin().await
@@ -112,7 +106,7 @@ pub async fn save_rss_articles_with_pool(
     tx.commit().await
         .context("トランザクションのコミットに失敗しました")?;
 
-    Ok(RssOperationResult::new(
+    Ok(DatabaseInsertResult::new(
         total_inserted,
         articles.len() - total_inserted,
     ))

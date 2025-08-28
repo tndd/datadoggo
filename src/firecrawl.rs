@@ -7,10 +7,6 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 
 
-/// Firecrawl操作の結果型（DatabaseInsertResultの型エイリアス）
-pub type FirecrawlOperationResult = DatabaseInsertResult;
-
-
 // Firecrawl記事の情報を格納する構造体
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FirecrawlArticle {
@@ -134,13 +130,13 @@ pub fn read_firecrawl_from_file(file_path: &str) -> Result<FirecrawlArticle> {
 /// - `article`: 保存するFirecrawl記事
 ///
 /// ## 戻り値
-/// 成功時は`SaveResult`構造体を返し、保存結果の詳細情報を提供する。
+/// - `DatabaseInsertResult`: 保存件数の詳細
 ///
 /// ## エラー
 /// 操作失敗時には全ての操作をロールバックする。
 pub async fn save_firecrawl_article_to_db(
     article: &FirecrawlArticle,
-) -> Result<FirecrawlOperationResult> {
+) -> Result<DatabaseInsertResult> {
     let pool = setup_database().await?;
     save_firecrawl_article_with_pool(article, &pool).await
 }
@@ -154,7 +150,7 @@ pub async fn save_firecrawl_article_to_db(
 pub async fn save_firecrawl_article_with_pool(
     article: &FirecrawlArticle,
     pool: &PgPool,
-) -> Result<FirecrawlOperationResult> {
+) -> Result<DatabaseInsertResult> {
     let mut tx = pool
         .begin()
         .await
@@ -205,7 +201,7 @@ pub async fn save_firecrawl_article_with_pool(
         .await
         .context("トランザクションのコミットに失敗しました")?;
 
-    Ok(FirecrawlOperationResult::new(inserted, 1 - inserted))
+    Ok(DatabaseInsertResult::new(inserted, 1 - inserted))
 }
 
 #[cfg(test)]
