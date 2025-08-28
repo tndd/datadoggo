@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 
-/// Firecrawl処理のResult型エイリアス
-pub type FirecrawlResult<T> = Result<T>;
 
 /// Firecrawl操作の結果型（DatabaseInsertResultの型エイリアス）
 pub type FirecrawlOperationResult = DatabaseInsertResult;
@@ -116,7 +114,7 @@ pub struct FirecrawlMetadata {
 }
 
 // ファイルからFirecrawlデータを読み込むヘルパー関数（loaderを使用）
-pub fn read_firecrawl_from_file(file_path: &str) -> FirecrawlResult<FirecrawlArticle> {
+pub fn read_firecrawl_from_file(file_path: &str) -> Result<FirecrawlArticle> {
     let buf_reader = load_file(file_path)?;
     let article: FirecrawlArticle = serde_json::from_reader(buf_reader)
         .with_context(|| format!("Firecrawlファイルの解析に失敗: {}", file_path))?;
@@ -142,7 +140,7 @@ pub fn read_firecrawl_from_file(file_path: &str) -> FirecrawlResult<FirecrawlArt
 /// 操作失敗時にはDatadoggoErrorを返し、全ての操作をロールバックする。
 pub async fn save_firecrawl_article_to_db(
     article: &FirecrawlArticle,
-) -> FirecrawlResult<FirecrawlOperationResult> {
+) -> Result<FirecrawlOperationResult> {
     let pool = setup_database().await?;
     save_firecrawl_article_with_pool(article, &pool).await
 }
@@ -156,7 +154,7 @@ pub async fn save_firecrawl_article_to_db(
 pub async fn save_firecrawl_article_with_pool(
     article: &FirecrawlArticle,
     pool: &PgPool,
-) -> FirecrawlResult<FirecrawlOperationResult> {
+) -> Result<FirecrawlOperationResult> {
     let mut tx = pool
         .begin()
         .await

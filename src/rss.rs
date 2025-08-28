@@ -5,8 +5,6 @@ use anyhow::{Context, Result};
 use rss::Channel;
 use sqlx::PgPool;
 
-/// RSS処理のResult型エイリアス
-pub type RssResult<T> = Result<T>;
 
 /// RSS操作の結果型（DatabaseInsertResultの型エイリアス）
 pub type RssOperationResult = DatabaseInsertResult;
@@ -41,7 +39,7 @@ pub fn extract_rss_articles_from_channel(channel: &Channel) -> Vec<RssArticle> {
 }
 
 // ファイルからRSSを読み込むヘルパー関数（loaderを使用）
-pub fn read_channel_from_file(file_path: &str) -> RssResult<Channel> {
+pub fn read_channel_from_file(file_path: &str) -> Result<Channel> {
     let buf_reader = load_file(file_path)?;
     Channel::read_from(buf_reader)
         .with_context(|| format!("RSSファイルの解析に失敗: {}", file_path))
@@ -66,7 +64,7 @@ pub fn read_channel_from_file(file_path: &str) -> RssResult<Channel> {
 ///
 /// ## エラー
 /// 操作失敗時にはDatadoggoErrorを返し、全ての操作をロールバックする。
-pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> RssResult<RssOperationResult> {
+pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> Result<RssOperationResult> {
     let pool = setup_database().await?;
     save_rss_articles_with_pool(articles, &pool).await
 }
@@ -80,7 +78,7 @@ pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> RssResult<RssOp
 pub async fn save_rss_articles_with_pool(
     articles: &[RssArticle],
     pool: &PgPool,
-) -> RssResult<RssOperationResult> {
+) -> Result<RssOperationResult> {
     if articles.is_empty() {
         return Ok(RssOperationResult::empty());
     }
@@ -127,7 +125,7 @@ mod tests {
     use std::io::{BufReader, Cursor};
 
     // XMLからRSSチャンネルを解析するヘルパー関数
-    fn parse_channel_from_xml(xml: &str) -> RssResult<Channel> {
+    fn parse_channel_from_xml(xml: &str) -> Result<Channel> {
         Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes())))
             .context("XMLからのRSSチャンネル解析に失敗")
     }

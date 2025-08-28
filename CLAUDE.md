@@ -67,12 +67,12 @@ pub enum RssError {
     },
 }
 
-pub type RssResult<T> = std::result::Result<T, RssError>;
+pub type RssOperationResult = DatabaseInsertResult;
 ```
 
 ### 3. エラーハンドリングのベストプラクティス
 
-- 各ドメイン関数は自分のResult型を返す (`RssResult<T>`, `FirecrawlResult<T>`)
+- 各ドメイン関数はanyhow::Resultを返す (`Result<T>`)
 - 共通エラーは`From`トレイトで自動変換させる
 - エラー作成にはヘルパー関数を使用する
 - テスト関数は`Result<(), Box<dyn std::error::Error>>`を返す
