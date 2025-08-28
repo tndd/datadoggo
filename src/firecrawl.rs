@@ -1,6 +1,6 @@
-use crate::types::{CommonError, SaveResult};
 use crate::services::db::setup_database;
 use crate::services::loader::load_file;
+use crate::types::{CommonError, SaveResult};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -12,10 +12,6 @@ pub enum FirecrawlError {
     /// 共通エラー（ファイルI/O、DB、JSON等）
     #[error(transparent)]
     Common(#[from] CommonError),
-
-}
-
-impl FirecrawlError {
 }
 
 /// Firecrawl関連のResult型エイリアス
@@ -124,9 +120,7 @@ pub struct FirecrawlMetadata {
 }
 
 // ファイルからFirecrawlデータを読み込むヘルパー関数（loaderを使用）
-pub fn read_firecrawl_from_file(
-    file_path: &str,
-) -> FirecrawlResult<FirecrawlArticle> {
+pub fn read_firecrawl_from_file(file_path: &str) -> FirecrawlResult<FirecrawlArticle> {
     let buf_reader = load_file(file_path)?;
     let article: FirecrawlArticle = serde_json::from_reader(buf_reader)
         .map_err(|e| CommonError::json(format!("Firecrawlファイルの解析: {}", file_path), e))?;
@@ -167,13 +161,14 @@ pub async fn save_firecrawl_article_with_pool(
     article: &FirecrawlArticle,
     pool: &PgPool,
 ) -> FirecrawlResult<SaveResult> {
-    let mut tx = pool.begin().await
+    let mut tx = pool
+        .begin()
+        .await
         .map_err(|e| CommonError::database("トランザクション開始", e))?;
 
     // メタデータをJSONに変換
-    let metadata_json =
-        serde_json::to_value(&article.metadata)
-            .map_err(|e| CommonError::json("メタデータのJSONシリアライズ", e))?;
+    let metadata_json = serde_json::to_value(&article.metadata)
+        .map_err(|e| CommonError::json("メタデータのJSONシリアライズ", e))?;
 
     // URLを取得（存在しない場合はデフォルト値を使用）
     let url = article
@@ -212,14 +207,11 @@ pub async fn save_firecrawl_article_with_pool(
 
     let inserted = if result.rows_affected() > 0 { 1 } else { 0 };
 
-    tx.commit().await
+    tx.commit()
+        .await
         .map_err(|e| CommonError::database("トランザクションコミット", e))?;
 
-    Ok(SaveResult::new(
-        inserted,
-        1 - inserted,
-        0,
-    ))
+    Ok(SaveResult::new(inserted, 1 - inserted, 0))
 }
 
 #[cfg(test)]
@@ -256,7 +248,9 @@ mod tests {
 
     // テスト例1: Firecrawl記事の基本的な保存機能のテスト
     #[sqlx::test]
-    async fn test_save_firecrawl_article_to_db(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_save_firecrawl_article_to_db(
+        pool: PgPool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // テスト用のFirecrawl記事データを作成
         let metadata = FirecrawlMetadata {
             favicon: None,
@@ -335,7 +329,9 @@ mod tests {
 
     // テスト例2: Firecrawl記事の重複処理テスト
     #[sqlx::test]
-    async fn test_duplicate_firecrawl_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_duplicate_firecrawl_articles(
+        pool: PgPool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // 最初の記事を保存
         let mut metadata = FirecrawlMetadata {
             favicon: None,
