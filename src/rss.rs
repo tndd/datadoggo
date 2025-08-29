@@ -341,7 +341,7 @@ mod tests {
 
         #[sqlx::test]
         async fn test_save_articles_to_db(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
-            // テスト用記事データを作成
+            // テスト用記事データを作成（多様性のあるデータ）
             let test_articles = vec![
                 RssArticle {
                     title: "Test Article 1".to_string(),
@@ -355,13 +355,19 @@ mod tests {
                     description: Some("Test description 2".to_string()),
                     pub_date: Some("2025-08-26T11:00:00Z".to_string()),
                 },
+                RssArticle {
+                    title: "異なるドメイン記事".to_string(),
+                    link: "https://different.domain.com/post".to_string(),
+                    description: None, // NULL description
+                    pub_date: Some("2025-08-26T12:00:00Z".to_string()),
+                },
             ];
 
             // データベースに保存をテスト
             let result = save_rss_articles_with_pool(&test_articles, &pool).await?;
 
             // SaveResultの検証
-            assert_eq!(result.inserted, 2, "新規挿入された記事数が期待と異なります");
+            assert_eq!(result.inserted, 3, "新規挿入された記事数が期待と異なります");
             assert_eq!(
                 result.skipped_duplicate, 0,
                 "重複スキップ数が期待と異なります"
@@ -371,7 +377,17 @@ mod tests {
             let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
                 .fetch_one(&pool)
                 .await?;
-            assert_eq!(count, 2, "期待する件数(2件)が保存されませんでした");
+            assert_eq!(count, 3, "期待する件数(3件)が保存されませんでした");
+
+            // NULL descriptionの記事が正しく保存されたか確認
+            let null_desc_article = sqlx::query_as::<_, RssArticle>(
+                "SELECT * FROM rss_articles WHERE link = $1"
+            )
+            .bind("https://different.domain.com/post")
+            .fetch_one(&pool)
+            .await?;
+            
+            assert!(null_desc_article.description.is_none(), "NULL descriptionが正しく保存されていません");
 
             println!("✅ RSS保存件数検証成功: {}件", result.inserted);
             println!(
@@ -445,9 +461,9 @@ mod tests {
         async fn test_mixed_new_and_existing_articles(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
-            // fixtureで既に2件のデータが存在している状態
+            // fixtureで既に6件のデータが存在している状態
 
-            // 1件は既存（重複）、1件は新規のデータを作成
+            // 1件は既存（重複）、2件は新規のデータを作成
             let mixed_articles = vec![
                 RssArticle {
                     title: "既存記事".to_string(),
@@ -456,27 +472,33 @@ mod tests {
                     pub_date: Some("2025-08-26T14:00:00Z".to_string()),
                 },
                 RssArticle {
-                    title: "新規記事".to_string(),
-                    link: "https://test.example.com/new-article".to_string(), // 新しいリンク
+                    title: "新規記事1".to_string(),
+                    link: "https://test.example.com/new-article1".to_string(), // 新しいリンク
                     description: Some("この記事は新規です".to_string()),
                     pub_date: Some("2025-08-26T15:00:00Z".to_string()),
+                },
+                RssArticle {
+                    title: "新規記事2".to_string(),
+                    link: "https://another.domain.com/article".to_string(), // 異なるドメイン
+                    description: Some("別ドメインの新規記事".to_string()),
+                    pub_date: Some("2025-08-26T16:00:00Z".to_string()),
                 },
             ];
 
             let result = save_rss_articles_with_pool(&mixed_articles, &pool).await?;
 
             // SaveResultの検証
-            assert_eq!(result.inserted, 1, "新規記事1件が挿入されるべきです");
+            assert_eq!(result.inserted, 2, "新規記事2件が挿入されるべきです");
             assert_eq!(
                 result.skipped_duplicate, 1,
                 "既存記事1件がスキップされるべきです"
             );
 
-            // 最終的にデータベースには3件（fixture 2件 + 新規 1件）
+            // 最終的にデータベースには8件（fixture 6件 + 新規 2件）
             let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
                 .fetch_one(&pool)
                 .await?;
-            assert_eq!(count, 3, "期待する件数(3件)と異なります");
+            assert_eq!(count, 8, "期待する件数(8件)と異なります");
 
             println!("✅ RSS混在データ処理検証成功: {}", result);
 
