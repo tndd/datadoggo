@@ -16,7 +16,7 @@ pub struct RssLink {
 
 // RSSのチャンネルから<item>要素のリンク情報を抽出する関数
 pub fn extract_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
-    let mut links = Vec::new();
+    let mut rss_links = Vec::new();
 
     for item in channel.items() {
         if let (Some(link), Some(pub_date)) = (item.link(), item.pub_date()) {
@@ -25,11 +25,11 @@ pub fn extract_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
                 title: item.title().unwrap_or("タイトルなし").to_string(),
                 pub_date: pub_date.to_string(),
             };
-            links.push(rss_link);
+            rss_links.push(rss_link);
         }
     }
 
-    links
+    rss_links
 }
 
 // ファイルからRSSを読み込むヘルパー関数（loaderを使用）
@@ -68,11 +68,11 @@ pub async fn save_rss_links_to_db(articles: &[RssLink]) -> Result<DatabaseInsert
 /// # Note
 /// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
 pub async fn save_rss_links_with_pool(
-    links: &[RssLink],
+    rss_links: &[RssLink],
     pool: &PgPool,
 ) -> Result<DatabaseInsertResult> {
-    if links.is_empty() {
-        return Ok(DatabaseInsertResult::empty());
+    if rss_links.is_empty() {
+        return Ok(DatabaseInsertResxult::empty());
     }
 
     let mut tx = pool
@@ -82,7 +82,7 @@ pub async fn save_rss_links_with_pool(
     let mut total_inserted = 0;
 
     // sqlx::query!マクロを使用してコンパイル時にSQLを検証
-    for link in links {
+    for link in rss_links {
         let result = sqlx::query!(
             r#"
             INSERT INTO rss_articles (link, title, pub_date)
@@ -108,7 +108,7 @@ pub async fn save_rss_links_with_pool(
 
     Ok(DatabaseInsertResult::new(
         total_inserted,
-        links.len() - total_inserted,
+        rss_links.len() - total_inserted,
     ))
 }
 
@@ -186,12 +186,12 @@ pub async fn get_rss_links_with_pool(
         query_builder = query_builder.bind(param);
     }
 
-    let links = query_builder
+    let rss_links = query_builder
         .fetch_all(pool)
         .await
         .context("RSSリンクの取得に失敗しました")?;
 
-    Ok(links)
+    Ok(rss_links)
 }
 
 /// 指定されたリンクのRSS記事を取得する
@@ -229,20 +229,20 @@ mod tests {
         }
 
         // 記事の基本構造をチェックするヘルパー関数
-        fn validate_articles(articles: &[RssLink]) {
-            for article in &articles[..3.min(articles.len())] {
-                assert!(!article.title.is_empty(), "記事のタイトルが空です");
-                assert!(!article.link.is_empty(), "記事のリンクが空です");
+        fn validate_rss_links(rss_links: &[RssLink]) {
+            for rss_link in &rss_links[..3.min(rss_links.len())] {
+                assert!(!rss_link.title.is_empty(), "記事のタイトルが空です");
+                assert!(!rss_link.link.is_empty(), "記事のリンクが空です");
                 assert!(
-                    article.link.starts_with("http"),
+                    rss_link.link.starts_with("http"),
                     "リンクがHTTP形式ではありません"
                 );
             }
         }
 
         #[test]
-        fn test_extract_rss_articles_from_xml() {
-            // xml->channel->rss_articleの流れの確認
+        fn test_extract_rss_links_from_xml() {
+            // xml->channel->rss_linkの流れの確認
             let xml: &str = r#"
                 <rss version="2.0">
                     <channel>
@@ -275,8 +275,8 @@ mod tests {
         }
 
         #[test]
-        fn test_extract_rss_articles_from_xml_missing_link() {
-            // xml(リンク欠落)->channel->rss_articleの流れの確認
+        fn test_extract_rss_links_from_xml_missing_link() {
+            // xml(リンク欠落)->channel->rss_linkの流れの確認
             let xml_missing_link = r#"
                 <rss version="2.0">
                     <channel>
@@ -306,7 +306,7 @@ mod tests {
         }
 
         #[test]
-        fn test_extract_rss_articles_from_files() {
+        fn test_extract_rss_links_from_files() {
             // 複数の実際のRSSファイルからリンクを抽出するテスト
             let test_feeds = [
                 ("mock/rss/bbc.rss", "BBC"),
@@ -322,7 +322,7 @@ mod tests {
                 let articles = extract_rss_links_from_channel(&channel);
                 assert!(!articles.is_empty(), "{}の記事が0件", feed_name);
 
-                validate_articles(&articles);
+                validate_rss_links(&articles);
                 println!("{}テスト結果: {}件の記事を抽出", feed_name, articles.len());
             }
         }
@@ -340,7 +340,7 @@ mod tests {
         use super::*;
 
         #[sqlx::test]
-        async fn test_save_articles_to_db(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        async fn test_save_links_to_db(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
             // テスト用リンクデータを作成（必須フィールドのみ）
             let rss_basic = vec![
                 RssLink {
@@ -386,7 +386,7 @@ mod tests {
         }
 
         #[sqlx::test(fixtures("rss"))]
-        async fn test_duplicate_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        async fn test_duplicate_links(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
             // fixtureで既に17件のデータが存在している状態
 
             // 同じリンクの記事を作成（重複）
@@ -421,7 +421,7 @@ mod tests {
         }
 
         #[sqlx::test]
-        async fn test_empty_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        async fn test_empty_links(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
             let empty_articles: Vec<RssLink> = vec![];
             let result = save_rss_links_with_pool(&empty_articles, &pool).await?;
 
@@ -444,7 +444,7 @@ mod tests {
         }
 
         #[sqlx::test(fixtures("rss"))]
-        async fn test_mixed_new_and_existing_articles(
+        async fn test_mixed_new_and_existing_links(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
             // fixtureで既に17件のデータが存在している状態
@@ -494,7 +494,7 @@ mod tests {
         use super::*;
 
         #[sqlx::test(fixtures("rss"))]
-        async fn test_get_all_rss_articles_comprehensive(
+        async fn test_get_all_rss_links_comprehensive(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
             // 統合フィクスチャで19件のデータが存在
