@@ -168,16 +168,16 @@ pub async fn save_firecrawl_article_with_pool(
 
     let result = sqlx::query!(
         r#"
-        INSERT INTO firecrawl_articles (url, markdown, status_code)
+        INSERT INTO firecrawl_articles (url, status_code, markdown)
         VALUES ($1, $2, $3)
         ON CONFLICT (url) DO UPDATE SET 
-            markdown = EXCLUDED.markdown,
             status_code = EXCLUDED.status_code,
+            markdown = EXCLUDED.markdown,
             updated_at = CURRENT_TIMESTAMP
         "#,
         url,
-        article.markdown,
-        status_code
+        status_code,
+        article.markdown
     )
     .execute(&mut *tx)
     .await
