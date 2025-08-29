@@ -8,22 +8,21 @@ use time::OffsetDateTime;
 
 // Firecrawl記事構造体（テーブル定義と一致）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct FirecrawlArticle {
+pub struct Article {
     pub url: String,
-    pub created_at: OffsetDateTime,
-    pub updated_at: OffsetDateTime,
+    pub timestamp: OffsetDateTime,
     pub status_code: Option<i32>,
-    pub markdown: String,
+    pub content: String,
 }
 
-// ファイルからFirecrawlデータを読み込み、FirecrawlArticleに変換する
-pub fn read_firecrawl_from_file(file_path: &str) -> Result<FirecrawlArticle> {
+// ファイルからFirecrawlデータを読み込み、Articleに変換する
+pub fn read_article_from_file(file_path: &str) -> Result<Article> {
     let buf_reader = load_file(file_path)?;
     let json_value: serde_json::Value = serde_json::from_reader(buf_reader)
         .with_context(|| format!("Firecrawlファイルの解析に失敗: {}", file_path))?;
-    
+
     // JSONから必要な値を抽出
-    let markdown = json_value
+    let content = json_value
         .get("markdown")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("markdownフィールドが見つかりません"))?
@@ -48,18 +47,17 @@ pub fn read_firecrawl_from_file(file_path: &str) -> Result<FirecrawlArticle> {
         .map(|v| v as i32);
 
     let now = OffsetDateTime::now_utc();
-    
-    Ok(FirecrawlArticle {
+
+    Ok(Article {
         url,
-        created_at: now,
-        updated_at: now,
+        timestamp: now,
         status_code,
-        markdown,
+        content,
     })
 }
 
 /// # 概要
-/// FirecrawlArticleをデータベースに保存する。
+/// Articleをデータベースに保存する。
 ///
 /// ## 動作
 /// - 自動でデータベース接続プールを作成
@@ -68,28 +66,26 @@ pub fn read_firecrawl_from_file(file_path: &str) -> Result<FirecrawlArticle> {
 /// - 重複記事（同じURL）は更新
 ///
 /// ## 引数
-/// - `article`: 保存するFirecrawl記事
+/// - `article`: 保存する記事
 ///
 /// ## 戻り値
 /// - `DatabaseInsertResult`: 保存件数の詳細
 ///
 /// ## エラー
 /// 操作失敗時には全ての操作をロールバックする。
-pub async fn save_firecrawl_article_to_db(
-    article: &FirecrawlArticle,
-) -> Result<DatabaseInsertResult> {
+pub async fn save_article_to_db(article: &Article) -> Result<DatabaseInsertResult> {
     let pool = setup_database().await?;
-    save_firecrawl_article_with_pool(article, &pool).await
+    save_article_with_pool(article, &pool).await
 }
 
 /// # 概要
-/// FirecrawlArticleを指定されたデータベースプールに保存する。
-/// 既にプールを準備している場合は `save_firecrawl_article_to_db` ではなく、この関数を使用する。
+/// Articleを指定されたデータベースプールに保存する。
+/// 既にプールを準備している場合は `save_article_to_db` ではなく、この関数を使用する。
 ///
 /// # Note
 /// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
-pub async fn save_firecrawl_article_with_pool(
-    article: &FirecrawlArticle,
+pub async fn save_article_with_pool(
+    article: &Article,
     pool: &PgPool,
 ) -> Result<DatabaseInsertResult> {
     let mut tx = pool
@@ -99,16 +95,16 @@ pub async fn save_firecrawl_article_with_pool(
 
     let result = sqlx::query!(
         r#"
-        INSERT INTO firecrawl_articles (url, status_code, markdown)
+        INSERT INTO articles (url, status_code, content)
         VALUES ($1, $2, $3)
         ON CONFLICT (url) DO UPDATE SET 
             status_code = EXCLUDED.status_code,
-            markdown = EXCLUDED.markdown,
-            updated_at = CURRENT_TIMESTAMP
+            content = EXCLUDED.content,
+            timestamp = CURRENT_TIMESTAMP
         "#,
         article.url,
         article.status_code,
-        article.markdown
+        article.content
     )
     .execute(&mut *tx)
     .await
@@ -128,27 +124,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_read_firecrawl_from_file() {
+    fn test_read_article_from_file() {
         // BBCのモックファイルを読み込んでパース
-        let result = read_firecrawl_from_file("mock/fc/bbc.json");
+        let result = read_article_from_file("mock/fc/bbc.json");
         assert!(result.is_ok(), "Firecrawl JSONファイルの読み込みに失敗");
 
         let article = result.unwrap();
 
         // 基本的なフィールドの検証
-        assert!(!article.markdown.is_empty(), "markdownが空です");
+        assert!(!article.content.is_empty(), "contentが空です");
         assert!(!article.url.is_empty(), "URLが空です");
 
         println!("✅ Firecrawlデータの読み込みテスト成功");
         println!("URL: {}", article.url);
-        println!("Markdownサイズ: {} characters", article.markdown.len());
+        println!("Contentサイズ: {} characters", article.content.len());
         println!("Status Code: {:?}", article.status_code);
     }
 
     #[test]
     fn test_read_non_existing_file() {
         // 存在しないファイルを読み込もうとするテスト
-        let result = read_firecrawl_from_file("non_existent_file.json");
+        let result = read_article_from_file("non_existent_file.json");
         assert!(result.is_err(), "存在しないファイルでエラーにならなかった");
     }
 
@@ -156,21 +152,18 @@ mod tests {
 
     // テスト例1: Firecrawl記事の基本的な保存機能のテスト
     #[sqlx::test]
-    async fn test_save_firecrawl_article_to_db(
-        pool: PgPool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_save_article_to_db(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
         // テスト用のFirecrawl記事データを作成
         let now = OffsetDateTime::now_utc();
-        let test_article = FirecrawlArticle {
+        let test_article = Article {
             url: "https://test.example.com/firecrawl".to_string(),
-            created_at: now,
-            updated_at: now,
+            timestamp: now,
             status_code: Some(200),
-            markdown: "# Test Article\n\nThis is a test markdown content.".to_string(),
+            content: "# Test Article\n\nThis is a test content.".to_string(),
         };
 
         // データベースに保存をテスト
-        let result = save_firecrawl_article_with_pool(&test_article, &pool).await?;
+        let result = save_article_with_pool(&test_article, &pool).await?;
 
         // SaveResultの検証
         assert_eq!(result.inserted, 1, "新規挿入された記事数が期待と異なります");
@@ -180,7 +173,7 @@ mod tests {
         );
 
         // 実際にデータベースに保存されたことを確認
-        let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM firecrawl_articles")
+        let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM articles")
             .fetch_one(&pool)
             .await?;
         assert_eq!(count, 1, "期待する件数(1件)が保存されませんでした");
@@ -200,31 +193,29 @@ mod tests {
         pool: PgPool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let now = OffsetDateTime::now_utc();
-        
+
         // 最初の記事を保存
-        let original_article = FirecrawlArticle {
+        let original_article = Article {
             url: "https://test.example.com/duplicate".to_string(),
-            created_at: now,
-            updated_at: now,
+            timestamp: now,
             status_code: Some(200),
-            markdown: "Original content".to_string(),
+            content: "Original content".to_string(),
         };
 
         // 最初の記事を保存
-        let result1 = save_firecrawl_article_with_pool(&original_article, &pool).await?;
+        let result1 = save_article_with_pool(&original_article, &pool).await?;
         assert_eq!(result1.inserted, 1);
 
         // 同じURLで違う内容の記事を作成（重複）
-        let duplicate_article = FirecrawlArticle {
+        let duplicate_article = Article {
             url: "https://test.example.com/duplicate".to_string(),
-            created_at: now,
-            updated_at: now,
+            timestamp: now,
             status_code: Some(404),
-            markdown: "Different content".to_string(),
+            content: "Different content".to_string(),
         };
 
         // 重複記事を保存しようとする（新しい仕様では更新される）
-        let result2 = save_firecrawl_article_with_pool(&duplicate_article, &pool).await?;
+        let result2 = save_article_with_pool(&duplicate_article, &pool).await?;
 
         // SaveResultの検証（更新される場合、inserted=1として扱う）
         assert_eq!(result2.inserted, 1, "重複URLの記事は更新されるべきです");
@@ -234,7 +225,7 @@ mod tests {
         );
 
         // データベースの件数は1件のまま
-        let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM firecrawl_articles")
+        let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM articles")
             .fetch_one(&pool)
             .await?;
         assert_eq!(count, 1, "重複記事が挿入され、件数が変わってしまいました");

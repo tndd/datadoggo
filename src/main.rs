@@ -1,15 +1,15 @@
+mod article;
 mod infra;
 mod rss;
-mod firecrawl;
 
+use article::*;
 use rss::*;
-use firecrawl::*;
 
 #[tokio::main]
 async fn main() {
     // 環境変数を読み込み（.envファイルがあれば使用）
     let _ = dotenvy::dotenv();
-    
+
     // RSS処理
     println!("=== RSS処理を開始 ===");
     match read_channel_from_file("mock/rss/bbc.rss") {
@@ -28,21 +28,24 @@ async fn main() {
             eprintln!("RSSの読み込み中にエラーが発生しました: {}", e);
         }
     }
-    
+
     // Firecrawl処理
     println!("\n=== Firecrawl処理を開始 ===");
-    match read_firecrawl_from_file("mock/fc/bbc.json") {
+    match read_article_from_file("mock/fc/bbc.json") {
         Ok(article) => {
             println!("BBCのFirecrawlデータを読み込みました。");
             println!("URL: {}", article.url);
             println!("Status Code: {:?}", article.status_code);
-            println!("Markdownサイズ: {} characters", article.markdown.len());
+            println!("Contentサイズ: {} characters", article.content.len());
 
-            match save_firecrawl_article_to_db(&article).await {
+            match save_article_to_db(&article).await {
                 Ok(result) => {
                     println!("{}", result);
                 }
-                Err(e) => eprintln!("Firecrawlデータのデータベース保存中にエラーが発生しました: {}", e),
+                Err(e) => eprintln!(
+                    "Firecrawlデータのデータベース保存中にエラーが発生しました: {}",
+                    e
+                ),
             }
         }
         Err(e) => {
