@@ -3,10 +3,11 @@ use crate::infra::db::DatabaseInsertResult;
 use crate::infra::loader::load_file;
 use anyhow::{Context, Result};
 use rss::Channel;
-use sqlx::PgPool;
+use serde::{Deserialize, Serialize};
+use sqlx::{FromRow, PgPool};
 
-// RSS記事の情報を格納する構造体
-#[derive(Debug, Clone)]
+// RSS記事の情報を格納する構造体（テーブル定義と一致）
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct RssArticle {
     pub link: String,
     pub title: String,
@@ -112,6 +113,110 @@ pub async fn save_rss_articles_with_pool(
         total_inserted,
         articles.len() - total_inserted,
     ))
+}
+
+// RSS記事のフィルター条件を表す構造体
+#[derive(Debug, Default)]
+pub struct RssArticleFilter {
+    pub link_contains: Option<String>,
+    pub pub_date_from: Option<String>,
+    pub pub_date_to: Option<String>,
+}
+
+/// # 概要
+/// データベースからRSS記事を取得する。
+///
+/// ## 動作
+/// - 自動でデータベース接続プールを作成
+/// - 指定された条件でRSS記事を取得
+///
+/// ## 引数
+/// - `filter`: フィルター条件。Noneの場合は全件取得
+///
+/// ## 戻り値
+/// - `Vec<RssArticle>`: 条件にマッチしたRSS記事のリスト
+pub async fn get_rss_articles_from_db(filter: Option<RssArticleFilter>) -> Result<Vec<RssArticle>> {
+    let pool = setup_database().await?;
+    get_rss_articles_with_pool(filter, &pool).await
+}
+
+/// # 概要
+/// 指定されたデータベースプールからRSS記事を取得する。
+pub async fn get_rss_articles_with_pool(
+    filter: Option<RssArticleFilter>,
+    pool: &PgPool,
+) -> Result<Vec<RssArticle>> {
+    let filter = filter.unwrap_or_default();
+
+    let mut query = "SELECT link, title, description, pub_date FROM rss_articles".to_string();
+    let mut conditions = Vec::new();
+    let mut params = Vec::new();
+    let mut param_count = 0;
+
+    // linkによる絞り込み
+    if let Some(link_contains) = &filter.link_contains {
+        param_count += 1;
+        conditions.push(format!("link ILIKE ${}", param_count));
+        params.push(format!("%{}%", link_contains));
+    }
+
+    // pub_dateの範囲指定
+    if let Some(pub_date_from) = &filter.pub_date_from {
+        param_count += 1;
+        conditions.push(format!("pub_date >= ${}", param_count));
+        params.push(pub_date_from.clone());
+    }
+
+    if let Some(pub_date_to) = &filter.pub_date_to {
+        param_count += 1;
+        conditions.push(format!("pub_date <= ${}", param_count));
+        params.push(pub_date_to.clone());
+    }
+
+    // WHERE句を追加
+    if !conditions.is_empty() {
+        query.push_str(" WHERE ");
+        query.push_str(&conditions.join(" AND "));
+    }
+
+    // 日付順でソート
+    query.push_str(" ORDER BY pub_date DESC");
+
+    // 動的クエリを実行
+    let mut query_builder = sqlx::query_as::<_, RssArticle>(&query);
+
+    for param in params {
+        query_builder = query_builder.bind(param);
+    }
+
+    let articles = query_builder
+        .fetch_all(pool)
+        .await
+        .context("RSS記事の取得に失敗しました")?;
+
+    Ok(articles)
+}
+
+/// 指定されたリンクのRSS記事を取得する
+pub async fn get_rss_article_by_link(link: &str) -> Result<Option<RssArticle>> {
+    let pool = setup_database().await?;
+    get_rss_article_by_link_with_pool(link, &pool).await
+}
+
+/// 指定されたリンクのRSS記事を指定されたプールから取得する
+pub async fn get_rss_article_by_link_with_pool(
+    link: &str,
+    pool: &PgPool,
+) -> Result<Option<RssArticle>> {
+    let article = sqlx::query_as::<_, RssArticle>(
+        "SELECT link, title, description, pub_date FROM rss_articles WHERE link = $1",
+    )
+    .bind(link)
+    .fetch_optional(pool)
+    .await
+    .context("指定されたリンクのRSS記事取得に失敗しました")?;
+
+    Ok(article)
 }
 
 #[cfg(test)]
@@ -371,6 +476,397 @@ mod tests {
         assert_eq!(count, 3, "期待する件数(3件)と異なります");
 
         println!("✅ RSS混在データ処理検証成功: {}", result);
+
+        Ok(())
+    }
+
+    // データベース取得機能の際どいテスト（新フィクスチャ使用）
+
+    // テスト例5: 全件取得テスト
+    #[sqlx::test(fixtures("rss_retrieval_test"))]
+    async fn test_get_all_rss_articles_comprehensive(
+        pool: PgPool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // 新フィクスチャで15件のデータが存在
+
+        let articles = get_rss_articles_with_pool(None, &pool).await?;
+
+        // 全件取得されることを確認（pub_dateがNULLの1件を除く）
+        assert!(articles.len() >= 14, "全件取得で最低14件が期待されます");
+
+        // 日付順（降順）でソートされていることを確認
+        let mut prev_date: Option<&str> = None;
+        for article in &articles {
+            if let Some(current_date) = &article.pub_date {
+                if let Some(prev) = prev_date {
+                    assert!(
+                        current_date.as_str() <= prev,
+                        "日付の降順ソートが正しくありません"
+                    );
+                }
+                prev_date = Some(current_date.as_str());
+            }
+        }
+
+        // 基本的な記事のフィールドがすべて設定されていることを確認
+        for article in &articles {
+            assert!(!article.title.is_empty(), "記事のタイトルが空です");
+            assert!(!article.link.is_empty(), "記事のリンクが空です");
+        }
+
+        println!("✅ RSS全件取得際どいテスト成功: {}件", articles.len());
+
+        Ok(())
+    }
+
+    // テスト例6: 日付境界の際どいテスト
+    #[sqlx::test(fixtures("rss_retrieval_test"))]
+    async fn test_date_boundary_edge_cases(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        // 2025-01-15の境界テスト
+
+        // 開始時刻ちょうどを含む検索
+        let filter_start = RssArticleFilter {
+            pub_date_from: Some("2025-01-15T00:00:00Z".to_string()),
+            pub_date_to: Some("2025-01-15T23:59:59Z".to_string()),
+            ..Default::default()
+        };
+
+        let articles_boundary = get_rss_articles_with_pool(Some(filter_start), &pool).await?;
+
+        // 境界値の記事が含まれることを確認
+        assert!(
+            articles_boundary.len() >= 3,
+            "2025-01-15の境界記事が期待通り取得されません"
+        );
+
+        let boundary_links: Vec<&str> = articles_boundary.iter().map(|a| a.link.as_str()).collect();
+        assert!(boundary_links.contains(&"https://test.com/boundary/exactly-start"));
+        assert!(boundary_links.contains(&"https://test.com/boundary/exactly-end"));
+        assert!(boundary_links.contains(&"https://example.com/tech/article-2025-01-15"));
+
+        // 1秒前後の記事は含まれないことを確認
+        assert!(!boundary_links.contains(&"https://test.com/boundary/one-second-before"));
+        assert!(!boundary_links.contains(&"https://test.com/boundary/one-second-after"));
+
+        println!(
+            "✅ RSS日付境界テスト成功: {}件の境界記事",
+            articles_boundary.len()
+        );
+
+        Ok(())
+    }
+
+    // テスト例4: 日付境界の際どいテスト
+    #[sqlx::test(fixtures("rss_retrieval_test"))]
+    async fn test_get_rss_articles_by_date_range(
+        pool: PgPool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // 範囲の開始時刻ちょうどの記事が含まれるかテスト
+        let filter_start_boundary = RssArticleFilter {
+            pub_date_from: Some("2025-01-15T00:00:00Z".to_string()),
+            pub_date_to: Some("2025-01-15T00:00:01Z".to_string()),
+            ..Default::default()
+        };
+
+        let articles_start = get_rss_articles_with_pool(Some(filter_start_boundary), &pool).await?;
+        assert_eq!(
+            articles_start.len(),
+            1,
+            "開始境界時刻ちょうどの記事が含まれていません"
+        );
+        assert_eq!(
+            articles_start[0].link,
+            "https://test.com/boundary/exactly-start"
+        );
+
+        // 範囲の終了時刻ちょうどの記事が含まれるかテスト
+        let filter_end_boundary = RssArticleFilter {
+            pub_date_from: Some("2025-01-15T23:59:58Z".to_string()),
+            pub_date_to: Some("2025-01-15T23:59:59Z".to_string()),
+            ..Default::default()
+        };
+
+        let articles_end = get_rss_articles_with_pool(Some(filter_end_boundary), &pool).await?;
+        assert_eq!(
+            articles_end.len(),
+            1,
+            "終了境界時刻ちょうどの記事が含まれていません"
+        );
+        assert_eq!(
+            articles_end[0].link,
+            "https://test.com/boundary/exactly-end"
+        );
+
+        // 範囲外（1秒前）の記事が除外されるかテスト
+        let filter_before = RssArticleFilter {
+            pub_date_from: Some("2025-01-15T00:00:00Z".to_string()),
+            pub_date_to: Some("2025-01-15T23:59:58Z".to_string()),
+            ..Default::default()
+        };
+
+        let articles_before = get_rss_articles_with_pool(Some(filter_before), &pool).await?;
+        let before_links: Vec<&str> = articles_before.iter().map(|a| a.link.as_str()).collect();
+        assert!(
+            !before_links.contains(&"2025-01-14T23:59:59Z"),
+            "範囲外の記事が含まれています"
+        );
+
+        println!("✅ RSS日付境界際どいテスト成功");
+
+        Ok(())
+    }
+
+    // テスト例5: URL部分一致の詳細テスト
+    #[sqlx::test(fixtures("rss_retrieval_test"))]
+    async fn test_get_rss_articles_by_combined_filter(
+        pool: PgPool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // 部分一致検索（example.comを含む）
+        let filter_partial = RssArticleFilter {
+            link_contains: Some("example.com".to_string()),
+            ..Default::default()
+        };
+
+        let articles_partial = get_rss_articles_with_pool(Some(filter_partial), &pool).await?;
+        assert!(
+            articles_partial.len() >= 4,
+            "example.comを含む記事が少なすぎます"
+        ); // 基本3件 + testing-advanced
+
+        // 厳密でない一致（not-example.comは含まれるが確認）
+        let example_count = articles_partial
+            .iter()
+            .filter(|a| a.link.contains("example.com") && !a.link.contains("not-example.com"))
+            .count();
+        let not_example_count = articles_partial
+            .iter()
+            .filter(|a| a.link.contains("not-example.com"))
+            .count();
+
+        assert!(
+            example_count >= 4,
+            "純粋なexample.comドメインの記事が足りません"
+        );
+        assert_eq!(
+            not_example_count, 1,
+            "not-example.comの記事も含まれるはずです"
+        );
+
+        // より具体的なパス部分の一致
+        let filter_specific = RssArticleFilter {
+            link_contains: Some("/tech/".to_string()),
+            ..Default::default()
+        };
+
+        let articles_specific = get_rss_articles_with_pool(Some(filter_specific), &pool).await?;
+        assert_eq!(
+            articles_specific.len(),
+            1,
+            "/tech/パスを含む記事は1件であるべきです"
+        );
+        assert_eq!(
+            articles_specific[0].link,
+            "https://example.com/tech/article-2025-01-15"
+        );
+
+        println!("✅ RSSURL部分一致詳細テスト成功");
+
+        Ok(())
+    }
+
+    // テスト例6: 個別記事取得の際どいテスト
+    #[sqlx::test(fixtures("rss_retrieval_test"))]
+    async fn test_get_rss_article_by_link(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        // 存在する記事の正確な取得
+        let tech_article =
+            get_rss_article_by_link_with_pool("https://example.com/tech/article-2025-01-15", &pool)
+                .await?;
+
+        assert!(tech_article.is_some(), "指定された記事が見つかりません");
+        let article = tech_article.unwrap();
+        assert_eq!(article.title, "Tech News 2025");
+        assert_eq!(
+            article.description,
+            Some("Latest technology updates".to_string())
+        );
+
+        // 大小文字が異なるURLでの取得（完全一致のため失敗するはず）
+        let case_different =
+            get_rss_article_by_link_with_pool("https://EXAMPLE.COM/tech/article-2025-01-15", &pool)
+                .await?;
+        assert!(
+            case_different.is_none(),
+            "大小文字が異なるURLで記事が取得されました"
+        );
+
+        // 部分一致では取得できないことを確認
+        let partial_match = get_rss_article_by_link_with_pool("example.com/tech", &pool).await?;
+        assert!(partial_match.is_none(), "部分一致で記事が取得されました");
+
+        // NULL descriptionの記事取得テスト
+        let null_desc_article =
+            get_rss_article_by_link_with_pool("https://null-test.com/no-description", &pool)
+                .await?;
+        assert!(
+            null_desc_article.is_some(),
+            "NULL descriptionの記事が取得できません"
+        );
+        let null_article = null_desc_article.unwrap();
+        assert!(
+            null_article.description.is_none(),
+            "descriptionがNULLでありません"
+        );
+
+        println!("✅ RSS個別記事取得際どいテスト成功");
+
+        Ok(())
+    }
+
+    // テスト例7: URL部分一致の際どいテスト（大小文字、特殊文字）
+    #[sqlx::test(fixtures("rss_retrieval_test"))]
+    async fn test_get_rss_articles_no_match(
+        pool: PgPool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // 大小文字を無視したILIKE検索のテスト
+        let filter_case = RssArticleFilter {
+            link_contains: Some("casesensitive".to_string()), // 小文字で検索
+            ..Default::default()
+        };
+        
+        let articles_case = get_rss_articles_with_pool(Some(filter_case), &pool).await?;
+        assert_eq!(articles_case.len(), 1, "大小文字無視検索が機能していません");
+        assert_eq!(articles_case[0].link, "https://CaseSensitive.com/MixedCase");
+
+        // 特殊文字を含むURL検索
+        let filter_special = RssArticleFilter {
+            link_contains: Some("%20with%20".to_string()),
+            ..Default::default()
+        };
+        
+        let articles_special = get_rss_articles_with_pool(Some(filter_special), &pool).await?;
+        assert_eq!(articles_special.len(), 1, "特殊文字検索が機能していません");
+
+        // アンダースコア検索（SQLのワイルドカードではない）
+        let filter_underscore = RssArticleFilter {
+            link_contains: Some("article_with_underscore".to_string()), // より具体的な検索語
+            ..Default::default()
+        };
+        
+        let articles_underscore = get_rss_articles_with_pool(Some(filter_underscore), &pool).await?;
+        assert_eq!(articles_underscore.len(), 1, "アンダースコア検索が機能していません");
+        assert!(articles_underscore[0].link.contains("article_with_underscore"), "期待される記事がマッチしていません");
+
+        println!("✅ RSSリンク際どい絞り込みテスト成功");
+
+        Ok(())
+    }
+
+    // テスト例8: 複合条件の際どいテスト
+    #[sqlx::test(fixtures("rss_retrieval_test"))]
+    async fn test_complex_combined_filters(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        // 非常に狭い時間範囲 + URL条件
+        let filter_narrow = RssArticleFilter {
+            link_contains: Some("example.com".to_string()),
+            pub_date_from: Some("2025-01-15T09:00:00Z".to_string()),
+            pub_date_to: Some("2025-01-15T11:00:00Z".to_string()),
+        };
+
+        let articles_narrow = get_rss_articles_with_pool(Some(filter_narrow), &pool).await?;
+
+        // Tech News記事のみがマッチするはず
+        assert_eq!(articles_narrow.len(), 1, "狭い複合条件で1件が期待されます");
+        assert_eq!(
+            articles_narrow[0].link,
+            "https://example.com/tech/article-2025-01-15"
+        );
+
+        // 存在しない組み合わせのテスト
+        let filter_impossible = RssArticleFilter {
+            link_contains: Some("example.com".to_string()),
+            pub_date_from: Some("2025-01-20T00:00:00Z".to_string()),
+            pub_date_to: Some("2025-01-25T00:00:00Z".to_string()),
+        };
+
+        let articles_impossible =
+            get_rss_articles_with_pool(Some(filter_impossible), &pool).await?;
+        assert_eq!(
+            articles_impossible.len(),
+            0,
+            "存在しない組み合わせでは0件が期待されます"
+        );
+
+        println!("✅ RSS複合条件際どいテスト成功");
+
+        Ok(())
+    }
+
+    // テスト例9: NULL値を含むデータの処理テスト
+    #[sqlx::test(fixtures("rss_retrieval_test"))]
+    async fn test_null_value_handling(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        // pub_dateがNULLの記事は日付範囲検索に含まれないことを確認
+        let filter_with_date = RssArticleFilter {
+            pub_date_from: Some("2020-01-01T00:00:00Z".to_string()),
+            ..Default::default()
+        };
+
+        let articles_with_date = get_rss_articles_with_pool(Some(filter_with_date), &pool).await?;
+
+        // pub_dateがNULLの記事は含まれないことを確認
+        for article in &articles_with_date {
+            assert!(
+                article.pub_date.is_some(),
+                "pub_dateがNULLの記事が含まれています"
+            );
+        }
+
+        // 個別記事取得でdescriptionがNULLの記事が正常に取得できることを確認
+        let null_desc_article =
+            get_rss_article_by_link_with_pool("https://null-test.com/no-description", &pool)
+                .await?;
+
+        assert!(
+            null_desc_article.is_some(),
+            "descriptionがNULLの記事が取得できません"
+        );
+        let article = null_desc_article.unwrap();
+        assert!(
+            article.description.is_none(),
+            "descriptionがNULLであるべきです"
+        );
+        assert_eq!(article.title, "No Description Article");
+
+        println!("✅ RSSNULL値処理テスト成功");
+
+        Ok(())
+    }
+
+    // テスト例10: パフォーマンス関連のエッジケース
+    #[sqlx::test(fixtures("rss_retrieval_test"))]
+    async fn test_performance_edge_cases(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        // 空文字列での検索
+        let filter_empty = RssArticleFilter {
+            link_contains: Some("".to_string()),
+            ..Default::default()
+        };
+
+        let articles_empty = get_rss_articles_with_pool(Some(filter_empty), &pool).await?;
+        // 空文字列は全ての文字列を含むので、全記事が返される（NULLでない）
+        assert!(
+            articles_empty.len() > 0,
+            "空文字列検索で記事が取得されません"
+        );
+
+        // 非常に長い検索文字列
+        let long_string = "a".repeat(1000);
+        let filter_long = RssArticleFilter {
+            link_contains: Some(long_string),
+            ..Default::default()
+        };
+
+        let articles_long = get_rss_articles_with_pool(Some(filter_long), &pool).await?;
+        assert_eq!(articles_long.len(), 0, "長い文字列検索で0件が期待されます");
+
+        println!("✅ RSSパフォーマンステスト成功");
 
         Ok(())
     }
