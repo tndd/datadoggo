@@ -1,7 +1,8 @@
+name: datadoggo
+
 services:
   postgres:
     image: postgres:16
-    container_name: datadoggo-postgres
     environment:
       POSTGRES_DB: datadoggo
       POSTGRES_USER: datadoggo
@@ -16,5 +17,71 @@ services:
       timeout: 3s
       retries: 3
 
+  # Firecrawl services
+  firecrawl-redis:
+    image: redis:alpine
+    command: redis-server --bind 0.0.0.0 --port 6379
+    ports:
+      - "16379:6379"
+    volumes:
+      - firecrawl_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  firecrawl-playwright:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    platform: linux/amd64
+    environment:
+      - PORT=3000
+      - PROXY_SERVER=
+      - BLOCK_MEDIA=true
+      - REDIS_URL=redis://firecrawl-redis:6379
+      - REDIS_RATE_LIMIT_URL=redis://firecrawl-redis:6379
+    ports:
+      - "13000:3000"
+    command: pnpm run start:playwright-service
+    depends_on:
+      firecrawl-redis:
+        condition: service_healthy
+
+  firecrawl-api:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    platform: linux/amd64
+    depends_on:
+      - firecrawl-redis
+      - firecrawl-playwright
+    environment:
+      - PORT=3002
+      - HOST=0.0.0.0
+      - REDIS_URL=redis://firecrawl-redis:6379
+      - REDIS_RATE_LIMIT_URL=redis://firecrawl-redis:6379
+      - PLAYWRIGHT_MICROSERVICE_URL=http://firecrawl-playwright:3000
+      - NUM_WORKERS_PER_QUEUE=2
+      - USE_DB_AUTHENTICATION=false
+      - BULL_AUTH_KEY=changeme
+    ports:
+      - "13002:3002"
+    command: pnpm run start:production
+
+  firecrawl-worker:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    platform: linux/amd64
+    depends_on:
+      - firecrawl-redis
+      - firecrawl-playwright
+      - firecrawl-api
+    environment:
+      - REDIS_URL=redis://firecrawl-redis:6379
+      - REDIS_RATE_LIMIT_URL=redis://firecrawl-redis:6379
+      - PLAYWRIGHT_MICROSERVICE_URL=http://firecrawl-playwright:3000
+      - NUM_WORKERS_PER_QUEUE=2
+      - USE_DB_AUTHENTICATION=false
+      - BULL_AUTH_KEY=changeme
+    command: pnpm run workers
+
 volumes:
   postgres_data:
+  firecrawl_redis_data:
