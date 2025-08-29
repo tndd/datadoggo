@@ -34,8 +34,8 @@ async fn main() {
     match read_firecrawl_from_file("mock/fc/bbc.json") {
         Ok(article) => {
             println!("BBCのFirecrawlデータを読み込みました。");
-            println!("タイトル: {:?}", article.metadata.title);
-            println!("URL: {:?}", article.metadata.url);
+            println!("URL: {}", article.url);
+            println!("Status Code: {:?}", article.status_code);
             println!("Markdownサイズ: {} characters", article.markdown.len());
 
             match save_firecrawl_article_to_db(&article).await {

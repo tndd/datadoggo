@@ -3,117 +3,59 @@ use crate::infra::db::DatabaseInsertResult;
 use crate::infra::loader::load_file;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
-use std::collections::HashMap;
+use sqlx::{FromRow, PgPool};
+use time::OffsetDateTime;
 
-// Firecrawl記事の情報を格納する構造体
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// Firecrawl記事構造体（テーブル定義と一致）
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct FirecrawlArticle {
-    pub markdown: String,
-    pub metadata: FirecrawlMetadata,
-}
-
-// Firecrawlのメタデータを格納する構造体
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FirecrawlMetadata {
-    pub favicon: Option<String>,
-    #[serde(rename = "page.section")]
-    pub page_section: Option<String>,
-    pub viewport: Option<Vec<String>>,
-    #[serde(rename = "og:image:alt")]
-    pub og_image_alt: Option<String>,
-    #[serde(rename = "theme-color")]
-    pub theme_color: Option<Vec<String>>,
-    pub title: Option<String>,
-    #[serde(rename = "al:android:package")]
-    pub al_android_package: Option<String>,
-    #[serde(rename = "page.subsection")]
-    pub page_subsection: Option<String>,
-    #[serde(rename = "ogTitle")]
-    pub og_title: Option<String>,
-    #[serde(rename = "next-head-count")]
-    pub next_head_count: Option<String>,
-    #[serde(rename = "al:ios:app_store_id")]
-    pub al_ios_app_store_id: Option<String>,
-    #[serde(rename = "og:image")]
-    pub og_image: Option<String>,
-    #[serde(rename = "og:description")]
-    pub og_description: Option<String>,
-    #[serde(rename = "ogDescription")]
-    pub og_description_alt: Option<String>,
-    pub robots: Option<String>,
-    #[serde(rename = "ogImage")]
-    pub og_image_alt_field: Option<String>,
-    #[serde(rename = "twitter:image:src")]
-    pub twitter_image_src: Option<String>,
-    #[serde(rename = "al:android:app_name")]
-    pub al_android_app_name: Option<String>,
-    pub description: Option<String>,
-    #[serde(rename = "al:ios:app_name")]
-    pub al_ios_app_name: Option<String>,
-    pub language: Option<String>,
-    #[serde(rename = "msapplication-TileColor")]
-    pub msapplication_tile_color: Option<String>,
-    #[serde(rename = "al:web:url")]
-    pub al_web_url: Option<String>,
-    #[serde(rename = "article:modified_time")]
-    pub article_modified_time: Option<String>,
-    #[serde(rename = "cXenseParse:publishtime")]
-    pub cxense_parse_publishtime: Option<String>,
-    #[serde(rename = "cXenseParse:author")]
-    pub cxense_parse_author: Option<String>,
-    #[serde(rename = "twitter:card")]
-    pub twitter_card: Option<String>,
-    #[serde(rename = "google-site-verification")]
-    pub google_site_verification: Option<String>,
-    #[serde(rename = "color-scheme")]
-    pub color_scheme: Option<String>,
-    #[serde(rename = "twitter:description")]
-    pub twitter_description: Option<String>,
-    pub version: Option<String>,
-    #[serde(rename = "og:title")]
-    pub og_title_alt: Option<String>,
-    #[serde(rename = "al:ios:url")]
-    pub al_ios_url: Option<String>,
-    #[serde(rename = "twitter:image:alt")]
-    pub twitter_image_alt: Option<String>,
-    #[serde(rename = "cXenseParse:pageclass")]
-    pub cxense_parse_pageclass: Option<String>,
-    #[serde(rename = "al:android:url")]
-    pub al_android_url: Option<String>,
-    #[serde(rename = "apple-itunes-app")]
-    pub apple_itunes_app: Option<String>,
-    #[serde(rename = "twitter:title")]
-    pub twitter_title: Option<String>,
-    #[serde(rename = "scrapeId")]
-    pub scrape_id: Option<String>,
-    #[serde(rename = "sourceURL")]
-    pub source_url: Option<String>,
-    pub url: Option<String>,
-    #[serde(rename = "statusCode")]
+    pub url: String,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
     pub status_code: Option<i32>,
-    #[serde(rename = "contentType")]
-    pub content_type: Option<String>,
-    #[serde(rename = "proxyUsed")]
-    pub proxy_used: Option<String>,
-    #[serde(rename = "cacheState")]
-    pub cache_state: Option<String>,
-    #[serde(rename = "cachedAt")]
-    pub cached_at: Option<String>,
-    #[serde(rename = "creditsUsed")]
-    pub credits_used: Option<i32>,
-
-    // その他のフィールドをキャッチするため
-    #[serde(flatten)]
-    pub additional_fields: HashMap<String, serde_json::Value>,
+    pub markdown: String,
 }
 
-// ファイルからFirecrawlデータを読み込むヘルパー関数（loaderを使用）
+// ファイルからFirecrawlデータを読み込み、FirecrawlArticleに変換する
 pub fn read_firecrawl_from_file(file_path: &str) -> Result<FirecrawlArticle> {
     let buf_reader = load_file(file_path)?;
-    let article: FirecrawlArticle = serde_json::from_reader(buf_reader)
+    let json_value: serde_json::Value = serde_json::from_reader(buf_reader)
         .with_context(|| format!("Firecrawlファイルの解析に失敗: {}", file_path))?;
-    Ok(article)
+    
+    // JSONから必要な値を抽出
+    let markdown = json_value
+        .get("markdown")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("markdownフィールドが見つかりません"))?
+        .to_string();
+
+    let metadata = json_value
+        .get("metadata")
+        .ok_or_else(|| anyhow::anyhow!("metadataフィールドが見つかりません"))?;
+
+    // URLを取得（複数の候補から）
+    let url = metadata
+        .get("url")
+        .and_then(|v| v.as_str())
+        .or_else(|| metadata.get("sourceURL").and_then(|v| v.as_str()))
+        .ok_or_else(|| anyhow::anyhow!("URLが見つかりません"))?
+        .to_string();
+
+    // status_codeを取得
+    let status_code = metadata
+        .get("statusCode")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i32);
+
+    let now = OffsetDateTime::now_utc();
+    
+    Ok(FirecrawlArticle {
+        url,
+        created_at: now,
+        updated_at: now,
+        status_code,
+        markdown,
+    })
 }
 
 /// # 概要
@@ -123,7 +65,7 @@ pub fn read_firecrawl_from_file(file_path: &str) -> Result<FirecrawlArticle> {
 /// - 自動でデータベース接続プールを作成
 /// - マイグレーションを実行
 /// - Firecrawl記事を保存
-/// - 重複記事（同じURL）は保存をスキップ
+/// - 重複記事（同じURL）は更新
 ///
 /// ## 引数
 /// - `article`: 保存するFirecrawl記事
@@ -155,17 +97,6 @@ pub async fn save_firecrawl_article_with_pool(
         .await
         .context("トランザクションの開始に失敗しました")?;
 
-    // URLを取得（存在しない場合はエラーとする）
-    let url = article
-        .metadata
-        .url
-        .as_deref()
-        .or(article.metadata.source_url.as_deref())
-        .ok_or_else(|| anyhow::anyhow!("URLが見つかりません"))?;
-
-    // status_codeを抽出
-    let status_code = article.metadata.status_code;
-
     let result = sqlx::query!(
         r#"
         INSERT INTO firecrawl_articles (url, status_code, markdown)
@@ -175,8 +106,8 @@ pub async fn save_firecrawl_article_with_pool(
             markdown = EXCLUDED.markdown,
             updated_at = CURRENT_TIMESTAMP
         "#,
-        url,
-        status_code,
+        article.url,
+        article.status_code,
         article.markdown
     )
     .execute(&mut *tx)
@@ -206,13 +137,12 @@ mod tests {
 
         // 基本的なフィールドの検証
         assert!(!article.markdown.is_empty(), "markdownが空です");
-        assert!(article.metadata.title.is_some(), "タイトルがありません");
-        assert!(article.metadata.url.is_some(), "URLがありません");
+        assert!(!article.url.is_empty(), "URLが空です");
 
         println!("✅ Firecrawlデータの読み込みテスト成功");
-        println!("タイトル: {:?}", article.metadata.title);
-        println!("URL: {:?}", article.metadata.url);
+        println!("URL: {}", article.url);
         println!("Markdownサイズ: {} characters", article.markdown.len());
+        println!("Status Code: {:?}", article.status_code);
     }
 
     #[test]
@@ -230,60 +160,13 @@ mod tests {
         pool: PgPool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // テスト用のFirecrawl記事データを作成
-        let metadata = FirecrawlMetadata {
-            favicon: None,
-            page_section: None,
-            viewport: None,
-            og_image_alt: None,
-            theme_color: None,
-            title: Some("Test Firecrawl Article".to_string()),
-            al_android_package: None,
-            page_subsection: None,
-            og_title: None,
-            next_head_count: None,
-            al_ios_app_store_id: None,
-            og_image: None,
-            og_description: None,
-            og_description_alt: None,
-            robots: None,
-            og_image_alt_field: None,
-            twitter_image_src: None,
-            al_android_app_name: None,
-            description: Some("Test description for firecrawl".to_string()),
-            al_ios_app_name: None,
-            language: None,
-            msapplication_tile_color: None,
-            al_web_url: None,
-            article_modified_time: None,
-            cxense_parse_publishtime: None,
-            cxense_parse_author: None,
-            twitter_card: None,
-            google_site_verification: None,
-            color_scheme: None,
-            twitter_description: None,
-            version: None,
-            og_title_alt: None,
-            al_ios_url: None,
-            twitter_image_alt: None,
-            cxense_parse_pageclass: None,
-            al_android_url: None,
-            apple_itunes_app: None,
-            twitter_title: None,
-            scrape_id: None,
-            source_url: None,
-            url: Some("https://test.example.com/firecrawl".to_string()),
-            status_code: Some(200),
-            content_type: Some("text/html".to_string()),
-            proxy_used: None,
-            cache_state: None,
-            cached_at: Some("2025-08-27T10:00:00Z".to_string()),
-            credits_used: Some(1),
-            additional_fields: HashMap::new(),
-        };
-
+        let now = OffsetDateTime::now_utc();
         let test_article = FirecrawlArticle {
+            url: "https://test.example.com/firecrawl".to_string(),
+            created_at: now,
+            updated_at: now,
+            status_code: Some(200),
             markdown: "# Test Article\n\nThis is a test markdown content.".to_string(),
-            metadata,
         };
 
         // データベースに保存をテスト
@@ -316,72 +199,28 @@ mod tests {
     async fn test_duplicate_firecrawl_articles(
         pool: PgPool,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let now = OffsetDateTime::now_utc();
+        
         // 最初の記事を保存
-        let mut metadata = FirecrawlMetadata {
-            favicon: None,
-            page_section: None,
-            viewport: None,
-            og_image_alt: None,
-            theme_color: None,
-            title: Some("Original Article".to_string()),
-            al_android_package: None,
-            page_subsection: None,
-            og_title: None,
-            next_head_count: None,
-            al_ios_app_store_id: None,
-            og_image: None,
-            og_description: None,
-            og_description_alt: None,
-            robots: None,
-            og_image_alt_field: None,
-            twitter_image_src: None,
-            al_android_app_name: None,
-            description: None,
-            al_ios_app_name: None,
-            language: None,
-            msapplication_tile_color: None,
-            al_web_url: None,
-            article_modified_time: None,
-            cxense_parse_publishtime: None,
-            cxense_parse_author: None,
-            twitter_card: None,
-            google_site_verification: None,
-            color_scheme: None,
-            twitter_description: None,
-            version: None,
-            og_title_alt: None,
-            al_ios_url: None,
-            twitter_image_alt: None,
-            cxense_parse_pageclass: None,
-            al_android_url: None,
-            apple_itunes_app: None,
-            twitter_title: None,
-            scrape_id: None,
-            source_url: None,
-            url: Some("https://test.example.com/duplicate".to_string()),
-            status_code: Some(200),
-            content_type: None,
-            proxy_used: None,
-            cache_state: None,
-            cached_at: None,
-            credits_used: None,
-            additional_fields: HashMap::new(),
-        };
-
         let original_article = FirecrawlArticle {
+            url: "https://test.example.com/duplicate".to_string(),
+            created_at: now,
+            updated_at: now,
+            status_code: Some(200),
             markdown: "Original content".to_string(),
-            metadata: metadata.clone(),
         };
 
         // 最初の記事を保存
         let result1 = save_firecrawl_article_with_pool(&original_article, &pool).await?;
         assert_eq!(result1.inserted, 1);
 
-        // 同じURLで違うタイトルの記事を作成（重複）
-        metadata.title = Some("Different Title".to_string());
+        // 同じURLで違う内容の記事を作成（重複）
         let duplicate_article = FirecrawlArticle {
+            url: "https://test.example.com/duplicate".to_string(),
+            created_at: now,
+            updated_at: now,
+            status_code: Some(404),
             markdown: "Different content".to_string(),
-            metadata,
         };
 
         // 重複記事を保存しようとする（新しい仕様では更新される）
