@@ -1,11 +1,10 @@
 use crate::infra::db::setup_database;
-use crate::infra::loader::load_file;
 use crate::infra::db::DatabaseInsertResult;
+use crate::infra::loader::load_file;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
-
 
 // Firecrawl記事の情報を格納する構造体
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,40 +155,29 @@ pub async fn save_firecrawl_article_with_pool(
         .await
         .context("トランザクションの開始に失敗しました")?;
 
-    // メタデータをJSONに変換
-    let metadata_json = serde_json::to_value(&article.metadata)
-        .context("メタデータのJSONシリアライズに失敗しました")?;
-
-    // URLを取得（存在しない場合はデフォルト値を使用）
+    // URLを取得（存在しない場合はエラーとする）
     let url = article
         .metadata
         .url
         .as_deref()
         .or(article.metadata.source_url.as_deref())
-        .unwrap_or("unknown");
+        .ok_or_else(|| anyhow::anyhow!("URLが見つかりません"))?;
 
-    // タイトルを取得
-    let title = article
-        .metadata
-        .title
-        .as_deref()
-        .or(article.metadata.og_title.as_deref())
-        .or(article.metadata.og_title_alt.as_deref());
-
-    // cached_atを解析してTimestamp用の値を作成
-    let scraped_at_str = article.metadata.cached_at.as_deref();
+    // status_codeを抽出
+    let status_code = article.metadata.status_code;
 
     let result = sqlx::query!(
         r#"
-        INSERT INTO firecrawl_articles (url, title, markdown_content, metadata_json, scraped_at)
-        VALUES ($1, $2, $3, $4, $5::text::timestamp)
-        ON CONFLICT (url) DO NOTHING
+        INSERT INTO firecrawl_articles (url, markdown, status_code)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (url) DO UPDATE SET 
+            markdown = EXCLUDED.markdown,
+            status_code = EXCLUDED.status_code,
+            updated_at = CURRENT_TIMESTAMP
         "#,
         url,
-        title,
         article.markdown,
-        metadata_json,
-        scraped_at_str
+        status_code
     )
     .execute(&mut *tx)
     .await
@@ -303,7 +291,10 @@ mod tests {
 
         // SaveResultの検証
         assert_eq!(result.inserted, 1, "新規挿入された記事数が期待と異なります");
-        assert_eq!(result.skipped_duplicate, 0, "重複スキップ数が期待と異なります");
+        assert_eq!(
+            result.skipped_duplicate, 0,
+            "重複スキップ数が期待と異なります"
+        );
 
         // 実際にデータベースに保存されたことを確認
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM firecrawl_articles")
@@ -312,7 +303,10 @@ mod tests {
         assert_eq!(count, 1, "期待する件数(1件)が保存されませんでした");
 
         println!("✅ Firecrawl記事保存件数検証成功: {}件", result.inserted);
-        println!("✅ Firecrawl SaveResult検証成功: {}", result.display_with_domain("Firecrawlドキュメント"));
+        println!(
+            "✅ Firecrawl SaveResult検証成功: {}",
+            result.display_with_domain("Firecrawlドキュメント")
+        );
 
         Ok(())
     }
@@ -390,15 +384,15 @@ mod tests {
             metadata,
         };
 
-        // 重複記事を保存しようとする
+        // 重複記事を保存しようとする（新しい仕様では更新される）
         let result2 = save_firecrawl_article_with_pool(&duplicate_article, &pool).await?;
 
-        // SaveResultの検証
+        // SaveResultの検証（更新される場合、inserted=1として扱う）
+        assert_eq!(result2.inserted, 1, "重複URLの記事は更新されるべきです");
         assert_eq!(
-            result2.inserted, 0,
-            "重複記事が新規挿入されるべきではありません"
+            result2.skipped_duplicate, 0,
+            "重複スキップ数が期待と異なります"
         );
-        assert_eq!(result2.skipped_duplicate, 1, "重複スキップ数が期待と異なります");
 
         // データベースの件数は1件のまま
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM firecrawl_articles")
