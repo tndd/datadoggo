@@ -189,9 +189,7 @@ mod tests {
 
     // テスト例2: Firecrawl記事の重複処理テスト
     #[sqlx::test]
-    async fn test_duplicate_firecrawl_articles(
-        pool: PgPool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_duplicate_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
         let now = OffsetDateTime::now_utc();
 
         // 最初の記事を保存
