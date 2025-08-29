@@ -1,4 +1,4 @@
--- RSS記事取得機能のテスト用データ
+-- RSS記事の包括的テストデータ（取得機能、境界テスト、重複処理など）
 INSERT INTO rss_articles (link, title, description, pub_date) VALUES
 -- 基本的なテストデータ
 ('https://example.com/tech/article-2025-01-15', 'Tech News 2025', 'Latest technology updates', '2025-01-15T10:00:00Z'),

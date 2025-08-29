@@ -298,7 +298,8 @@ mod tests {
                 </rss>
                 "#;
 
-            let channel = parse_channel_from_xml(xml_missing_link).expect("Failed to parse test RSS");
+            let channel =
+                parse_channel_from_xml(xml_missing_link).expect("Failed to parse test RSS");
             let articles = extract_rss_articles_from_channel(&channel);
 
             assert_eq!(articles.len(), 1, "リンクがない記事は除外されるはず");
@@ -342,7 +343,7 @@ mod tests {
         #[sqlx::test]
         async fn test_save_articles_to_db(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
             // テスト用記事データを作成（多様性のあるデータ）
-            let test_articles = vec![
+            let rss_basic = vec![
                 RssArticle {
                     title: "Test Article 1".to_string(),
                     link: "https://test.example.com/article1".to_string(),
@@ -364,7 +365,7 @@ mod tests {
             ];
 
             // データベースに保存をテスト
-            let result = save_rss_articles_with_pool(&test_articles, &pool).await?;
+            let result = save_rss_articles_with_pool(&rss_basic, &pool).await?;
 
             // SaveResultの検証
             assert_eq!(result.inserted, 3, "新規挿入された記事数が期待と異なります");
@@ -380,14 +381,16 @@ mod tests {
             assert_eq!(count, 3, "期待する件数(3件)が保存されませんでした");
 
             // NULL descriptionの記事が正しく保存されたか確認
-            let null_desc_article = sqlx::query_as::<_, RssArticle>(
-                "SELECT * FROM rss_articles WHERE link = $1"
-            )
-            .bind("https://different.domain.com/post")
-            .fetch_one(&pool)
-            .await?;
-            
-            assert!(null_desc_article.description.is_none(), "NULL descriptionが正しく保存されていません");
+            let null_desc_article =
+                sqlx::query_as::<_, RssArticle>("SELECT * FROM rss_articles WHERE link = $1")
+                    .bind("https://different.domain.com/post")
+                    .fetch_one(&pool)
+                    .await?;
+
+            assert!(
+                null_desc_article.description.is_none(),
+                "NULL descriptionが正しく保存されていません"
+            );
 
             println!("✅ RSS保存件数検証成功: {}件", result.inserted);
             println!(
@@ -398,14 +401,14 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("duplicate_articles"))]
+        #[sqlx::test(fixtures("rss_basic"))]
         async fn test_duplicate_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
-            // fixtureで既に1件のデータが存在している状態
+            // fixtureで既に6件のデータが存在している状態
 
             // 同じリンクの記事を作成（重複）
             let duplicate_article = RssArticle {
                 title: "異なるタイトル".to_string(),
-                link: "https://test.example.com/duplicate".to_string(), // fixtureと同じリンク
+                link: "https://test.example.com/article1".to_string(), // fixtureと同じリンク
                 description: Some("重複テストの記事".to_string()),
                 pub_date: Some("2025-08-26T13:00:00Z".to_string()),
             };
@@ -423,11 +426,11 @@ mod tests {
                 "重複スキップ数が期待と異なります"
             );
 
-            // データベースの件数は変わらない
+            // データベースの件数は変わらない（6件のまま）
             let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
                 .fetch_one(&pool)
                 .await?;
-            assert_eq!(count, 1, "重複記事が挿入され、件数が変わってしまいました");
+            assert_eq!(count, 6, "重複記事が挿入され、件数が変わってしまいました");
 
             println!("✅ RSS重複スキップ検証成功: {}", result);
 
@@ -457,7 +460,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("test_articles"))]
+        #[sqlx::test(fixtures("rss_basic"))]
         async fn test_mixed_new_and_existing_articles(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -510,7 +513,7 @@ mod tests {
     mod retrieval_tests {
         use super::*;
 
-        #[sqlx::test(fixtures("rss_retrieval_test"))]
+        #[sqlx::test(fixtures("rss_comprehensive"))]
         async fn test_get_all_rss_articles_comprehensive(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -546,8 +549,10 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_retrieval_test"))]
-        async fn test_date_boundary_edge_cases(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        #[sqlx::test(fixtures("rss_comprehensive"))]
+        async fn test_date_boundary_edge_cases(
+            pool: PgPool,
+        ) -> Result<(), Box<dyn std::error::Error>> {
             // 2025-01-15の境界テスト
 
             // 開始時刻ちょうどを含む検索
@@ -565,7 +570,8 @@ mod tests {
                 "2025-01-15の境界記事が期待通り取得されません"
             );
 
-            let boundary_links: Vec<&str> = articles_boundary.iter().map(|a| a.link.as_str()).collect();
+            let boundary_links: Vec<&str> =
+                articles_boundary.iter().map(|a| a.link.as_str()).collect();
             assert!(boundary_links.contains(&"https://test.com/boundary/exactly-start"));
             assert!(boundary_links.contains(&"https://test.com/boundary/exactly-end"));
             assert!(boundary_links.contains(&"https://example.com/tech/article-2025-01-15"));
@@ -582,7 +588,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_retrieval_test"))]
+        #[sqlx::test(fixtures("rss_comprehensive"))]
         async fn test_get_rss_articles_by_date_range(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -593,7 +599,8 @@ mod tests {
                 ..Default::default()
             };
 
-            let articles_start = get_rss_articles_with_pool(Some(filter_start_boundary), &pool).await?;
+            let articles_start =
+                get_rss_articles_with_pool(Some(filter_start_boundary), &pool).await?;
             assert_eq!(
                 articles_start.len(),
                 1,
@@ -641,7 +648,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_retrieval_test"))]
+        #[sqlx::test(fixtures("rss_comprehensive"))]
         async fn test_get_rss_articles_by_combined_filter(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -682,7 +689,8 @@ mod tests {
                 ..Default::default()
             };
 
-            let articles_specific = get_rss_articles_with_pool(Some(filter_specific), &pool).await?;
+            let articles_specific =
+                get_rss_articles_with_pool(Some(filter_specific), &pool).await?;
             assert_eq!(
                 articles_specific.len(),
                 1,
@@ -698,13 +706,16 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_retrieval_test"))]
-        async fn test_get_rss_article_by_link(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        #[sqlx::test(fixtures("rss_comprehensive"))]
+        async fn test_get_rss_article_by_link(
+            pool: PgPool,
+        ) -> Result<(), Box<dyn std::error::Error>> {
             // 存在する記事の正確な取得
             let tech_article = get_rss_article_by_link_with_pool(
-                "https://example.com/tech/article-2025-01-15", 
-                &pool
-            ).await?;
+                "https://example.com/tech/article-2025-01-15",
+                &pool,
+            )
+            .await?;
 
             assert!(tech_article.is_some(), "指定された記事が見つかりません");
             let article = tech_article.unwrap();
@@ -716,23 +727,24 @@ mod tests {
 
             // 大小文字が異なるURLでの取得（完全一致のため失敗するはず）
             let case_different = get_rss_article_by_link_with_pool(
-                "https://EXAMPLE.COM/tech/article-2025-01-15", 
-                &pool
-            ).await?;
+                "https://EXAMPLE.COM/tech/article-2025-01-15",
+                &pool,
+            )
+            .await?;
             assert!(
                 case_different.is_none(),
                 "大小文字が異なるURLで記事が取得されました"
             );
 
             // 部分一致では取得できないことを確認
-            let partial_match = get_rss_article_by_link_with_pool("example.com/tech", &pool).await?;
+            let partial_match =
+                get_rss_article_by_link_with_pool("example.com/tech", &pool).await?;
             assert!(partial_match.is_none(), "部分一致で記事が取得されました");
 
             // NULL descriptionの記事取得テスト
-            let null_desc_article = get_rss_article_by_link_with_pool(
-                "https://null-test.com/no-description", 
-                &pool
-            ).await?;
+            let null_desc_article =
+                get_rss_article_by_link_with_pool("https://null-test.com/no-description", &pool)
+                    .await?;
             assert!(
                 null_desc_article.is_some(),
                 "NULL descriptionの記事が取得できません"
@@ -753,7 +765,7 @@ mod tests {
     mod edge_case_tests {
         use super::*;
 
-        #[sqlx::test(fixtures("rss_retrieval_test"))]
+        #[sqlx::test(fixtures("rss_comprehensive"))]
         async fn test_get_rss_articles_no_match(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -782,17 +794,29 @@ mod tests {
                 ..Default::default()
             };
 
-            let articles_underscore = get_rss_articles_with_pool(Some(filter_underscore), &pool).await?;
-            assert_eq!(articles_underscore.len(), 1, "アンダースコア検索が機能していません");
-            assert!(articles_underscore[0].link.contains("article_with_underscore"), "期待される記事がマッチしていません");
+            let articles_underscore =
+                get_rss_articles_with_pool(Some(filter_underscore), &pool).await?;
+            assert_eq!(
+                articles_underscore.len(),
+                1,
+                "アンダースコア検索が機能していません"
+            );
+            assert!(
+                articles_underscore[0]
+                    .link
+                    .contains("article_with_underscore"),
+                "期待される記事がマッチしていません"
+            );
 
             println!("✅ RSSリンク際どい絞り込みテスト成功");
 
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_retrieval_test"))]
-        async fn test_complex_combined_filters(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        #[sqlx::test(fixtures("rss_comprehensive"))]
+        async fn test_complex_combined_filters(
+            pool: PgPool,
+        ) -> Result<(), Box<dyn std::error::Error>> {
             // 非常に狭い時間範囲 + URL条件
             let filter_narrow = RssArticleFilter {
                 link_contains: Some("example.com".to_string()),
@@ -829,7 +853,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_retrieval_test"))]
+        #[sqlx::test(fixtures("rss_comprehensive"))]
         async fn test_null_value_handling(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
             // pub_dateがNULLの記事は日付範囲検索に含まれないことを確認
             let filter_with_date = RssArticleFilter {
@@ -837,7 +861,8 @@ mod tests {
                 ..Default::default()
             };
 
-            let articles_with_date = get_rss_articles_with_pool(Some(filter_with_date), &pool).await?;
+            let articles_with_date =
+                get_rss_articles_with_pool(Some(filter_with_date), &pool).await?;
 
             // pub_dateがNULLの記事は含まれないことを確認
             for article in &articles_with_date {
@@ -848,10 +873,9 @@ mod tests {
             }
 
             // 個別記事取得でdescriptionがNULLの記事が正常に取得できることを確認
-            let null_desc_article = get_rss_article_by_link_with_pool(
-                "https://null-test.com/no-description", 
-                &pool
-            ).await?;
+            let null_desc_article =
+                get_rss_article_by_link_with_pool("https://null-test.com/no-description", &pool)
+                    .await?;
 
             assert!(
                 null_desc_article.is_some(),
@@ -869,8 +893,10 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_retrieval_test"))]
-        async fn test_performance_edge_cases(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        #[sqlx::test(fixtures("rss_comprehensive"))]
+        async fn test_performance_edge_cases(
+            pool: PgPool,
+        ) -> Result<(), Box<dyn std::error::Error>> {
             // 空文字列での検索
             let filter_empty = RssArticleFilter {
                 link_contains: Some("".to_string()),

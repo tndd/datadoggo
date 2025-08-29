@@ -1,4 +1,4 @@
--- テスト用のRSS記事データ（基本的な保存・取得機能のテスト用）
+-- RSS記事の基本テストデータ（シンプルな保存・取得機能のテスト用）
 INSERT INTO rss_articles (link, title, description, pub_date) VALUES
 -- 基本的なテストデータ（異なる時刻）
 ('https://test.example.com/article1', 'テスト記事1', 'これはテスト記事の説明1です', '2025-08-26T10:00:00Z'),
