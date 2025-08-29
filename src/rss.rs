@@ -401,9 +401,9 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_basic"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_duplicate_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
-            // fixtureで既に6件のデータが存在している状態
+            // fixtureで既に19件のデータが存在している状態
 
             // 同じリンクの記事を作成（重複）
             let duplicate_article = RssArticle {
@@ -426,11 +426,11 @@ mod tests {
                 "重複スキップ数が期待と異なります"
             );
 
-            // データベースの件数は変わらない（6件のまま）
+            // データベースの件数は変わらない（19件のまま）
             let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
                 .fetch_one(&pool)
                 .await?;
-            assert_eq!(count, 6, "重複記事が挿入され、件数が変わってしまいました");
+            assert_eq!(count, 19, "重複記事が挿入され、件数が変わってしまいました");
 
             println!("✅ RSS重複スキップ検証成功: {}", result);
 
@@ -460,11 +460,11 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_basic"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_mixed_new_and_existing_articles(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
-            // fixtureで既に6件のデータが存在している状態
+            // fixtureで既に19件のデータが存在している状態
 
             // 1件は既存（重複）、2件は新規のデータを作成
             let mixed_articles = vec![
@@ -497,11 +497,11 @@ mod tests {
                 "既存記事1件がスキップされるべきです"
             );
 
-            // 最終的にデータベースには8件（fixture 6件 + 新規 2件）
+            // 最終的にデータベースには21件（fixture 19件 + 新規 2件）
             let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
                 .fetch_one(&pool)
                 .await?;
-            assert_eq!(count, 8, "期待する件数(8件)と異なります");
+            assert_eq!(count, 21, "期待する件数(21件)と異なります");
 
             println!("✅ RSS混在データ処理検証成功: {}", result);
 
@@ -513,16 +513,16 @@ mod tests {
     mod retrieval_tests {
         use super::*;
 
-        #[sqlx::test(fixtures("rss_comprehensive"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_get_all_rss_articles_comprehensive(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
-            // 新フィクスチャで15件のデータが存在
+            // 統合フィクスチャで19件のデータが存在
 
             let articles = get_rss_articles_with_pool(None, &pool).await?;
 
             // 全件取得されることを確認（pub_dateがNULLの1件を除く）
-            assert!(articles.len() >= 14, "全件取得で最低14件が期待されます");
+            assert!(articles.len() >= 18, "全件取得で最低18件が期待されます");
 
             // 日付順（降順）でソートされていることを確認
             let mut prev_date: Option<&str> = None;
@@ -549,7 +549,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_comprehensive"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_date_boundary_edge_cases(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -588,7 +588,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_comprehensive"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_get_rss_articles_by_date_range(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -648,7 +648,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_comprehensive"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_get_rss_articles_by_combined_filter(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -706,7 +706,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_comprehensive"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_get_rss_article_by_link(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -765,7 +765,7 @@ mod tests {
     mod edge_case_tests {
         use super::*;
 
-        #[sqlx::test(fixtures("rss_comprehensive"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_get_rss_articles_no_match(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -813,7 +813,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_comprehensive"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_complex_combined_filters(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
@@ -853,7 +853,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_comprehensive"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_null_value_handling(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
             // pub_dateがNULLの記事は日付範囲検索に含まれないことを確認
             let filter_with_date = RssArticleFilter {
@@ -893,7 +893,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_comprehensive"))]
+        #[sqlx::test(fixtures("rss"))]
         async fn test_performance_edge_cases(
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
