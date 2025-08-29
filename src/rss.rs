@@ -72,7 +72,7 @@ pub async fn save_rss_links_with_pool(
     pool: &PgPool,
 ) -> Result<DatabaseInsertResult> {
     if rss_links.is_empty() {
-        return Ok(DatabaseInsertResxult::empty());
+        return Ok(DatabaseInsertResult::empty());
     }
 
     let mut tx = pool
