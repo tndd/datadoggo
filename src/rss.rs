@@ -1,16 +1,15 @@
 use crate::infra::db::setup_database;
-use crate::infra::loader::load_file;
 use crate::infra::db::DatabaseInsertResult;
+use crate::infra::loader::load_file;
 use anyhow::{Context, Result};
 use rss::Channel;
 use sqlx::PgPool;
 
-
 // RSS記事の情報を格納する構造体
 #[derive(Debug, Clone)]
 pub struct RssArticle {
-    pub title: String,
     pub link: String,
+    pub title: String,
     pub description: Option<String>,
     pub pub_date: Option<String>,
 }
@@ -22,8 +21,8 @@ pub fn extract_rss_articles_from_channel(channel: &Channel) -> Vec<RssArticle> {
     for item in channel.items() {
         if let Some(link) = item.link() {
             let article = RssArticle {
-                title: item.title().unwrap_or("タイトルなし").to_string(),
                 link: link.to_string(),
+                title: item.title().unwrap_or("タイトルなし").to_string(),
                 description: item.description().map(|d| d.to_string()),
                 pub_date: item.pub_date().map(|d| d.to_string()),
             };
@@ -66,7 +65,7 @@ pub async fn save_rss_articles_to_db(articles: &[RssArticle]) -> Result<Database
 /// # 概要
 /// RssArticleの配列を指定されたデータベースプールに保存する。
 /// 既にプールを準備している場合は `save_rss_articles_to_db` ではなく、この関数を使用する。
-/// 
+///
 /// # Note
 /// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
 pub async fn save_rss_articles_with_pool(
@@ -77,7 +76,9 @@ pub async fn save_rss_articles_with_pool(
         return Ok(DatabaseInsertResult::empty());
     }
 
-    let mut tx = pool.begin().await
+    let mut tx = pool
+        .begin()
+        .await
         .context("トランザクションの開始に失敗しました")?;
     let mut total_inserted = 0;
 
@@ -85,25 +86,26 @@ pub async fn save_rss_articles_with_pool(
     for article in articles {
         let result = sqlx::query!(
             r#"
-            INSERT INTO rss_articles (title, link, description, pub_date)
+            INSERT INTO rss_articles (link, title, description, pub_date)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (link) DO NOTHING
             "#,
-            article.title,
             article.link,
+            article.title,
             article.description,
             article.pub_date
         )
         .execute(&mut *tx)
         .await
         .context("記事のデータベースへの挿入に失敗しました")?;
-        
+
         if result.rows_affected() > 0 {
             total_inserted += 1;
         }
     }
 
-    tx.commit().await
+    tx.commit()
+        .await
         .context("トランザクションのコミットに失敗しました")?;
 
     Ok(DatabaseInsertResult::new(
@@ -224,7 +226,7 @@ mod tests {
     }
 
     // データベース保存機能のテスト
-    
+
     // テスト例1: 基本的な保存機能のテスト
     #[sqlx::test]
     async fn test_save_articles_to_db(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
@@ -249,7 +251,10 @@ mod tests {
 
         // SaveResultの検証
         assert_eq!(result.inserted, 2, "新規挿入された記事数が期待と異なります");
-        assert_eq!(result.skipped_duplicate, 0, "重複スキップ数が期待と異なります");
+        assert_eq!(
+            result.skipped_duplicate, 0,
+            "重複スキップ数が期待と異なります"
+        );
 
         // 実際にデータベースに保存されたことを確認
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
@@ -258,7 +263,10 @@ mod tests {
         assert_eq!(count, 2, "期待する件数(2件)が保存されませんでした");
 
         println!("✅ RSS保存件数検証成功: {}件", result.inserted);
-        println!("✅ RSS SaveResult検証成功: {}", result.display_with_domain("RSS記事"));
+        println!(
+            "✅ RSS SaveResult検証成功: {}",
+            result.display_with_domain("RSS記事")
+        );
 
         Ok(())
     }
@@ -284,7 +292,10 @@ mod tests {
             result.inserted, 0,
             "重複記事が新規挿入されるべきではありません"
         );
-        assert_eq!(result.skipped_duplicate, 1, "重複スキップ数が期待と異なります");
+        assert_eq!(
+            result.skipped_duplicate, 1,
+            "重複スキップ数が期待と異なります"
+        );
 
         // データベースの件数は変わらない
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
@@ -305,7 +316,10 @@ mod tests {
 
         // 空配列の結果検証
         assert_eq!(result.inserted, 0, "空配列の新規挿入数は0であるべきです");
-        assert_eq!(result.skipped_duplicate, 0, "空配列の重複スキップ数は0であるべきです");
+        assert_eq!(
+            result.skipped_duplicate, 0,
+            "空配列の重複スキップ数は0であるべきです"
+        );
 
         // データベースには何も挿入されていない
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")
@@ -320,7 +334,9 @@ mod tests {
 
     // テスト例4: 既存データと新規データが混在した場合のテスト
     #[sqlx::test(fixtures("test_articles"))]
-    async fn test_mixed_new_and_existing_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_mixed_new_and_existing_articles(
+        pool: PgPool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // fixtureで既に2件のデータが存在している状態
 
         // 1件は既存（重複）、1件は新規のデータを作成
@@ -343,7 +359,10 @@ mod tests {
 
         // SaveResultの検証
         assert_eq!(result.inserted, 1, "新規記事1件が挿入されるべきです");
-        assert_eq!(result.skipped_duplicate, 1, "既存記事1件がスキップされるべきです");
+        assert_eq!(
+            result.skipped_duplicate, 1,
+            "既存記事1件がスキップされるべきです"
+        );
 
         // 最終的にデータベースには3件（fixture 2件 + 新規 1件）
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_articles")

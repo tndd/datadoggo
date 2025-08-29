@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS rss_articles (
-    title       TEXT NOT NULL,
     link        TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
     description TEXT,
     pub_date    TEXT
 );
