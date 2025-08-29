@@ -14,10 +14,10 @@ async fn main() {
     println!("=== RSS処理を開始 ===");
     match read_channel_from_file("mock/rss/bbc.rss") {
         Ok(channel) => {
-            let articles = extract_rss_articles_from_channel(&channel);
-            println!("BBCのRSSから{}件の記事を抽出しました。", articles.len());
+            let links = extract_rss_links_from_channel(&channel);
+            println!("BBCのRSSから{}件のリンクを抽出しました。", links.len());
 
-            match save_rss_articles_to_db(&articles).await {
+            match save_rss_links_to_db(&links).await {
                 Ok(result) => {
                     println!("{}", result);
                 }
