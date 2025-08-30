@@ -82,16 +82,16 @@ pub async fn save_rss_links_with_pool(
     let mut total_inserted = 0;
 
     // sqlx::query!マクロを使用してコンパイル時にSQLを検証
-    for link in rss_links {
+    for rss_link in rss_links {
         let result = sqlx::query!(
             r#"
             INSERT INTO rss_links (link, title, pub_date)
             VALUES ($1, $2, $3)
             ON CONFLICT (link) DO NOTHING
             "#,
-            link.link,
-            link.title,
-            link.pub_date
+            rss_link.link,
+            rss_link.title,
+            rss_link.pub_date
         )
         .execute(&mut *tx)
         .await
@@ -414,7 +414,11 @@ mod tests {
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
                 .fetch_one(&pool)
                 .await?;
-            assert_eq!(count, Some(17), "重複記事が挿入され、件数が変わってしまいました");
+            assert_eq!(
+                count,
+                Some(17),
+                "重複記事が挿入され、件数が変わってしまいました"
+            );
 
             println!("✅ RSS重複スキップ検証成功: {}", result);
 
