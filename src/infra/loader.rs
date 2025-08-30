@@ -20,6 +20,13 @@ pub fn load_channel_from_xml_file(file_path: &str) -> Result<Channel> {
         .with_context(|| format!("RSSファイルの解析に失敗: {}", file_path))
 }
 
+/// JSONファイルからserde_json::Valueを読み込む
+pub fn load_json_from_file(file_path: &str) -> Result<serde_json::Value> {
+    let buf_reader = load_file(file_path)?;
+    serde_json::from_reader(buf_reader)
+        .with_context(|| format!("JSONファイルの解析に失敗: {}", file_path))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

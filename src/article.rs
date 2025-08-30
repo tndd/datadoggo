@@ -1,5 +1,4 @@
 use crate::infra::db::DatabaseInsertResult;
-use crate::infra::loader::load_file;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -14,47 +13,7 @@ pub struct Article {
     pub content: String,
 }
 
-// ファイルからFirecrawlデータを読み込み、Articleに変換する
-pub fn read_article_from_file(file_path: &str) -> Result<Article> {
-    let buf_reader = load_file(file_path)?;
-    let json_value: serde_json::Value = serde_json::from_reader(buf_reader)
-        .with_context(|| format!("Firecrawlファイルの解析に失敗: {}", file_path))?;
 
-    // JSONから必要な値を抽出
-    let content = json_value
-        .get("markdown")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("markdownフィールドが見つかりません"))?
-        .to_string();
-
-    let metadata = json_value
-        .get("metadata")
-        .ok_or_else(|| anyhow::anyhow!("metadataフィールドが見つかりません"))?;
-
-    // URLを取得（複数の候補から）
-    let url = metadata
-        .get("url")
-        .and_then(|v| v.as_str())
-        .or_else(|| metadata.get("sourceURL").and_then(|v| v.as_str()))
-        .ok_or_else(|| anyhow::anyhow!("URLが見つかりません"))?
-        .to_string();
-
-    // status_codeを取得（必須）
-    let status_code = metadata
-        .get("statusCode")
-        .and_then(|v| v.as_i64())
-        .map(|v| v as i32)
-        .ok_or_else(|| anyhow::anyhow!("statusCodeフィールドが見つかりません"))?;
-
-    let now = Utc::now();
-
-    Ok(Article {
-        url,
-        timestamp: now,
-        status_code,
-        content,
-    })
-}
 
 
 
@@ -155,6 +114,47 @@ pub async fn search_articles(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::loader::load_json_from_file;
+
+    // ファイルからFirecrawlデータを読み込み、Articleに変換する
+    fn read_article_from_file(file_path: &str) -> Result<Article> {
+        let json_value = load_json_from_file(file_path)?;
+
+        // JSONから必要な値を抽出
+        let content = json_value
+            .get("markdown")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("markdownフィールドが見つかりません"))?
+            .to_string();
+
+        let metadata = json_value
+            .get("metadata")
+            .ok_or_else(|| anyhow::anyhow!("metadataフィールドが見つかりません"))?;
+
+        // URLを取得（複数の候補から）
+        let url = metadata
+            .get("url")
+            .and_then(|v| v.as_str())
+            .or_else(|| metadata.get("sourceURL").and_then(|v| v.as_str()))
+            .ok_or_else(|| anyhow::anyhow!("URLが見つかりません"))?
+            .to_string();
+
+        // status_codeを取得（必須）
+        let status_code = metadata
+            .get("statusCode")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32)
+            .ok_or_else(|| anyhow::anyhow!("statusCodeフィールドが見つかりません"))?;
+
+        let now = Utc::now();
+
+        Ok(Article {
+            url,
+            timestamp: now,
+            status_code,
+            content,
+        })
+    }
 
     #[test]
     fn test_read_article_from_file() {
