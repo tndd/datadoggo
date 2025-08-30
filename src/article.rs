@@ -1,4 +1,3 @@
-use crate::infra::db::setup_database;
 use crate::infra::db::DatabaseInsertResult;
 use crate::infra::loader::load_file;
 use anyhow::{Context, Result};
@@ -57,35 +56,14 @@ pub fn read_article_from_file(file_path: &str) -> Result<Article> {
     })
 }
 
-/// # 概要
-/// Articleをデータベースに保存する。
-///
-/// ## 動作
-/// - 自動でデータベース接続プールを作成
-/// - マイグレーションを実行
-/// - Firecrawl記事を保存
-/// - 重複記事（同じURL）は更新
-///
-/// ## 引数
-/// - `article`: 保存する記事
-///
-/// ## 戻り値
-/// - `DatabaseInsertResult`: 保存件数の詳細
-///
-/// ## エラー
-/// 操作失敗時には全ての操作をロールバックする。
-pub async fn save_article_to_db(article: &Article) -> Result<DatabaseInsertResult> {
-    let pool = setup_database().await?;
-    save_article_with_pool(article, &pool).await
-}
+
 
 /// # 概要
 /// Articleを指定されたデータベースプールに保存する。
-/// 既にプールを準備している場合は `save_article_to_db` ではなく、この関数を使用する。
 ///
 /// # Note
 /// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
-pub async fn save_article_with_pool(
+pub async fn save_article(
     article: &Article,
     pool: &PgPool,
 ) -> Result<DatabaseInsertResult> {
@@ -129,29 +107,14 @@ pub struct ArticleQuery {
     pub status_code: Option<i32>,
 }
 
-/// # 概要
-/// データベースからArticle記事を取得する。
-///
-/// ## 動作
-/// - 自動でデータベース接続プールを作成
-/// - 指定された条件でArticle記事を取得
-///
-/// ## 引数
-/// - `filter`: フィルター条件。Noneの場合は全件取得
-///
-/// ## 戻り値
-/// - `Vec<Article>`: 条件にマッチしたArticle記事のリスト
-pub async fn search_articles_from_db(filter: Option<ArticleQuery>) -> Result<Vec<Article>> {
-    let pool = setup_database().await?;
-    search_articles_with_pool(filter, &pool).await
-}
+
 
 /// 指定されたデータベースプールからArticleを取得する。
-pub async fn search_articles_with_pool(
-    filter: Option<ArticleQuery>,
+pub async fn search_articles(
+    query: Option<ArticleQuery>,
     pool: &PgPool,
 ) -> Result<Vec<Article>> {
-    let filter = filter.unwrap_or_default();
+    let filter = query.unwrap_or_default();
 
     // QueryBuilderベースで動的にクエリを構築
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
@@ -272,7 +235,7 @@ mod tests {
         };
 
         // データベースに保存をテスト
-        let result = save_article_with_pool(&test_article, &pool).await?;
+        let result = save_article(&test_article, &pool).await?;
 
         // SaveResultの検証
         assert_eq!(result.inserted, 1, "新規挿入された記事数が期待と異なります");
@@ -310,7 +273,7 @@ mod tests {
         };
 
         // 最初の記事を保存
-        let result1 = save_article_with_pool(&original_article, &pool).await?;
+        let result1 = save_article(&original_article, &pool).await?;
         assert_eq!(result1.inserted, 1);
 
         // 同じURLで違う内容の記事を作成（重複）
@@ -322,7 +285,7 @@ mod tests {
         };
 
         // 重複記事を保存しようとする（新しい仕様では更新される）
-        let result2 = save_article_with_pool(&duplicate_article, &pool).await?;
+        let result2 = save_article(&duplicate_article, &pool).await?;
 
         // SaveResultの検証（更新される場合、inserted=1として扱う）
         assert_eq!(result2.inserted, 1, "重複URLの記事は更新されるべきです");

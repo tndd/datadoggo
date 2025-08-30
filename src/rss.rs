@@ -1,4 +1,3 @@
-use crate::infra::db::setup_database;
 use crate::infra::db::DatabaseInsertResult;
 use crate::infra::loader::load_file;
 use crate::infra::parser::parse_date;
@@ -49,37 +48,11 @@ pub fn read_channel_from_file(file_path: &str) -> Result<Channel> {
 }
 
 /// # 概要
-/// RssLinkの配列をデータベースに保存する。
-///
-/// ## 動作
-/// - 自動でデータベース接続プールを作成
-/// - マイグレーションを実行
-/// - RSS記事を一括保存
-/// - 重複記事は保存をスキップ
-///
-/// ## 引数
-/// - `articles`: 保存するRSS記事のスライス
-///
-/// ## 戻り値
-/// - `DatabaseInsertResult`: 保存件数の詳細
-///
-/// ## エラー
-/// 操作失敗時には全ての操作をロールバックする。
-pub async fn save_rss_links_to_db(rss_links: &[RssLink]) -> Result<DatabaseInsertResult> {
-    let pool = setup_database().await?;
-    save_rss_links_with_pool(rss_links, &pool).await
-}
-
-/// # 概要
 /// RssLinkの配列を指定されたデータベースプールに保存する。
-/// 既にプールを準備している場合は `save_rss_links_to_db` ではなく、この関数を使用する。
 ///
 /// # Note
 /// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
-pub async fn save_rss_links_with_pool(
-    rss_links: &[RssLink],
-    pool: &PgPool,
-) -> Result<DatabaseInsertResult> {
+pub async fn save_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<DatabaseInsertResult> {
     if rss_links.is_empty() {
         return Ok(DatabaseInsertResult::empty());
     }
@@ -130,29 +103,9 @@ pub struct RssLinkQuery {
 }
 
 /// # 概要
-/// データベースからRSS記事を取得する。
-///
-/// ## 動作
-/// - 自動でデータベース接続プールを作成
-/// - 指定された条件でRSS記事を取得
-///
-/// ## 引数
-/// - `filter`: フィルター条件。Noneの場合は全件取得
-///
-/// ## 戻り値
-/// - `Vec<RssLink>`: 条件にマッチしたRSS記事のリスト
-pub async fn search_rss_links_from_db(filter: Option<RssLinkQuery>) -> Result<Vec<RssLink>> {
-    let pool = setup_database().await?;
-    search_rss_links_with_pool(filter, &pool).await
-}
-
-/// # 概要
 /// 指定されたデータベースプールからRSSリンクを取得する。
-pub async fn search_rss_links_with_pool(
-    filter: Option<RssLinkQuery>,
-    pool: &PgPool,
-) -> Result<Vec<RssLink>> {
-    let filter = filter.unwrap_or_default();
+pub async fn search_rss_links(query: Option<RssLinkQuery>, pool: &PgPool) -> Result<Vec<RssLink>> {
+    let filter = query.unwrap_or_default();
 
     // 単一の静的SQL + オプション引数方式
     let rss_links = sqlx::query_as!(
@@ -177,13 +130,9 @@ pub async fn search_rss_links_with_pool(
 }
 
 /// 指定されたリンクのRSS記事を取得する
-pub async fn get_rss_link_by_link(link: &str) -> Result<Option<RssLink>> {
-    let pool = setup_database().await?;
-    get_rss_link_by_link_with_pool(link, &pool).await
-}
 
 /// 指定されたリンクのRSSリンクを指定されたプールから取得する
-pub async fn get_rss_link_by_link_with_pool(link: &str, pool: &PgPool) -> Result<Option<RssLink>> {
+pub async fn get_rss_link_by_link(link: &str, pool: &PgPool) -> Result<Option<RssLink>> {
     let rss_link = sqlx::query_as!(
         RssLink,
         "SELECT link, title, pub_date FROM rss_links WHERE link = $1",
@@ -337,7 +286,7 @@ mod tests {
             ];
 
             // データベースに保存をテスト
-            let result = save_rss_links_with_pool(&rss_basic, &pool).await?;
+            let result = save_rss_links(&rss_basic, &pool).await?;
 
             // SaveResultの検証
             validate_save_result(&result, 3, 0);
@@ -369,7 +318,7 @@ mod tests {
             };
 
             // 重複記事を保存しようとする
-            let result = save_rss_links_with_pool(&[duplicate_rss_link], &pool).await?;
+            let result = save_rss_links(&[duplicate_rss_link], &pool).await?;
 
             // SaveResultの検証
             validate_save_result(&result, 0, 1);
@@ -412,7 +361,7 @@ mod tests {
                 },
             ];
 
-            let result = save_rss_links_with_pool(&mixed_articles, &pool).await?;
+            let result = save_rss_links(&mixed_articles, &pool).await?;
 
             // SaveResultの検証
             validate_save_result(&result, 2, 1);
@@ -434,10 +383,12 @@ mod tests {
         use super::*;
 
         #[sqlx::test(fixtures("rss"))]
-        async fn test_search_all_rss_links_comprehensive(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_search_all_rss_links_comprehensive(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
             // 統合フィクスチャで19件のデータが存在
 
-            let rss_links = search_rss_links_with_pool(None, &pool).await?;
+            let rss_links = search_rss_links(None, &pool).await?;
 
             // 全件取得されることを確認
             assert!(rss_links.len() >= 17, "全件取得で最低17件が期待されます");
@@ -459,8 +410,7 @@ mod tests {
                 pub_date_from: Some(parse_date("2025-01-15T00:00:00Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T00:00:01Z")?),
             };
-            let rss_links_start =
-                search_rss_links_with_pool(Some(filter_start_boundary), &pool).await?;
+            let rss_links_start = search_rss_links(Some(filter_start_boundary), &pool).await?;
             assert_eq!(rss_links_start.len(), 1);
             assert_eq!(
                 rss_links_start[0].link,
@@ -473,7 +423,7 @@ mod tests {
                 pub_date_from: Some(parse_date("2025-01-15T23:59:58Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),
             };
-            let rss_links_end = search_rss_links_with_pool(Some(filter_end_boundary), &pool).await?;
+            let rss_links_end = search_rss_links(Some(filter_end_boundary), &pool).await?;
             assert_eq!(rss_links_end.len(), 1);
             assert_eq!(
                 rss_links_end[0].link,
@@ -486,7 +436,7 @@ mod tests {
                 pub_date_from: Some(parse_date("2025-01-15T00:00:00Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),
             };
-            let rss_links_day = search_rss_links_with_pool(Some(filter_full_day), &pool).await?;
+            let rss_links_day = search_rss_links(Some(filter_full_day), &pool).await?;
             let day_links: Vec<&str> = rss_links_day.iter().map(|a| a.link.as_str()).collect();
             assert!(day_links.contains(&"https://test.com/boundary/exactly-start"));
             assert!(day_links.contains(&"https://test.com/boundary/exactly-end"));

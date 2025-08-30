@@ -3,12 +3,22 @@ mod infra;
 mod rss;
 
 use article::*;
+use infra::db::setup_database;
 use rss::*;
 
 #[tokio::main]
 async fn main() {
     // 環境変数を読み込み（.envファイルがあれば使用）
     let _ = dotenvy::dotenv();
+
+    // データベースプールを1回だけ作成
+    let pool = match setup_database().await {
+        Ok(pool) => pool,
+        Err(e) => {
+            eprintln!("データベースの初期化に失敗しました: {}", e);
+            return;
+        }
+    };
 
     // RSS処理
     println!("=== RSS処理を開始 ===");
@@ -17,7 +27,7 @@ async fn main() {
             let links = extract_rss_links_from_channel(&channel);
             println!("BBCのRSSから{}件のリンクを抽出しました。", links.len());
 
-            match save_rss_links_to_db(&links).await {
+            match save_rss_links(&links, &pool).await {
                 Ok(result) => {
                     println!("{}", result);
                 }
@@ -38,7 +48,7 @@ async fn main() {
             println!("Status Code: {:?}", article.status_code);
             println!("Contentサイズ: {} characters", article.content.len());
 
-            match save_article_to_db(&article).await {
+            match save_article(&article, &pool).await {
                 Ok(result) => {
                     println!("{}", result);
                 }
