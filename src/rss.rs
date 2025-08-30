@@ -1,7 +1,7 @@
 use crate::infra::db::setup_database;
 use crate::infra::db::DatabaseInsertResult;
 use crate::infra::loader::load_file;
-use crate::infra::parser::parse_date_string;
+use crate::infra::parser::parse_date;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rss::Channel;
@@ -24,7 +24,7 @@ pub fn extract_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
         .filter_map(|item| {
             if let (Some(link), Some(pub_date_str)) = (item.link(), item.pub_date()) {
                 // infra::parserを利用して日付文字列を解析
-                if let Ok(parsed_date) = parse_date_string(pub_date_str) {
+                if let Ok(parsed_date) = parse_date(pub_date_str) {
                     let rss_link = RssLink {
                         link: link.to_string(),
                         title: item.title().unwrap_or("タイトルなし").to_string(),
@@ -528,8 +528,8 @@ mod tests {
             // 開始境界時刻の記事テスト
             let filter_start_boundary = RssLinkFilter {
                 link_pattern: None,
-                pub_date_from: Some(parse_date_string("2025-01-15T00:00:00Z")?),
-                pub_date_to: Some(parse_date_string("2025-01-15T00:00:01Z")?),
+                pub_date_from: Some(parse_date("2025-01-15T00:00:00Z")?),
+                pub_date_to: Some(parse_date("2025-01-15T00:00:01Z")?),
             };
             let articles_start =
                 get_rss_links_with_pool(Some(filter_start_boundary), &pool).await?;
@@ -542,8 +542,8 @@ mod tests {
             // 終了境界時刻の記事テスト
             let filter_end_boundary = RssLinkFilter {
                 link_pattern: None,
-                pub_date_from: Some(parse_date_string("2025-01-15T23:59:58Z")?),
-                pub_date_to: Some(parse_date_string("2025-01-15T23:59:59Z")?),
+                pub_date_from: Some(parse_date("2025-01-15T23:59:58Z")?),
+                pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),
             };
             let articles_end = get_rss_links_with_pool(Some(filter_end_boundary), &pool).await?;
             assert_eq!(articles_end.len(), 1);
@@ -555,8 +555,8 @@ mod tests {
             // 1日全体の境界記事確認
             let filter_full_day = RssLinkFilter {
                 link_pattern: None,
-                pub_date_from: Some(parse_date_string("2025-01-15T00:00:00Z")?),
-                pub_date_to: Some(parse_date_string("2025-01-15T23:59:59Z")?),
+                pub_date_from: Some(parse_date("2025-01-15T00:00:00Z")?),
+                pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),
             };
             let articles_day = get_rss_links_with_pool(Some(filter_full_day), &pool).await?;
             let day_links: Vec<&str> = articles_day.iter().map(|a| a.link.as_str()).collect();
