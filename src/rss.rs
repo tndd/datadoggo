@@ -202,12 +202,14 @@ pub async fn get_rss_link_by_link(link: &str) -> Result<Option<RssLink>> {
 
 /// 指定されたリンクのRSSリンクを指定されたプールから取得する
 pub async fn get_rss_link_by_link_with_pool(link: &str, pool: &PgPool) -> Result<Option<RssLink>> {
-    let rss_link =
-        sqlx::query_as::<_, RssLink>("SELECT link, title, pub_date FROM rss_links WHERE link = $1")
-            .bind(link)
-            .fetch_optional(pool)
-            .await
-            .context("指定されたリンクのRSSリンク取得に失敗しました")?;
+    let rss_link = sqlx::query_as!(
+        RssLink,
+        "SELECT link, title, pub_date FROM rss_links WHERE link = $1",
+        link
+    )
+    .fetch_optional(pool)
+    .await
+    .context("指定されたリンクのRSSリンク取得に失敗しました")?;
 
     Ok(rss_link)
 }
@@ -370,10 +372,10 @@ mod tests {
             );
 
             // 実際にデータベースに保存されたことを確認
-            let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_links")
+            let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
                 .fetch_one(&pool)
                 .await?;
-            assert_eq!(count, 3, "期待する件数(3件)が保存されませんでした");
+            assert_eq!(count, Some(3), "期待する件数(3件)が保存されませんでした");
 
             println!("✅ RSSリンク保存件数検証成功: {}件", result.inserted);
             println!(
@@ -409,10 +411,10 @@ mod tests {
             );
 
             // データベースの件数は変わらない（19件のまま）
-            let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_links")
+            let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
                 .fetch_one(&pool)
                 .await?;
-            assert_eq!(count, 17, "重複記事が挿入され、件数が変わってしまいました");
+            assert_eq!(count, Some(17), "重複記事が挿入され、件数が変わってしまいました");
 
             println!("✅ RSS重複スキップ検証成功: {}", result);
 
@@ -432,10 +434,10 @@ mod tests {
             );
 
             // データベースには何も挿入されていない
-            let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_links")
+            let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
                 .fetch_one(&pool)
                 .await?;
-            assert_eq!(count, 0, "空配列でもデータが挿入されてしまいました");
+            assert_eq!(count, Some(0), "空配列でもデータが挿入されてしまいました");
 
             println!("✅ RSS空配列処理検証成功: {}", result);
 
@@ -477,10 +479,10 @@ mod tests {
             );
 
             // 最終的にデータベースには19件（fixture 17件 + 新規 2件）
-            let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM rss_links")
+            let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
                 .fetch_one(&pool)
                 .await?;
-            assert_eq!(count, 19, "期待する件数(19件)と異なります");
+            assert_eq!(count, Some(19), "期待する件数(19件)と異なります");
 
             println!("✅ RSS混在データ処理検証成功: {}", result);
 

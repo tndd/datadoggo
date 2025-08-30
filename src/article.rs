@@ -173,10 +173,10 @@ mod tests {
         );
 
         // 実際にデータベースに保存されたことを確認
-        let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM articles")
+        let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
             .fetch_one(&pool)
             .await?;
-        assert_eq!(count, 1, "期待する件数(1件)が保存されませんでした");
+        assert_eq!(count, Some(1), "期待する件数(1件)が保存されませんでした");
 
         println!("✅ Firecrawl記事保存件数検証成功: {}件", result.inserted);
         println!(
@@ -223,10 +223,10 @@ mod tests {
         );
 
         // データベースの件数は1件のまま
-        let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM articles")
+        let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
             .fetch_one(&pool)
             .await?;
-        assert_eq!(count, 1, "重複記事が挿入され、件数が変わってしまいました");
+        assert_eq!(count, Some(1), "重複記事が挿入され、件数が変わってしまいました");
 
         println!("✅ Firecrawl重複スキップ検証成功: {}", result2);
 
