@@ -146,7 +146,6 @@ pub async fn get_articles_from_db(filter: Option<ArticleFilter>) -> Result<Vec<A
     get_articles_with_pool(filter, &pool).await
 }
 
-/// # 概要
 /// 指定されたデータベースプールからArticleを取得する。
 pub async fn get_articles_with_pool(
     filter: Option<ArticleFilter>,
@@ -154,65 +153,39 @@ pub async fn get_articles_with_pool(
 ) -> Result<Vec<Article>> {
     let filter = filter.unwrap_or_default();
 
-    // 動的にクエリを構築
-    let mut query = "SELECT url, timestamp, status_code, content FROM articles".to_string();
-    let mut conditions = Vec::new();
-    let mut param_count = 0;
+    // QueryBuilderベースで動的にクエリを構築
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT url, timestamp, status_code, content FROM articles",
+    );
 
-    // URL フィルタ
-    if filter.url_pattern.is_some() {
-        param_count += 1;
-        conditions.push(format!("url ILIKE ${}", param_count));
+    let has_cond = filter.url_pattern.is_some()
+        || filter.timestamp_from.is_some()
+        || filter.timestamp_to.is_some()
+        || filter.status_code.is_some();
+
+    if has_cond {
+        qb.push(" WHERE ");
+        let mut separated = qb.separated(" AND ");
+
+        if let Some(ref url_pattern) = filter.url_pattern {
+            let url_query = format!("%{}%", url_pattern);
+            separated.push("url ILIKE ").push_bind(url_query);
+        }
+        if let Some(ts_from) = filter.timestamp_from {
+            separated.push("timestamp >= ").push_bind(ts_from);
+        }
+        if let Some(ts_to) = filter.timestamp_to {
+            separated.push("timestamp <= ").push_bind(ts_to);
+        }
+        if let Some(status) = filter.status_code {
+            separated.push("status_code = ").push_bind(status);
+        }
     }
 
-    // 日付範囲フィルタ
-    if filter.timestamp_from.is_some() {
-        param_count += 1;
-        conditions.push(format!("timestamp >= ${}", param_count));
-    }
+    qb.push(" ORDER BY timestamp DESC");
 
-    if filter.timestamp_to.is_some() {
-        param_count += 1;
-        conditions.push(format!("timestamp <= ${}", param_count));
-    }
+    let articles = qb.build_query_as::<Article>().fetch_all(pool).await?;
 
-    // ステータスコードフィルタ
-    if filter.status_code.is_some() {
-        param_count += 1;
-        conditions.push(format!("status_code = ${}", param_count));
-    }
-
-    // WHERE句を追加
-    if !conditions.is_empty() {
-        query.push_str(" WHERE ");
-        query.push_str(&conditions.join(" AND "));
-    }
-
-    // ORDER BY句を追加
-    query.push_str(" ORDER BY timestamp DESC");
-
-    // クエリビルダーを使用
-    let mut query_builder = sqlx::query_as::<_, Article>(&query);
-
-    // パラメータをバインド
-    if let Some(url_pattern) = &filter.url_pattern {
-        let url_query = format!("%{}%", url_pattern);
-        query_builder = query_builder.bind(url_query);
-    }
-
-    if let Some(timestamp_from) = filter.timestamp_from {
-        query_builder = query_builder.bind(timestamp_from);
-    }
-
-    if let Some(timestamp_to) = filter.timestamp_to {
-        query_builder = query_builder.bind(timestamp_to);
-    }
-
-    if let Some(status_code) = filter.status_code {
-        query_builder = query_builder.bind(status_code);
-    }
-
-    let articles = query_builder.fetch_all(pool).await?;
     Ok(articles)
 }
 
@@ -249,7 +222,7 @@ mod tests {
     fn test_read_article_missing_status_code() {
         // statusCodeが存在しないJSONのテスト
         use std::fs;
-        
+
         let json_content = r#"
         {
             "markdown": "テスト記事の内容です",
@@ -258,23 +231,29 @@ mod tests {
             }
         }
         "#;
-        
+
         // 一時ファイル作成
         let temp_file = "temp_test_missing_status_code.json";
         fs::write(temp_file, json_content).expect("テストファイルの作成に失敗");
-        
+
         // statusCodeが存在しない場合にエラーが返されることを確認
         let result = read_article_from_file(temp_file);
-        assert!(result.is_err(), "statusCodeが存在しないのにエラーにならなかった");
-        
+        assert!(
+            result.is_err(),
+            "statusCodeが存在しないのにエラーにならなかった"
+        );
+
         // エラーメッセージの確認
         let error_message = result.unwrap_err().to_string();
-        assert!(error_message.contains("statusCodeフィールドが見つかりません"), 
-               "期待されるエラーメッセージが含まれていません: {}", error_message);
-        
+        assert!(
+            error_message.contains("statusCodeフィールドが見つかりません"),
+            "期待されるエラーメッセージが含まれていません: {}",
+            error_message
+        );
+
         // テストファイル削除
         fs::remove_file(temp_file).ok();
-        
+
         println!("✅ statusCode欠損エラーハンドリング検証成功");
     }
 
