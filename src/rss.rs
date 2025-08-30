@@ -360,7 +360,6 @@ mod tests {
             assert_eq!(articles[1].link, "http://example.com/article2");
         }
 
-
         #[test]
         fn test_extract_rss_links_from_files() {
             // 複数の実際のRSSファイルからリンクを抽出するテスト
@@ -382,7 +381,6 @@ mod tests {
                 println!("{}テスト結果: {}件の記事を抽出", feed_name, articles.len());
             }
         }
-
     }
 
     // データベース保存機能のテスト
@@ -462,7 +460,6 @@ mod tests {
 
             Ok(())
         }
-
 
         #[sqlx::test(fixtures("rss"))]
         async fn test_mixed_new_and_existing_links(pool: PgPool) -> Result<(), anyhow::Error> {
@@ -572,7 +569,5 @@ mod tests {
             println!("✅ RSS日付境界総合テスト成功");
             Ok(())
         }
-
-
     }
 }
