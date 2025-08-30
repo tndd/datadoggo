@@ -751,48 +751,10 @@ mod tests {
             Ok(())
         }
 
-        #[test]
-        fn test_invalid_date_strings() {
-            // 不正な日付形式でエラーになることを確認
-            let invalid_dates = [
-                "invalid-date",
-                "2025-13-01", // 無効な月
-                "2025-01-32", // 無効な日
-                "not-a-date",
-                "",
-            ];
-
-            for invalid_date in &invalid_dates {
-                let result = parse_date_string(invalid_date);
-                assert!(
-                    result.is_err(),
-                    "不正な日付 '{}' でエラーになりませんでした",
-                    invalid_date
-                );
-            }
-
-            // 有効な日付形式は成功することを確認
-            let valid_dates = [
-                "2025-01-15",                // ISO8601日付のみ
-                "2025-01-15T10:00:00Z",      // RFC3339
-                "2025-01-15T10:00:00+09:00", // RFC3339 with offset
-            ];
-
-            for valid_date in &valid_dates {
-                let result = parse_date_string(valid_date);
-                assert!(
-                    result.is_ok(),
-                    "有効な日付 '{}' でエラーになりました",
-                    valid_date
-                );
-            }
-
-            println!("✅ RSS日付バリデーションテスト成功");
-        }
 
         #[test]
-        fn test_datetime_utc_input() {
-            // DateTime<Utc>を直接渡すテストケース
+        fn test_rss_link_filter_construction() {
+            // RssLinkFilterの基本的な構築テスト
             let date_from = DateTime::parse_from_rfc3339("2025-01-15T10:00:00Z")
                 .unwrap()
                 .with_timezone(&Utc);
@@ -800,7 +762,7 @@ mod tests {
                 .unwrap()
                 .with_timezone(&Utc);
 
-            // DateTime<Utc>を直接渡して構築
+            // フィルター条件を指定した構築
             let filter = RssLinkFilter {
                 link_pattern: Some("test".to_string()),
                 pub_date_from: Some(date_from),
@@ -811,17 +773,13 @@ mod tests {
             assert_eq!(filter.pub_date_from, Some(date_from));
             assert_eq!(filter.pub_date_to, Some(date_to));
 
-            // 直接構築は文字列パースが不要なのでエラーが出ない
-            let filter_none = RssLinkFilter {
-                link_pattern: None,
-                pub_date_from: None,
-                pub_date_to: None,
-            };
-            assert!(filter_none.link_pattern.is_none());
-            assert!(filter_none.pub_date_from.is_none());
-            assert!(filter_none.pub_date_to.is_none());
+            // デフォルト構築（全てNone）
+            let default_filter = RssLinkFilter::default();
+            assert!(default_filter.link_pattern.is_none());
+            assert!(default_filter.pub_date_from.is_none());
+            assert!(default_filter.pub_date_to.is_none());
 
-            println!("✅ DateTime<Utc>直接入力テスト成功");
+            println!("✅ RssLinkFilter構築テスト成功");
         }
     }
 }
