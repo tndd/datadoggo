@@ -512,7 +512,7 @@ mod tests {
         use super::*;
 
         #[sqlx::test]
-        async fn test_save_links_to_db(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        async fn test_save_links_to_db(pool: PgPool) -> Result<(), anyhow::Error> {
             // テスト用リンクデータを作成（必須フィールドのみ）
             let rss_basic = vec![
                 RssLink {
@@ -554,7 +554,7 @@ mod tests {
         }
 
         #[sqlx::test(fixtures("rss"))]
-        async fn test_duplicate_links(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        async fn test_duplicate_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // fixtureで既に17件のデータが存在している状態
 
             // 同じリンクの記事を作成（重複）
@@ -586,7 +586,7 @@ mod tests {
         }
 
         #[sqlx::test]
-        async fn test_empty_links(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        async fn test_empty_links(pool: PgPool) -> Result<(), anyhow::Error> {
             let empty_articles: Vec<RssLink> = vec![];
             let result = save_rss_links_with_pool(&empty_articles, &pool).await?;
 
@@ -607,7 +607,7 @@ mod tests {
         #[sqlx::test(fixtures("rss"))]
         async fn test_mixed_new_and_existing_links(
             pool: PgPool,
-        ) -> Result<(), Box<dyn std::error::Error>> {
+        ) -> Result<(), anyhow::Error> {
             // fixtureで既に17件のデータが存在している状態
 
             // 1件は既存（重複）、2件は新規のデータを作成
@@ -653,7 +653,7 @@ mod tests {
         #[sqlx::test(fixtures("rss"))]
         async fn test_get_all_rss_links_comprehensive(
             pool: PgPool,
-        ) -> Result<(), Box<dyn std::error::Error>> {
+        ) -> Result<(), anyhow::Error> {
             // 統合フィクスチャで19件のデータが存在
 
             let articles = get_rss_links_with_pool(None, &pool).await?;
@@ -673,7 +673,7 @@ mod tests {
         #[sqlx::test(fixtures("rss"))]
         async fn test_date_filtering_comprehensive(
             pool: PgPool,
-        ) -> Result<(), Box<dyn std::error::Error>> {
+        ) -> Result<(), anyhow::Error> {
             // 開始境界時刻の記事テスト
             let filter_start_boundary = RssLinkFilter::new(
                 None,
@@ -722,7 +722,7 @@ mod tests {
         #[sqlx::test(fixtures("rss"))]
         async fn test_get_rss_links_by_combined_filter(
             pool: PgPool,
-        ) -> Result<(), Box<dyn std::error::Error>> {
+        ) -> Result<(), anyhow::Error> {
             // URL部分一致テスト
             let filter_partial = RssLinkFilter::new(Some("example.com".to_string()), None, None)?;
             let articles_partial = get_rss_links_with_pool(Some(filter_partial), &pool).await?;
@@ -746,7 +746,7 @@ mod tests {
         }
 
         #[sqlx::test(fixtures("rss"))]
-        async fn test_get_rss_link_by_link(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        async fn test_get_rss_link_by_link(pool: PgPool) -> Result<(), anyhow::Error> {
             // 存在する記事の正確な取得
             let tech_article = get_rss_link_by_link_with_pool(
                 "https://example.com/tech/article-2025-01-15",
@@ -779,7 +779,7 @@ mod tests {
         #[sqlx::test(fixtures("rss"))]
         async fn test_special_character_handling(
             pool: PgPool,
-        ) -> Result<(), Box<dyn std::error::Error>> {
+        ) -> Result<(), anyhow::Error> {
             // 大小文字無視検索
             let filter_case = RssLinkFilter::new(Some("casesensitive".to_string()), None, None)?;
             let articles_case = get_rss_links_with_pool(Some(filter_case), &pool).await?;
@@ -803,7 +803,7 @@ mod tests {
         }
 
         #[sqlx::test(fixtures("rss"))]
-        async fn test_filtering_edge_cases(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+        async fn test_filtering_edge_cases(pool: PgPool) -> Result<(), anyhow::Error> {
             // 空文字列検索（全件取得）
             let filter_empty = RssLinkFilter::new(Some("".to_string()), None, None)?;
             let articles_empty = get_rss_links_with_pool(Some(filter_empty), &pool).await?;
