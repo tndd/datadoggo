@@ -2,9 +2,8 @@ mod article;
 mod infra;
 mod rss;
 
-use article::*;
 use infra::db::setup_database;
-use infra::loader::load_channel_from_xml_file;
+use infra::loader::{load_channel_from_xml_file, load_json_from_file};
 use rss::*;
 
 #[tokio::main]
@@ -40,24 +39,17 @@ async fn main() {
         }
     }
 
-    // Firecrawl処理
+    // Firecrawl処理（簡易確認）
     println!("\n=== Firecrawl処理を開始 ===");
-    match read_article_from_file("mock/fc/bbc.json") {
-        Ok(article) => {
+    match load_json_from_file("mock/fc/bbc.json") {
+        Ok(json_value) => {
             println!("BBCのFirecrawlデータを読み込みました。");
-            println!("URL: {}", article.url);
-            println!("Status Code: {:?}", article.status_code);
-            println!("Contentサイズ: {} characters", article.content.len());
-
-            match store_article(&article, &pool).await {
-                Ok(result) => {
-                    println!("{}", result);
+            if let Some(metadata) = json_value.get("metadata") {
+                if let Some(url) = metadata.get("url").and_then(|v| v.as_str()) {
+                    println!("URL: {}", url);
                 }
-                Err(e) => eprintln!(
-                    "Firecrawlデータのデータベース保存中にエラーが発生しました: {}",
-                    e
-                ),
             }
+            println!("JSONデータの読み込み完了");
         }
         Err(e) => {
             eprintln!("Firecrawlデータの読み込み中にエラーが発生しました: {}", e);
