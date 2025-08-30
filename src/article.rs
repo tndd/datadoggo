@@ -152,7 +152,7 @@ mod tests {
 
     // テスト例1: Firecrawl記事の基本的な保存機能のテスト
     #[sqlx::test]
-    async fn test_save_article_to_db(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_save_article_to_db(pool: PgPool) -> Result<(), anyhow::Error> {
         // テスト用のFirecrawl記事データを作成
         let now = OffsetDateTime::now_utc();
         let test_article = Article {
@@ -189,7 +189,7 @@ mod tests {
 
     // テスト例2: Firecrawl記事の重複処理テスト
     #[sqlx::test]
-    async fn test_duplicate_articles(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_duplicate_articles(pool: PgPool) -> Result<(), anyhow::Error> {
         let now = OffsetDateTime::now_utc();
 
         // 最初の記事を保存
