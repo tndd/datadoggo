@@ -105,7 +105,7 @@ pub struct RssLinkQuery {
 /// # 概要
 /// 指定されたデータベースプールからRSSリンクを取得する。
 pub async fn search_rss_links(query: Option<RssLinkQuery>, pool: &PgPool) -> Result<Vec<RssLink>> {
-    let filter = query.unwrap_or_default();
+    let query = query.unwrap_or_default();
 
     // 単一の静的SQL + オプション引数方式
     let rss_links = sqlx::query_as!(
@@ -119,9 +119,9 @@ pub async fn search_rss_links(query: Option<RssLinkQuery>, pool: &PgPool) -> Res
             AND ($3::timestamptz IS NULL OR pub_date <= $3)
         ORDER BY pub_date DESC
         "#,
-        filter.link_pattern,
-        filter.pub_date_from,
-        filter.pub_date_to
+        query.link_pattern,
+        query.pub_date_from,
+        query.pub_date_to
     )
     .fetch_all(pool)
     .await?;

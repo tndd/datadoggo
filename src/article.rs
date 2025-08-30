@@ -114,33 +114,33 @@ pub async fn search_articles(
     query: Option<ArticleQuery>,
     pool: &PgPool,
 ) -> Result<Vec<Article>> {
-    let filter = query.unwrap_or_default();
+    let query = query.unwrap_or_default();
 
     // QueryBuilderベースで動的にクエリを構築
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT url, timestamp, status_code, content FROM articles",
     );
 
-    let has_cond = filter.url_pattern.is_some()
-        || filter.timestamp_from.is_some()
-        || filter.timestamp_to.is_some()
-        || filter.status_code.is_some();
+    let has_cond = query.url_pattern.is_some()
+        || query.timestamp_from.is_some()
+        || query.timestamp_to.is_some()
+        || query.status_code.is_some();
 
     if has_cond {
         qb.push(" WHERE ");
         let mut separated = qb.separated(" AND ");
 
-        if let Some(ref url_pattern) = filter.url_pattern {
+        if let Some(ref url_pattern) = query.url_pattern {
             let url_query = format!("%{}%", url_pattern);
             separated.push("url ILIKE ").push_bind(url_query);
         }
-        if let Some(ts_from) = filter.timestamp_from {
+        if let Some(ts_from) = query.timestamp_from {
             separated.push("timestamp >= ").push_bind(ts_from);
         }
-        if let Some(ts_to) = filter.timestamp_to {
+        if let Some(ts_to) = query.timestamp_to {
             separated.push("timestamp <= ").push_bind(ts_to);
         }
-        if let Some(status) = filter.status_code {
+        if let Some(status) = query.status_code {
             separated.push("status_code = ").push_bind(status);
         }
     }
