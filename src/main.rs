@@ -1,23 +1,33 @@
+mod domain;
 mod infra;
-mod rss;
-mod firecrawl;
 
-use rss::*;
-use firecrawl::*;
+use domain::rss::{extract_rss_links_from_channel, store_rss_links};
+
+use infra::db::setup_database;
+use infra::loader::{load_channel_from_xml_file, load_json_from_file};
 
 #[tokio::main]
 async fn main() {
     // 環境変数を読み込み（.envファイルがあれば使用）
     let _ = dotenvy::dotenv();
-    
+
+    // データベースプールを1回だけ作成
+    let pool = match setup_database().await {
+        Ok(pool) => pool,
+        Err(e) => {
+            eprintln!("データベースの初期化に失敗しました: {}", e);
+            return;
+        }
+    };
+
     // RSS処理
     println!("=== RSS処理を開始 ===");
-    match read_channel_from_file("mock/rss/bbc.rss") {
+    match load_channel_from_xml_file("mock/rss/bbc.rss") {
         Ok(channel) => {
-            let articles = extract_rss_articles_from_channel(&channel);
-            println!("BBCのRSSから{}件の記事を抽出しました。", articles.len());
+            let links = extract_rss_links_from_channel(&channel);
+            println!("BBCのRSSから{}件のリンクを抽出しました。", links.len());
 
-            match save_rss_articles_to_db(&articles).await {
+            match store_rss_links(&links, &pool).await {
                 Ok(result) => {
                     println!("{}", result);
                 }
@@ -28,22 +38,18 @@ async fn main() {
             eprintln!("RSSの読み込み中にエラーが発生しました: {}", e);
         }
     }
-    
-    // Firecrawl処理
-    println!("\n=== Firecrawl処理を開始 ===");
-    match read_firecrawl_from_file("mock/fc/bbc.json") {
-        Ok(article) => {
-            println!("BBCのFirecrawlデータを読み込みました。");
-            println!("タイトル: {:?}", article.metadata.title);
-            println!("URL: {:?}", article.metadata.url);
-            println!("Markdownサイズ: {} characters", article.markdown.len());
 
-            match save_firecrawl_article_to_db(&article).await {
-                Ok(result) => {
-                    println!("{}", result);
+    // Firecrawl処理（簡易確認）
+    println!("\n=== Firecrawl処理を開始 ===");
+    match load_json_from_file("mock/fc/bbc.json") {
+        Ok(json_value) => {
+            println!("BBCのFirecrawlデータを読み込みました。");
+            if let Some(metadata) = json_value.get("metadata") {
+                if let Some(url) = metadata.get("url").and_then(|v| v.as_str()) {
+                    println!("URL: {}", url);
                 }
-                Err(e) => eprintln!("Firecrawlデータのデータベース保存中にエラーが発生しました: {}", e),
             }
+            println!("JSONデータの読み込み完了");
         }
         Err(e) => {
             eprintln!("Firecrawlデータの読み込み中にエラーが発生しました: {}", e);
