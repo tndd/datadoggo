@@ -1,5 +1,4 @@
 use crate::infra::db::DatabaseInsertResult;
-use crate::infra::loader::load_file;
 use crate::infra::parser::parse_date;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -38,13 +37,6 @@ pub fn extract_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
             }
         })
         .collect()
-}
-
-// ファイルからRSSを読み込むヘルパー関数（loaderを使用）
-pub fn read_channel_from_file(file_path: &str) -> Result<Channel> {
-    let buf_reader = load_file(file_path)?;
-    Channel::read_from(buf_reader)
-        .with_context(|| format!("RSSファイルの解析に失敗: {}", file_path))
 }
 
 /// # 概要
@@ -132,14 +124,8 @@ pub async fn search_rss_links(query: Option<RssLinkQuery>, pool: &PgPool) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufReader, Cursor};
-
-    // 共通テストヘルパー関数
-    // XMLからRSSチャンネルを解析するヘルパー関数
-    fn parse_channel_from_xml(xml: &str) -> Result<Channel> {
-        Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes())))
-            .context("XMLからのRSSチャンネル解析に失敗")
-    }
+    use crate::infra::loader::load_channel_from_xml_file;
+    use crate::infra::parser::parse_channel_from_xml_str;
 
     // 記事の基本構造をチェックするヘルパー関数
     fn validate_rss_links(rss_links: &[RssLink]) {
@@ -211,7 +197,7 @@ mod tests {
                     </channel>
                 </rss>
                 "#;
-            let channel = parse_channel_from_xml(xml).expect("Failed to parse test RSS");
+            let channel = parse_channel_from_xml_str(xml).expect("Failed to parse test RSS");
             let rss_links = extract_rss_links_from_channel(&channel);
 
             assert_eq!(rss_links.len(), 2, "2件の記事が抽出されるはず");
@@ -231,7 +217,7 @@ mod tests {
             ];
 
             for (file_path, feed_name) in &test_feeds {
-                let result = read_channel_from_file(file_path);
+                let result = load_channel_from_xml_file(file_path);
                 assert!(result.is_ok(), "{}のRSSファイル読み込みに失敗", feed_name);
 
                 let channel = result.unwrap();

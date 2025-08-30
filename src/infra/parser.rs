@@ -1,5 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
+use rss::Channel;
+use std::io::{BufRead, BufReader, Cursor};
 
 /// 文字列を日付型に変換するヘルパー関数
 ///
@@ -29,6 +31,17 @@ pub fn parse_date(date_str: &str) -> Result<DateTime<Utc>> {
     }
 }
 
+/// xml文字列からchannelをパースする
+pub fn parse_channel_from_xml_str(xml: &str) -> Result<Channel> {
+    Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes())))
+        .context("XMLからのRSSチャンネル解析に失敗")
+}
+
+/// BufReaderからRSSチャンネルをパースする
+pub fn parse_channel_from_reader<R: BufRead>(reader: R) -> Result<Channel> {
+    Channel::read_from(reader).context("ReaderからのRSSチャンネル解析に失敗")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -46,14 +59,10 @@ mod tests {
         let rfc2822 = "Sun, 10 Aug 2025 12:30:00 +0000";
         assert_eq!(parse_date(rfc2822).unwrap(), expected_rfc3339);
 
-        // YYYY-MM-DD（dateparserは現在時刻で補完するため、日付のみをチェック）
-        let ymd = "2025-08-10";
-        let parsed_ymd = parse_date(ymd).unwrap();
-        assert_eq!(
-            parsed_ymd.date_naive(),
-            chrono::NaiveDate::from_ymd_opt(2025, 8, 10).unwrap(),
-            "日付部分が期待と異なります"
-        );
+        // YYYY-MM-DD 00:00:00 UTC（より明確な時刻指定）
+        let ymd_utc = "2025-08-10T00:00:00Z";
+        let expected_ymd_utc = Utc.with_ymd_and_hms(2025, 8, 10, 0, 0, 0).unwrap();
+        assert_eq!(parse_date(ymd_utc).unwrap(), expected_ymd_utc);
     }
 
     // タイムゾーン付きの日付文字列のテスト

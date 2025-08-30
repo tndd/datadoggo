@@ -4,6 +4,7 @@ mod rss;
 
 use article::*;
 use infra::db::setup_database;
+use infra::loader::load_channel_from_xml_file;
 use rss::*;
 
 #[tokio::main]
@@ -22,7 +23,7 @@ async fn main() {
 
     // RSS処理
     println!("=== RSS処理を開始 ===");
-    match read_channel_from_file("mock/rss/bbc.rss") {
+    match load_channel_from_xml_file("mock/rss/bbc.rss") {
         Ok(channel) => {
             let links = extract_rss_links_from_channel(&channel);
             println!("BBCのRSSから{}件のリンクを抽出しました。", links.len());
