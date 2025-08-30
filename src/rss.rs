@@ -65,9 +65,9 @@ pub fn read_channel_from_file(file_path: &str) -> Result<Channel> {
 ///
 /// ## エラー
 /// 操作失敗時には全ての操作をロールバックする。
-pub async fn save_rss_links_to_db(articles: &[RssLink]) -> Result<DatabaseInsertResult> {
+pub async fn save_rss_links_to_db(rss_links: &[RssLink]) -> Result<DatabaseInsertResult> {
     let pool = setup_database().await?;
-    save_rss_links_with_pool(articles, &pool).await
+    save_rss_links_with_pool(rss_links, &pool).await
 }
 
 /// # 概要
@@ -293,16 +293,16 @@ mod tests {
     }
 
     // 日付ソートの検証ヘルパー関数
-    fn validate_date_sort_desc(articles: &[RssLink]) {
+    fn validate_date_sort_desc(rss_links: &[RssLink]) {
         let mut prev_date: Option<DateTime<Utc>> = None;
-        for article in articles {
+        for rss_link in rss_links {
             if let Some(prev) = prev_date {
                 assert!(
-                    article.pub_date <= prev,
+                    rss_link.pub_date <= prev,
                     "日付の降順ソートが正しくありません"
                 );
             }
-            prev_date = Some(article.pub_date);
+            prev_date = Some(rss_link.pub_date);
         }
     }
 
@@ -351,13 +351,13 @@ mod tests {
                 </rss>
                 "#;
             let channel = parse_channel_from_xml(xml).expect("Failed to parse test RSS");
-            let articles = extract_rss_links_from_channel(&channel);
+            let rss_links = extract_rss_links_from_channel(&channel);
 
-            assert_eq!(articles.len(), 2, "2件の記事が抽出されるはず");
-            assert_eq!(articles[0].title, "Test Article 1");
-            assert_eq!(articles[0].link, "http://example.com/article1");
-            assert_eq!(articles[1].title, "Test Article 2");
-            assert_eq!(articles[1].link, "http://example.com/article2");
+            assert_eq!(rss_links.len(), 2, "2件の記事が抽出されるはず");
+            assert_eq!(rss_links[0].title, "Test Article 1");
+            assert_eq!(rss_links[0].link, "http://example.com/article1");
+            assert_eq!(rss_links[1].title, "Test Article 2");
+            assert_eq!(rss_links[1].link, "http://example.com/article2");
         }
 
         #[test]
@@ -374,11 +374,11 @@ mod tests {
                 assert!(result.is_ok(), "{}のRSSファイル読み込みに失敗", feed_name);
 
                 let channel = result.unwrap();
-                let articles = extract_rss_links_from_channel(&channel);
-                assert!(!articles.is_empty(), "{}の記事が0件", feed_name);
+                let rss_links = extract_rss_links_from_channel(&channel);
+                assert!(!rss_links.is_empty(), "{}の記事が0件", feed_name);
 
-                validate_rss_links(&articles);
-                println!("{}テスト結果: {}件の記事を抽出", feed_name, articles.len());
+                validate_rss_links(&rss_links);
+                println!("{}テスト結果: {}件の記事を抽出", feed_name, rss_links.len());
             }
         }
     }
@@ -434,14 +434,14 @@ mod tests {
             // fixtureで既に17件のデータが存在している状態
 
             // 同じリンクの記事を作成（重複）
-            let duplicate_article = RssLink {
+            let duplicate_rss_link = RssLink {
                 title: "異なるタイトル".to_string(),
                 link: "https://test.example.com/article1".to_string(), // fixtureと同じリンク
                 pub_date: "2025-08-26T13:00:00Z".parse().unwrap(),
             };
 
             // 重複記事を保存しようとする
-            let result = save_rss_links_with_pool(&[duplicate_article], &pool).await?;
+            let result = save_rss_links_with_pool(&[duplicate_rss_link], &pool).await?;
 
             // SaveResultの検証
             validate_save_result(&result, 0, 1);
@@ -509,16 +509,16 @@ mod tests {
         async fn test_get_all_rss_links_comprehensive(pool: PgPool) -> Result<(), anyhow::Error> {
             // 統合フィクスチャで19件のデータが存在
 
-            let articles = get_rss_links_with_pool(None, &pool).await?;
+            let rss_links = get_rss_links_with_pool(None, &pool).await?;
 
             // 全件取得されることを確認
-            assert!(articles.len() >= 17, "全件取得で最低17件が期待されます");
+            assert!(rss_links.len() >= 17, "全件取得で最低17件が期待されます");
 
             // 基本的な検証（ソート順、フィールド存在）
-            validate_date_sort_desc(&articles);
-            validate_rss_links(&articles);
+            validate_date_sort_desc(&rss_links);
+            validate_rss_links(&rss_links);
 
-            println!("✅ RSS全件取得際どいテスト成功: {}件", articles.len());
+            println!("✅ RSS全件取得際どいテスト成功: {}件", rss_links.len());
 
             Ok(())
         }
@@ -531,11 +531,11 @@ mod tests {
                 pub_date_from: Some(parse_date("2025-01-15T00:00:00Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T00:00:01Z")?),
             };
-            let articles_start =
+            let rss_links_start =
                 get_rss_links_with_pool(Some(filter_start_boundary), &pool).await?;
-            assert_eq!(articles_start.len(), 1);
+            assert_eq!(rss_links_start.len(), 1);
             assert_eq!(
-                articles_start[0].link,
+                rss_links_start[0].link,
                 "https://test.com/boundary/exactly-start"
             );
 
@@ -545,10 +545,10 @@ mod tests {
                 pub_date_from: Some(parse_date("2025-01-15T23:59:58Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),
             };
-            let articles_end = get_rss_links_with_pool(Some(filter_end_boundary), &pool).await?;
-            assert_eq!(articles_end.len(), 1);
+            let rss_links_end = get_rss_links_with_pool(Some(filter_end_boundary), &pool).await?;
+            assert_eq!(rss_links_end.len(), 1);
             assert_eq!(
-                articles_end[0].link,
+                rss_links_end[0].link,
                 "https://test.com/boundary/exactly-end"
             );
 
@@ -558,8 +558,8 @@ mod tests {
                 pub_date_from: Some(parse_date("2025-01-15T00:00:00Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),
             };
-            let articles_day = get_rss_links_with_pool(Some(filter_full_day), &pool).await?;
-            let day_links: Vec<&str> = articles_day.iter().map(|a| a.link.as_str()).collect();
+            let rss_links_day = get_rss_links_with_pool(Some(filter_full_day), &pool).await?;
+            let day_links: Vec<&str> = rss_links_day.iter().map(|a| a.link.as_str()).collect();
             assert!(day_links.contains(&"https://test.com/boundary/exactly-start"));
             assert!(day_links.contains(&"https://test.com/boundary/exactly-end"));
             assert!(day_links.contains(&"https://example.com/tech/article-2025-01-15"));
