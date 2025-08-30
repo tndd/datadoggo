@@ -13,19 +13,9 @@ pub struct Article {
     pub content: String,
 }
 
-
-
-
-
-/// # 概要
-/// Articleを指定されたデータベースプールに保存する。
-///
-/// # Note
-/// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
-pub async fn store_article(
-    article: &Article,
-    pool: &PgPool,
-) -> Result<DatabaseInsertResult> {
+/// 記事をデータベースに保存する。
+/// 重複した場合には更新を行う。
+pub async fn store_article(article: &Article, pool: &PgPool) -> Result<DatabaseInsertResult> {
     let mut tx = pool
         .begin()
         .await
@@ -66,13 +56,8 @@ pub struct ArticleQuery {
     pub status_code: Option<i32>,
 }
 
-
-
 /// 指定されたデータベースプールからArticleを取得する。
-pub async fn search_articles(
-    query: Option<ArticleQuery>,
-    pool: &PgPool,
-) -> Result<Vec<Article>> {
+pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
     let query = query.unwrap_or_default();
 
     // QueryBuilderベースで動的にクエリを構築
