@@ -123,7 +123,7 @@ pub async fn save_rss_links_with_pool(
 
 // RSS記事のフィルター条件を表す構造体
 #[derive(Debug, Default)]
-pub struct RssLinkFilter {
+pub struct RssLinkQuery {
     pub link_pattern: Option<String>,
     pub pub_date_from: Option<DateTime<Utc>>,
     pub pub_date_to: Option<DateTime<Utc>>,
@@ -141,7 +141,7 @@ pub struct RssLinkFilter {
 ///
 /// ## 戻り値
 /// - `Vec<RssLink>`: 条件にマッチしたRSS記事のリスト
-pub async fn search_rss_links_from_db(filter: Option<RssLinkFilter>) -> Result<Vec<RssLink>> {
+pub async fn search_rss_links_from_db(filter: Option<RssLinkQuery>) -> Result<Vec<RssLink>> {
     let pool = setup_database().await?;
     search_rss_links_with_pool(filter, &pool).await
 }
@@ -149,7 +149,7 @@ pub async fn search_rss_links_from_db(filter: Option<RssLinkFilter>) -> Result<V
 /// # 概要
 /// 指定されたデータベースプールからRSSリンクを取得する。
 pub async fn search_rss_links_with_pool(
-    filter: Option<RssLinkFilter>,
+    filter: Option<RssLinkQuery>,
     pool: &PgPool,
 ) -> Result<Vec<RssLink>> {
     let filter = filter.unwrap_or_default();
@@ -454,7 +454,7 @@ mod tests {
         #[sqlx::test(fixtures("rss"))]
         async fn test_date_filtering_comprehensive(pool: PgPool) -> Result<(), anyhow::Error> {
             // 開始境界時刻の記事テスト
-            let filter_start_boundary = RssLinkFilter {
+            let filter_start_boundary = RssLinkQuery {
                 link_pattern: None,
                 pub_date_from: Some(parse_date("2025-01-15T00:00:00Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T00:00:01Z")?),
@@ -468,7 +468,7 @@ mod tests {
             );
 
             // 終了境界時刻の記事テスト
-            let filter_end_boundary = RssLinkFilter {
+            let filter_end_boundary = RssLinkQuery {
                 link_pattern: None,
                 pub_date_from: Some(parse_date("2025-01-15T23:59:58Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),
@@ -481,7 +481,7 @@ mod tests {
             );
 
             // 1日全体の境界記事確認
-            let filter_full_day = RssLinkFilter {
+            let filter_full_day = RssLinkQuery {
                 link_pattern: None,
                 pub_date_from: Some(parse_date("2025-01-15T00:00:00Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),

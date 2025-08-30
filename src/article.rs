@@ -122,7 +122,7 @@ pub async fn save_article_with_pool(
 
 // Article記事のフィルター条件を表す構造体
 #[derive(Debug, Default)]
-pub struct ArticleFilter {
+pub struct ArticleQuery {
     pub url_pattern: Option<String>,
     pub timestamp_from: Option<DateTime<Utc>>,
     pub timestamp_to: Option<DateTime<Utc>>,
@@ -141,14 +141,14 @@ pub struct ArticleFilter {
 ///
 /// ## 戻り値
 /// - `Vec<Article>`: 条件にマッチしたArticle記事のリスト
-pub async fn search_articles_from_db(filter: Option<ArticleFilter>) -> Result<Vec<Article>> {
+pub async fn search_articles_from_db(filter: Option<ArticleQuery>) -> Result<Vec<Article>> {
     let pool = setup_database().await?;
     search_articles_with_pool(filter, &pool).await
 }
 
 /// 指定されたデータベースプールからArticleを取得する。
 pub async fn search_articles_with_pool(
-    filter: Option<ArticleFilter>,
+    filter: Option<ArticleQuery>,
     pool: &PgPool,
 ) -> Result<Vec<Article>> {
     let filter = filter.unwrap_or_default();
