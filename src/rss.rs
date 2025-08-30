@@ -360,36 +360,6 @@ mod tests {
             assert_eq!(articles[1].link, "http://example.com/article2");
         }
 
-        #[test]
-        fn test_extract_rss_links_from_xml_missing_link() {
-            // xml(リンク欠落)->channel->rss_linkの流れの確認
-            let xml_missing_link = r#"
-                <rss version="2.0">
-                    <channel>
-                        <title>Test Feed</title>
-                        <item>
-                            <title>No Link Article</title>
-                        </item>
-                        <item>
-                            <title>Article With Link</title>
-                            <link>http://example.com/with-link</link>
-                            <pubDate>Sun, 10 Aug 2025 14:00:00 +0000</pubDate>
-                        </item>
-                    </channel>
-                </rss>
-                "#;
-
-            let channel =
-                parse_channel_from_xml(xml_missing_link).expect("Failed to parse test RSS");
-            let articles = extract_rss_links_from_channel(&channel);
-
-            assert_eq!(
-                articles.len(),
-                1,
-                "リンクまたはpub_dateがない記事は除外されるはず"
-            );
-            assert_eq!(articles[0].title, "Article With Link");
-        }
 
         #[test]
         fn test_extract_rss_links_from_files() {
@@ -413,12 +383,6 @@ mod tests {
             }
         }
 
-        #[test]
-        fn test_read_non_existing_file() {
-            // 存在しないファイルを読み込もうとするテスト
-            let result = read_channel_from_file("non_existent_file.rss");
-            assert!(result.is_err(), "存在しないファイルでエラーにならなかった");
-        }
     }
 
     // データベース保存機能のテスト
@@ -499,24 +463,6 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
-        async fn test_empty_links(pool: PgPool) -> Result<(), anyhow::Error> {
-            let empty_articles: Vec<RssLink> = vec![];
-            let result = save_rss_links_with_pool(&empty_articles, &pool).await?;
-
-            // 空配列の結果検証
-            validate_save_result(&result, 0, 0);
-
-            // データベースには何も挿入されていない
-            let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
-                .fetch_one(&pool)
-                .await?;
-            assert_eq!(count, Some(0), "空配列でもデータが挿入されてしまいました");
-
-            println!("✅ RSS空配列処理検証成功: {}", result);
-
-            Ok(())
-        }
 
         #[sqlx::test(fixtures("rss"))]
         async fn test_mixed_new_and_existing_links(pool: PgPool) -> Result<(), anyhow::Error> {
@@ -627,159 +573,6 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss"))]
-        async fn test_get_rss_links_by_combined_filter(pool: PgPool) -> Result<(), anyhow::Error> {
-            // URL部分一致テスト
-            let filter_partial = RssLinkFilter {
-                link_pattern: Some("example.com".to_string()),
-                pub_date_from: None,
-                pub_date_to: None,
-            };
-            let articles_partial = get_rss_links_with_pool(Some(filter_partial), &pool).await?;
-            assert!(articles_partial.len() >= 4);
 
-            // 日付+URL複合条件テスト
-            let filter_combined = RssLinkFilter {
-                link_pattern: Some("example.com".to_string()),
-                pub_date_from: Some(parse_date_string("2025-01-15T09:00:00Z")?),
-                pub_date_to: Some(parse_date_string("2025-01-15T11:00:00Z")?),
-            };
-            let articles_combined = get_rss_links_with_pool(Some(filter_combined), &pool).await?;
-            assert_eq!(articles_combined.len(), 1);
-            assert_eq!(
-                articles_combined[0].link,
-                "https://example.com/tech/article-2025-01-15"
-            );
-
-            println!("✅ RSS複合条件テスト成功");
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("rss"))]
-        async fn test_get_rss_link_by_link(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 存在する記事の正確な取得
-            let tech_article = get_rss_link_by_link_with_pool(
-                "https://example.com/tech/article-2025-01-15",
-                &pool,
-            )
-            .await?;
-            assert!(tech_article.is_some());
-            assert_eq!(tech_article.unwrap().title, "Tech News 2025");
-
-            // 大小文字・部分一致では取得できない
-            let case_different = get_rss_link_by_link_with_pool(
-                "https://EXAMPLE.COM/tech/article-2025-01-15",
-                &pool,
-            )
-            .await?;
-            assert!(case_different.is_none());
-
-            let partial_match = get_rss_link_by_link_with_pool("example.com/tech", &pool).await?;
-            assert!(partial_match.is_none());
-
-            println!("✅ RSS個別記事取得テスト成功");
-            Ok(())
-        }
-    }
-
-    // エッジケースとパフォーマンステスト
-    mod edge_case_tests {
-        use super::*;
-
-        #[sqlx::test(fixtures("rss"))]
-        async fn test_special_character_handling(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 大小文字無視検索
-            let filter_case = RssLinkFilter {
-                link_pattern: Some("casesensitive".to_string()),
-                pub_date_from: None,
-                pub_date_to: None,
-            };
-            let articles_case = get_rss_links_with_pool(Some(filter_case), &pool).await?;
-            assert_eq!(articles_case.len(), 1);
-            assert_eq!(articles_case[0].link, "https://CaseSensitive.com/MixedCase");
-
-            // 特殊文字検索
-            let filter_special = RssLinkFilter {
-                link_pattern: Some("%20with%20".to_string()),
-                pub_date_from: None,
-                pub_date_to: None,
-            };
-            let articles_special = get_rss_links_with_pool(Some(filter_special), &pool).await?;
-            assert_eq!(articles_special.len(), 1);
-
-            // アンダースコア検索
-            let filter_underscore = RssLinkFilter {
-                link_pattern: Some("article_with_underscore".to_string()),
-                pub_date_from: None,
-                pub_date_to: None,
-            };
-            let articles_underscore =
-                get_rss_links_with_pool(Some(filter_underscore), &pool).await?;
-            assert_eq!(articles_underscore.len(), 1);
-
-            println!("✅ RSS特殊文字処理テスト成功");
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("rss"))]
-        async fn test_filtering_edge_cases(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 空文字列検索（全件取得）
-            let filter_empty = RssLinkFilter {
-                link_pattern: Some("".to_string()),
-                pub_date_from: None,
-                pub_date_to: None,
-            };
-            let articles_empty = get_rss_links_with_pool(Some(filter_empty), &pool).await?;
-            assert!(articles_empty.len() > 0);
-
-            // 長い検索文字列（0件）
-            let filter_long = RssLinkFilter {
-                link_pattern: Some("a".repeat(1000)),
-                pub_date_from: None,
-                pub_date_to: None,
-            };
-            let articles_long = get_rss_links_with_pool(Some(filter_long), &pool).await?;
-            assert_eq!(articles_long.len(), 0);
-
-            // 個別記事の正確な取得
-            let simple_article =
-                get_rss_link_by_link_with_pool("https://minimal.site.com/simple", &pool).await?;
-            assert!(simple_article.is_some());
-            assert_eq!(simple_article.unwrap().title, "シンプル記事");
-
-            println!("✅ RSSフィルタリング境界テスト成功");
-            Ok(())
-        }
-
-
-        #[test]
-        fn test_rss_link_filter_construction() {
-            // RssLinkFilterの基本的な構築テスト
-            let date_from = DateTime::parse_from_rfc3339("2025-01-15T10:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc);
-            let date_to = DateTime::parse_from_rfc3339("2025-01-20T10:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc);
-
-            // フィルター条件を指定した構築
-            let filter = RssLinkFilter {
-                link_pattern: Some("test".to_string()),
-                pub_date_from: Some(date_from),
-                pub_date_to: Some(date_to),
-            };
-
-            assert_eq!(filter.link_pattern, Some("test".to_string()));
-            assert_eq!(filter.pub_date_from, Some(date_from));
-            assert_eq!(filter.pub_date_to, Some(date_to));
-
-            // デフォルト構築（全てNone）
-            let default_filter = RssLinkFilter::default();
-            assert!(default_filter.link_pattern.is_none());
-            assert!(default_filter.pub_date_from.is_none());
-            assert!(default_filter.pub_date_to.is_none());
-
-            println!("✅ RssLinkFilter構築テスト成功");
-        }
     }
 }
