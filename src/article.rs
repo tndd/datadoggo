@@ -40,12 +40,12 @@ pub fn read_article_from_file(file_path: &str) -> Result<Article> {
         .ok_or_else(|| anyhow::anyhow!("URLが見つかりません"))?
         .to_string();
 
-    // status_codeを取得（デフォルト値: 200）
+    // status_codeを取得（必須）
     let status_code = metadata
         .get("statusCode")
         .and_then(|v| v.as_i64())
         .map(|v| v as i32)
-        .unwrap_or(200);
+        .ok_or_else(|| anyhow::anyhow!("statusCodeフィールドが見つかりません"))?;
 
     let now = Utc::now();
 
@@ -243,6 +243,39 @@ mod tests {
         // 存在しないファイルを読み込もうとするテスト
         let result = read_article_from_file("non_existent_file.json");
         assert!(result.is_err(), "存在しないファイルでエラーにならなかった");
+    }
+
+    #[test]
+    fn test_read_article_missing_status_code() {
+        // statusCodeが存在しないJSONのテスト
+        use std::fs;
+        
+        let json_content = r#"
+        {
+            "markdown": "テスト記事の内容です",
+            "metadata": {
+                "url": "https://test.example.com/article"
+            }
+        }
+        "#;
+        
+        // 一時ファイル作成
+        let temp_file = "temp_test_missing_status_code.json";
+        fs::write(temp_file, json_content).expect("テストファイルの作成に失敗");
+        
+        // statusCodeが存在しない場合にエラーが返されることを確認
+        let result = read_article_from_file(temp_file);
+        assert!(result.is_err(), "statusCodeが存在しないのにエラーにならなかった");
+        
+        // エラーメッセージの確認
+        let error_message = result.unwrap_err().to_string();
+        assert!(error_message.contains("statusCodeフィールドが見つかりません"), 
+               "期待されるエラーメッセージが含まれていません: {}", error_message);
+        
+        // テストファイル削除
+        fs::remove_file(temp_file).ok();
+        
+        println!("✅ statusCode欠損エラーハンドリング検証成功");
     }
 
     // データベース保存機能のテスト
