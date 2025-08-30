@@ -129,22 +129,6 @@ pub async fn search_rss_links(query: Option<RssLinkQuery>, pool: &PgPool) -> Res
     Ok(rss_links)
 }
 
-/// 指定されたリンクのRSS記事を取得する
-
-/// 指定されたリンクのRSSリンクを指定されたプールから取得する
-pub async fn get_rss_link_by_link(link: &str, pool: &PgPool) -> Result<Option<RssLink>> {
-    let rss_link = sqlx::query_as!(
-        RssLink,
-        "SELECT link, title, pub_date FROM rss_links WHERE link = $1",
-        link
-    )
-    .fetch_optional(pool)
-    .await
-    .context("指定されたリンクのRSSリンク取得に失敗しました")?;
-
-    Ok(rss_link)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
