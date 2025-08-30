@@ -1,7 +1,7 @@
 mod domain;
 mod infra;
 
-use domain::feed::FeedConfig;
+use domain::feed::{load_feeds_from_yaml, search_feeds, FeedQuery};
 use domain::rss::{extract_rss_links_from_channel, store_rss_links};
 
 use infra::db::setup_database;
@@ -14,26 +14,31 @@ async fn main() {
 
     // フィード設定を読み込み
     println!("=== フィード設定の読み込み ===");
-    match FeedConfig::load_default() {
-        Ok(config) => {
-            let groups = config.get_groups();
-            println!("利用可能なフィードグループ: {:?}", groups);
-            
+    match load_feeds_from_yaml("src/domain/data/feeds.yaml") {
+        Ok(feeds) => {
+            println!("全フィード数: {}", feeds.len());
+
             // BBCフィードの例
-            let bbc_feeds = config.get_feeds_by_group("bbc");
+            let bbc_query = FeedQuery {
+                group: Some("bbc".to_string()),
+                name: None,
+            };
+            let bbc_feeds = search_feeds(&feeds, Some(bbc_query));
             println!("BBCフィード数: {}", bbc_feeds.len());
             for feed in bbc_feeds.iter().take(3) {
                 println!("  - {}: {}", feed.name, feed.link);
             }
-            
+
             // Yahoo Japanフィードの例
-            let yahoo_feeds = config.get_feeds_by_group("yahoo_japan");
+            let yahoo_query = FeedQuery {
+                group: Some("yahoo_japan".to_string()),
+                name: None,
+            };
+            let yahoo_feeds = search_feeds(&feeds, Some(yahoo_query));
             println!("Yahoo Japanフィード数: {}", yahoo_feeds.len());
             for feed in yahoo_feeds.iter().take(3) {
                 println!("  - {}: {}", feed.name, feed.link);
             }
-            
-            println!("全フィード数: {}", config.get_all_feeds().len());
         }
         Err(e) => {
             eprintln!("フィード設定の読み込みに失敗しました: {}", e);
