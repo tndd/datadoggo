@@ -276,7 +276,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss"))]
+        #[sqlx::test(fixtures("../fixtures/rss.sql"))]
         async fn test_duplicate_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // fixtureで既に17件のデータが存在している状態
 
@@ -308,7 +308,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss"))]
+        #[sqlx::test(fixtures("../fixtures/rss.sql"))]
         async fn test_mixed_new_and_existing_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // fixtureで既に17件のデータが存在している状態
 
@@ -352,7 +352,7 @@ mod tests {
     mod retrieval_tests {
         use super::*;
 
-        #[sqlx::test(fixtures("rss"))]
+        #[sqlx::test(fixtures("../fixtures/rss.sql"))]
         async fn test_search_all_rss_links_comprehensive(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
@@ -372,7 +372,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss"))]
+        #[sqlx::test(fixtures("../fixtures/rss.sql"))]
         async fn test_date_filtering_comprehensive(pool: PgPool) -> Result<(), anyhow::Error> {
             // 開始境界時刻の記事テスト
             let filter_start_boundary = RssLinkQuery {

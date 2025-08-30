@@ -1,10 +1,10 @@
-mod article;
+mod domain;
 mod infra;
-mod rss;
+
+use domain::rss::{extract_rss_links_from_channel, store_rss_links};
 
 use infra::db::setup_database;
 use infra::loader::{load_channel_from_xml_file, load_json_from_file};
-use rss::*;
 
 #[tokio::main]
 async fn main() {
