@@ -141,13 +141,13 @@ pub struct ArticleFilter {
 ///
 /// ## 戻り値
 /// - `Vec<Article>`: 条件にマッチしたArticle記事のリスト
-pub async fn get_articles_from_db(filter: Option<ArticleFilter>) -> Result<Vec<Article>> {
+pub async fn search_articles_from_db(filter: Option<ArticleFilter>) -> Result<Vec<Article>> {
     let pool = setup_database().await?;
-    get_articles_with_pool(filter, &pool).await
+    search_articles_with_pool(filter, &pool).await
 }
 
 /// 指定されたデータベースプールからArticleを取得する。
-pub async fn get_articles_with_pool(
+pub async fn search_articles_with_pool(
     filter: Option<ArticleFilter>,
     pool: &PgPool,
 ) -> Result<Vec<Article>> {

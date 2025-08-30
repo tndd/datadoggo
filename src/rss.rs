@@ -141,14 +141,14 @@ pub struct RssLinkFilter {
 ///
 /// ## 戻り値
 /// - `Vec<RssLink>`: 条件にマッチしたRSS記事のリスト
-pub async fn get_rss_links_from_db(filter: Option<RssLinkFilter>) -> Result<Vec<RssLink>> {
+pub async fn search_rss_links_from_db(filter: Option<RssLinkFilter>) -> Result<Vec<RssLink>> {
     let pool = setup_database().await?;
-    get_rss_links_with_pool(filter, &pool).await
+    search_rss_links_with_pool(filter, &pool).await
 }
 
 /// # 概要
 /// 指定されたデータベースプールからRSSリンクを取得する。
-pub async fn get_rss_links_with_pool(
+pub async fn search_rss_links_with_pool(
     filter: Option<RssLinkFilter>,
     pool: &PgPool,
 ) -> Result<Vec<RssLink>> {
@@ -434,10 +434,10 @@ mod tests {
         use super::*;
 
         #[sqlx::test(fixtures("rss"))]
-        async fn test_get_all_rss_links_comprehensive(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_search_all_rss_links_comprehensive(pool: PgPool) -> Result<(), anyhow::Error> {
             // 統合フィクスチャで19件のデータが存在
 
-            let rss_links = get_rss_links_with_pool(None, &pool).await?;
+            let rss_links = search_rss_links_with_pool(None, &pool).await?;
 
             // 全件取得されることを確認
             assert!(rss_links.len() >= 17, "全件取得で最低17件が期待されます");
@@ -460,7 +460,7 @@ mod tests {
                 pub_date_to: Some(parse_date("2025-01-15T00:00:01Z")?),
             };
             let rss_links_start =
-                get_rss_links_with_pool(Some(filter_start_boundary), &pool).await?;
+                search_rss_links_with_pool(Some(filter_start_boundary), &pool).await?;
             assert_eq!(rss_links_start.len(), 1);
             assert_eq!(
                 rss_links_start[0].link,
@@ -473,7 +473,7 @@ mod tests {
                 pub_date_from: Some(parse_date("2025-01-15T23:59:58Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),
             };
-            let rss_links_end = get_rss_links_with_pool(Some(filter_end_boundary), &pool).await?;
+            let rss_links_end = search_rss_links_with_pool(Some(filter_end_boundary), &pool).await?;
             assert_eq!(rss_links_end.len(), 1);
             assert_eq!(
                 rss_links_end[0].link,
@@ -486,7 +486,7 @@ mod tests {
                 pub_date_from: Some(parse_date("2025-01-15T00:00:00Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),
             };
-            let rss_links_day = get_rss_links_with_pool(Some(filter_full_day), &pool).await?;
+            let rss_links_day = search_rss_links_with_pool(Some(filter_full_day), &pool).await?;
             let day_links: Vec<&str> = rss_links_day.iter().map(|a| a.link.as_str()).collect();
             assert!(day_links.contains(&"https://test.com/boundary/exactly-start"));
             assert!(day_links.contains(&"https://test.com/boundary/exactly-end"));
