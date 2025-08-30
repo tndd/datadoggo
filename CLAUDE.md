@@ -63,7 +63,7 @@ pub enum RssError {
     #[error("RSS解析エラー: {message}")]
     Parse { 
         message: String, 
-        #[source] source: Option<Box<dyn std::error::Error + Send + Sync>> 
+        #[source] source: Option<anyhow::Error>
     },
 }
 
@@ -72,10 +72,9 @@ pub type RssOperationResult = DatabaseInsertResult;
 
 ### 3. エラーハンドリングのベストプラクティス
 
-- 各ドメイン関数はanyhow::Resultを返す (`Result<T>`)
+- 基本的には関数はエラーにはanyhow::Resultを返す (`Result<T>`)
 - 共通エラーは`From`トレイトで自動変換させる
 - エラー作成にはヘルパー関数を使用する
-- テスト関数は`Result<(), Box<dyn std::error::Error>>`を返す
 
 ## 依存関係管理
 
@@ -218,7 +217,6 @@ pub enum MyError {
 
 - **未使用コードを「将来使うかも」で残す**
 - **先読みして機能を実装する**
-- `Box<dyn std::error::Error>`の多用
 - すべてのエラーを一つの巨大なenumに詰め込む
 - SQLインジェクションのリスクがある動的クエリ
 - トランザクションなしのデータベース操作
