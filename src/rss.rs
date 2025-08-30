@@ -154,96 +154,24 @@ pub async fn get_rss_links_with_pool(
 ) -> Result<Vec<RssLink>> {
     let filter = filter.unwrap_or_default();
 
-    // 固定クエリを使用してsqlx::query!マクロでタイプセーフティを確保
-    let rss_links = match (&filter.link_pattern, &filter.pub_date_from, &filter.pub_date_to) {
-        // フィルタなし
-        (None, None, None) => {
-            sqlx::query_as!(
-                RssLink,
-                "SELECT link, title, pub_date FROM rss_links ORDER BY pub_date DESC"
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // リンクフィルタのみ
-        (Some(link_pattern), None, None) => {
-            let link_query = format!("%{}%", link_pattern);
-            sqlx::query_as!(
-                RssLink,
-                "SELECT link, title, pub_date FROM rss_links WHERE link ILIKE $1 ORDER BY pub_date DESC",
-                link_query
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // 日付範囲フィルタのみ
-        (None, Some(date_from), Some(date_to)) => {
-            sqlx::query_as!(
-                RssLink,
-                "SELECT link, title, pub_date FROM rss_links WHERE pub_date >= $1 AND pub_date <= $2 ORDER BY pub_date DESC",
-                date_from,
-                date_to
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // リンク + 日付範囲フィルタ
-        (Some(link_pattern), Some(date_from), Some(date_to)) => {
-            let link_query = format!("%{}%", link_pattern);
-            sqlx::query_as!(
-                RssLink,
-                "SELECT link, title, pub_date FROM rss_links WHERE link ILIKE $1 AND pub_date >= $2 AND pub_date <= $3 ORDER BY pub_date DESC",
-                link_query,
-                date_from,
-                date_to
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // 片方だけの日付フィルタ
-        (link_opt, Some(date_from), None) => {
-            if let Some(link_pattern) = link_opt {
-                let link_query = format!("%{}%", link_pattern);
-                sqlx::query_as!(
-                    RssLink,
-                    "SELECT link, title, pub_date FROM rss_links WHERE link ILIKE $1 AND pub_date >= $2 ORDER BY pub_date DESC",
-                    link_query,
-                    date_from
-                )
-                .fetch_all(pool)
-                .await?
-            } else {
-                sqlx::query_as!(
-                    RssLink,
-                    "SELECT link, title, pub_date FROM rss_links WHERE pub_date >= $1 ORDER BY pub_date DESC",
-                    date_from
-                )
-                .fetch_all(pool)
-                .await?
-            }
-        }
-        (link_opt, None, Some(date_to)) => {
-            if let Some(link_pattern) = link_opt {
-                let link_query = format!("%{}%", link_pattern);
-                sqlx::query_as!(
-                    RssLink,
-                    "SELECT link, title, pub_date FROM rss_links WHERE link ILIKE $1 AND pub_date <= $2 ORDER BY pub_date DESC",
-                    link_query,
-                    date_to
-                )
-                .fetch_all(pool)
-                .await?
-            } else {
-                sqlx::query_as!(
-                    RssLink,
-                    "SELECT link, title, pub_date FROM rss_links WHERE pub_date <= $1 ORDER BY pub_date DESC",
-                    date_to
-                )
-                .fetch_all(pool)
-                .await?
-            }
-        }
-    };
+    // 単一の静的SQL + オプション引数方式
+    let rss_links = sqlx::query_as!(
+        RssLink,
+        r#"
+        SELECT link, title, pub_date
+        FROM rss_links
+        WHERE
+            ($1::text IS NULL OR link ILIKE '%' || $1 || '%')
+            AND ($2::timestamptz IS NULL OR pub_date >= $2)
+            AND ($3::timestamptz IS NULL OR pub_date <= $3)
+        ORDER BY pub_date DESC
+        "#,
+        filter.link_pattern,
+        filter.pub_date_from,
+        filter.pub_date_to
+    )
+    .fetch_all(pool)
+    .await?;
 
     Ok(rss_links)
 }
