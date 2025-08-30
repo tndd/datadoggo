@@ -154,196 +154,65 @@ pub async fn get_articles_with_pool(
 ) -> Result<Vec<Article>> {
     let filter = filter.unwrap_or_default();
 
-    // 固定クエリパターンでsqlx::query!マクロを使用してタイプセーフティを確保
-    let articles = match (&filter.url_pattern, &filter.timestamp_from, &filter.timestamp_to, filter.status_code) {
-        // フィルタなし
-        (None, None, None, None) => {
-            sqlx::query_as!(
-                Article,
-                "SELECT url, timestamp, status_code, content FROM articles ORDER BY timestamp DESC"
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // URLフィルタのみ
-        (Some(url_pattern), None, None, None) => {
-            let url_query = format!("%{}%", url_pattern);
-            sqlx::query_as!(
-                Article,
-                "SELECT url, timestamp, status_code, content FROM articles WHERE url ILIKE $1 ORDER BY timestamp DESC",
-                url_query
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // 日付範囲 + ステータスコード
-        (None, Some(timestamp_from), Some(timestamp_to), Some(status_code)) => {
-            sqlx::query_as!(
-                Article,
-                "SELECT url, timestamp, status_code, content FROM articles WHERE timestamp >= $1 AND timestamp <= $2 AND status_code = $3 ORDER BY timestamp DESC",
-                timestamp_from,
-                timestamp_to,
-                status_code
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // 日付範囲フィルタのみ
-        (None, Some(timestamp_from), Some(timestamp_to), None) => {
-            sqlx::query_as!(
-                Article,
-                "SELECT url, timestamp, status_code, content FROM articles WHERE timestamp >= $1 AND timestamp <= $2 ORDER BY timestamp DESC",
-                timestamp_from,
-                timestamp_to
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // ステータスコードフィルタのみ
-        (None, None, None, Some(status_code)) => {
-            sqlx::query_as!(
-                Article,
-                "SELECT url, timestamp, status_code, content FROM articles WHERE status_code = $1 ORDER BY timestamp DESC",
-                status_code
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // URL + ステータスコード
-        (Some(url_pattern), None, None, Some(status_code)) => {
-            let url_query = format!("%{}%", url_pattern);
-            sqlx::query_as!(
-                Article,
-                "SELECT url, timestamp, status_code, content FROM articles WHERE url ILIKE $1 AND status_code = $2 ORDER BY timestamp DESC",
-                url_query,
-                status_code
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // URL + 日付範囲
-        (Some(url_pattern), Some(timestamp_from), Some(timestamp_to), None) => {
-            let url_query = format!("%{}%", url_pattern);
-            sqlx::query_as!(
-                Article,
-                "SELECT url, timestamp, status_code, content FROM articles WHERE url ILIKE $1 AND timestamp >= $2 AND timestamp <= $3 ORDER BY timestamp DESC",
-                url_query,
-                timestamp_from,
-                timestamp_to
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // 全フィルタ適用
-        (Some(url_pattern), Some(timestamp_from), Some(timestamp_to), Some(status_code)) => {
-            let url_query = format!("%{}%", url_pattern);
-            sqlx::query_as!(
-                Article,
-                "SELECT url, timestamp, status_code, content FROM articles WHERE url ILIKE $1 AND timestamp >= $2 AND timestamp <= $3 AND status_code = $4 ORDER BY timestamp DESC",
-                url_query,
-                timestamp_from,
-                timestamp_to,
-                status_code
-            )
-            .fetch_all(pool)
-            .await?
-        }
-        // 片方だけの日付フィルタ - from のみ
-        (url_opt, Some(timestamp_from), None, status_code_opt) => {
-            match (url_opt, status_code_opt) {
-                (None, None) => {
-                    sqlx::query_as!(
-                        Article,
-                        "SELECT url, timestamp, status_code, content FROM articles WHERE timestamp >= $1 ORDER BY timestamp DESC",
-                        timestamp_from
-                    )
-                    .fetch_all(pool)
-                    .await?
-                }
-                (Some(url_pattern), None) => {
-                    let url_query = format!("%{}%", url_pattern);
-                    sqlx::query_as!(
-                        Article,
-                        "SELECT url, timestamp, status_code, content FROM articles WHERE url ILIKE $1 AND timestamp >= $2 ORDER BY timestamp DESC",
-                        url_query,
-                        timestamp_from
-                    )
-                    .fetch_all(pool)
-                    .await?
-                }
-                (None, Some(status_code)) => {
-                    sqlx::query_as!(
-                        Article,
-                        "SELECT url, timestamp, status_code, content FROM articles WHERE timestamp >= $1 AND status_code = $2 ORDER BY timestamp DESC",
-                        timestamp_from,
-                        status_code
-                    )
-                    .fetch_all(pool)
-                    .await?
-                }
-                (Some(url_pattern), Some(status_code)) => {
-                    let url_query = format!("%{}%", url_pattern);
-                    sqlx::query_as!(
-                        Article,
-                        "SELECT url, timestamp, status_code, content FROM articles WHERE url ILIKE $1 AND timestamp >= $2 AND status_code = $3 ORDER BY timestamp DESC",
-                        url_query,
-                        timestamp_from,
-                        status_code
-                    )
-                    .fetch_all(pool)
-                    .await?
-                }
-            }
-        }
-        // 片方だけの日付フィルタ - to のみ
-        (url_opt, None, Some(timestamp_to), status_code_opt) => {
-            match (url_opt, status_code_opt) {
-                (None, None) => {
-                    sqlx::query_as!(
-                        Article,
-                        "SELECT url, timestamp, status_code, content FROM articles WHERE timestamp <= $1 ORDER BY timestamp DESC",
-                        timestamp_to
-                    )
-                    .fetch_all(pool)
-                    .await?
-                }
-                (Some(url_pattern), None) => {
-                    let url_query = format!("%{}%", url_pattern);
-                    sqlx::query_as!(
-                        Article,
-                        "SELECT url, timestamp, status_code, content FROM articles WHERE url ILIKE $1 AND timestamp <= $2 ORDER BY timestamp DESC",
-                        url_query,
-                        timestamp_to
-                    )
-                    .fetch_all(pool)
-                    .await?
-                }
-                (None, Some(status_code)) => {
-                    sqlx::query_as!(
-                        Article,
-                        "SELECT url, timestamp, status_code, content FROM articles WHERE timestamp <= $1 AND status_code = $2 ORDER BY timestamp DESC",
-                        timestamp_to,
-                        status_code
-                    )
-                    .fetch_all(pool)
-                    .await?
-                }
-                (Some(url_pattern), Some(status_code)) => {
-                    let url_query = format!("%{}%", url_pattern);
-                    sqlx::query_as!(
-                        Article,
-                        "SELECT url, timestamp, status_code, content FROM articles WHERE url ILIKE $1 AND timestamp <= $2 AND status_code = $3 ORDER BY timestamp DESC",
-                        url_query,
-                        timestamp_to,
-                        status_code
-                    )
-                    .fetch_all(pool)
-                    .await?
-                }
-            }
-        }
-    };
+    // 動的にクエリを構築
+    let mut query = "SELECT url, timestamp, status_code, content FROM articles".to_string();
+    let mut conditions = Vec::new();
+    let mut param_count = 0;
 
+    // URL フィルタ
+    if filter.url_pattern.is_some() {
+        param_count += 1;
+        conditions.push(format!("url ILIKE ${}", param_count));
+    }
+
+    // 日付範囲フィルタ
+    if filter.timestamp_from.is_some() {
+        param_count += 1;
+        conditions.push(format!("timestamp >= ${}", param_count));
+    }
+
+    if filter.timestamp_to.is_some() {
+        param_count += 1;
+        conditions.push(format!("timestamp <= ${}", param_count));
+    }
+
+    // ステータスコードフィルタ
+    if filter.status_code.is_some() {
+        param_count += 1;
+        conditions.push(format!("status_code = ${}", param_count));
+    }
+
+    // WHERE句を追加
+    if !conditions.is_empty() {
+        query.push_str(" WHERE ");
+        query.push_str(&conditions.join(" AND "));
+    }
+
+    // ORDER BY句を追加
+    query.push_str(" ORDER BY timestamp DESC");
+
+    // クエリビルダーを使用
+    let mut query_builder = sqlx::query_as::<_, Article>(&query);
+
+    // パラメータをバインド
+    if let Some(url_pattern) = &filter.url_pattern {
+        let url_query = format!("%{}%", url_pattern);
+        query_builder = query_builder.bind(url_query);
+    }
+
+    if let Some(timestamp_from) = filter.timestamp_from {
+        query_builder = query_builder.bind(timestamp_from);
+    }
+
+    if let Some(timestamp_to) = filter.timestamp_to {
+        query_builder = query_builder.bind(timestamp_to);
+    }
+
+    if let Some(status_code) = filter.status_code {
+        query_builder = query_builder.bind(status_code);
+    }
+
+    let articles = query_builder.fetch_all(pool).await?;
     Ok(articles)
 }
 
