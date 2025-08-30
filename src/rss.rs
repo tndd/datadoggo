@@ -52,7 +52,7 @@ pub fn read_channel_from_file(file_path: &str) -> Result<Channel> {
 ///
 /// # Note
 /// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
-pub async fn save_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<DatabaseInsertResult> {
+pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<DatabaseInsertResult> {
     if rss_links.is_empty() {
         return Ok(DatabaseInsertResult::empty());
     }
@@ -270,7 +270,7 @@ mod tests {
             ];
 
             // データベースに保存をテスト
-            let result = save_rss_links(&rss_basic, &pool).await?;
+            let result = store_rss_links(&rss_basic, &pool).await?;
 
             // SaveResultの検証
             validate_save_result(&result, 3, 0);
@@ -302,7 +302,7 @@ mod tests {
             };
 
             // 重複記事を保存しようとする
-            let result = save_rss_links(&[duplicate_rss_link], &pool).await?;
+            let result = store_rss_links(&[duplicate_rss_link], &pool).await?;
 
             // SaveResultの検証
             validate_save_result(&result, 0, 1);
@@ -345,7 +345,7 @@ mod tests {
                 },
             ];
 
-            let result = save_rss_links(&mixed_articles, &pool).await?;
+            let result = store_rss_links(&mixed_articles, &pool).await?;
 
             // SaveResultの検証
             validate_save_result(&result, 2, 1);

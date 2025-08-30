@@ -63,7 +63,7 @@ pub fn read_article_from_file(file_path: &str) -> Result<Article> {
 ///
 /// # Note
 /// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
-pub async fn save_article(
+pub async fn store_article(
     article: &Article,
     pool: &PgPool,
 ) -> Result<DatabaseInsertResult> {
@@ -235,7 +235,7 @@ mod tests {
         };
 
         // データベースに保存をテスト
-        let result = save_article(&test_article, &pool).await?;
+        let result = store_article(&test_article, &pool).await?;
 
         // SaveResultの検証
         assert_eq!(result.inserted, 1, "新規挿入された記事数が期待と異なります");
@@ -273,7 +273,7 @@ mod tests {
         };
 
         // 最初の記事を保存
-        let result1 = save_article(&original_article, &pool).await?;
+        let result1 = store_article(&original_article, &pool).await?;
         assert_eq!(result1.inserted, 1);
 
         // 同じURLで違う内容の記事を作成（重複）
@@ -285,7 +285,7 @@ mod tests {
         };
 
         // 重複記事を保存しようとする（新しい仕様では更新される）
-        let result2 = save_article(&duplicate_article, &pool).await?;
+        let result2 = store_article(&duplicate_article, &pool).await?;
 
         // SaveResultの検証（更新される場合、inserted=1として扱う）
         assert_eq!(result2.inserted, 1, "重複URLの記事は更新されるべきです");

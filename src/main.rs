@@ -27,7 +27,7 @@ async fn main() {
             let links = extract_rss_links_from_channel(&channel);
             println!("BBCのRSSから{}件のリンクを抽出しました。", links.len());
 
-            match save_rss_links(&links, &pool).await {
+            match store_rss_links(&links, &pool).await {
                 Ok(result) => {
                     println!("{}", result);
                 }
@@ -48,7 +48,7 @@ async fn main() {
             println!("Status Code: {:?}", article.status_code);
             println!("Contentサイズ: {} characters", article.content.len());
 
-            match save_article(&article, &pool).await {
+            match store_article(&article, &pool).await {
                 Ok(result) => {
                     println!("{}", result);
                 }
