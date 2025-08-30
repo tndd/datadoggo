@@ -1,6 +1,7 @@
 mod domain;
 mod infra;
 
+use domain::feed::{load_feeds_from_yaml, search_feeds, FeedQuery};
 use domain::rss::{extract_rss_links_from_channel, store_rss_links};
 
 use infra::db::setup_database;
@@ -10,6 +11,39 @@ use infra::loader::{load_channel_from_xml_file, load_json_from_file};
 async fn main() {
     // 環境変数を読み込み（.envファイルがあれば使用）
     let _ = dotenvy::dotenv();
+
+    // フィード設定を読み込み
+    println!("=== フィード設定の読み込み ===");
+    match load_feeds_from_yaml("src/domain/data/feeds.yaml") {
+        Ok(feeds) => {
+            println!("全フィード数: {}", feeds.len());
+
+            // BBCフィードの例
+            let bbc_query = FeedQuery {
+                group: Some("bbc".to_string()),
+                name: None,
+            };
+            let bbc_feeds = search_feeds(&feeds, Some(bbc_query));
+            println!("BBCフィード数: {}", bbc_feeds.len());
+            for feed in bbc_feeds.iter().take(3) {
+                println!("  - {}: {}", feed.name, feed.link);
+            }
+
+            // Yahoo Japanフィードの例
+            let yahoo_query = FeedQuery {
+                group: Some("yahoo_japan".to_string()),
+                name: None,
+            };
+            let yahoo_feeds = search_feeds(&feeds, Some(yahoo_query));
+            println!("Yahoo Japanフィード数: {}", yahoo_feeds.len());
+            for feed in yahoo_feeds.iter().take(3) {
+                println!("  - {}: {}", feed.name, feed.link);
+            }
+        }
+        Err(e) => {
+            eprintln!("フィード設定の読み込みに失敗しました: {}", e);
+        }
+    }
 
     // データベースプールを1回だけ作成
     let pool = match setup_database().await {

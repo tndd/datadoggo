@@ -1,0 +1,160 @@
+use crate::infra::loader::load_yaml_from_file;
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Feed {
+    pub group: String,
+    pub name: String,
+    pub link: String,
+}
+
+// Feed検索のフィルター条件を表す構造体
+#[derive(Debug, Default)]
+pub struct FeedQuery {
+    pub group: Option<String>,
+    pub name: Option<String>,
+}
+
+// YAMLファイルの構造に対応する型
+type FeedMap = HashMap<String, HashMap<String, String>>;
+
+/// src/domain/data/feeds.yamlからフィード情報を読み込み、Feedのベクタとして返す
+pub fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<Feed>> {
+    let feed_map: FeedMap = load_yaml_from_file(file_path)
+        .with_context(|| format!("フィードYAMLファイルの読み込みに失敗: {}", file_path))?;
+
+    let mut feeds = Vec::new();
+
+    for (group, name_links) in feed_map {
+        for (name, link) in name_links {
+            feeds.push(Feed {
+                group: group.clone(),
+                name,
+                link,
+            });
+        }
+    }
+
+    Ok(feeds)
+}
+
+/// フィード情報を3段階で絞り込み検索する
+/// 1. 絞り込みなし（全件）
+/// 2. groupのみ指定
+/// 3. group & name指定
+pub fn search_feeds(feeds: &[Feed], query: Option<FeedQuery>) -> Vec<Feed> {
+    let query = query.unwrap_or_default();
+
+    feeds
+        .iter()
+        .filter(|feed| {
+            // groupフィルター
+            if let Some(ref group_filter) = query.group {
+                if feed.group != *group_filter {
+                    return false;
+                }
+            }
+
+            // nameフィルター（groupが指定されている場合のみ適用）
+            if let Some(ref name_filter) = query.name {
+                if feed.name != *name_filter {
+                    return false;
+                }
+            }
+
+            true
+        })
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // テスト用のサンプルフィードデータ
+    fn create_test_feeds() -> Vec<Feed> {
+        vec![
+            Feed {
+                group: "bbc".to_string(),
+                name: "top".to_string(),
+                link: "https://feeds.bbci.co.uk/news/rss.xml".to_string(),
+            },
+            Feed {
+                group: "bbc".to_string(),
+                name: "world".to_string(),
+                link: "https://feeds.bbci.co.uk/news/world/rss.xml".to_string(),
+            },
+            Feed {
+                group: "cbs".to_string(),
+                name: "top".to_string(),
+                link: "https://www.cbsnews.com/latest/rss/main".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn test_search_feeds_no_filter() {
+        // 絞り込みなし（全件取得）
+        let feeds = create_test_feeds();
+        let result = search_feeds(&feeds, None);
+
+        assert_eq!(result.len(), 3, "全件取得で3件が期待されます");
+    }
+
+    #[test]
+    fn test_search_feeds_group_only() {
+        // groupのみ絞り込み
+        let feeds = create_test_feeds();
+        let query = FeedQuery {
+            group: Some("bbc".to_string()),
+            name: None,
+        };
+        let result = search_feeds(&feeds, Some(query));
+
+        assert_eq!(result.len(), 2, "bbcグループで2件が期待されます");
+        assert!(
+            result.iter().all(|f| f.group == "bbc"),
+            "全てbbcグループである必要があります"
+        );
+    }
+
+    #[test]
+    fn test_search_feeds_group_and_name() {
+        // group & name絞り込み
+        let feeds = create_test_feeds();
+        let query = FeedQuery {
+            group: Some("bbc".to_string()),
+            name: Some("world".to_string()),
+        };
+        let result = search_feeds(&feeds, Some(query));
+
+        assert_eq!(result.len(), 1, "特定のフィードで1件が期待されます");
+        assert_eq!(result[0].group, "bbc");
+        assert_eq!(result[0].name, "world");
+    }
+
+    #[test]
+    fn test_load_feeds_from_yaml() {
+        // 実際のYAMLファイルからの読み込みテスト
+        let result = load_feeds_from_yaml("src/domain/data/feeds.yaml");
+        assert!(result.is_ok(), "YAMLファイルの読み込みに失敗");
+
+        let feeds = result.unwrap();
+        assert!(!feeds.is_empty(), "フィードが読み込まれませんでした");
+
+        // bbcグループが存在することを確認
+        let bbc_feeds: Vec<_> = feeds.iter().filter(|f| f.group == "bbc").collect();
+        assert!(
+            !bbc_feeds.is_empty(),
+            "bbcグループのフィードが見つかりません"
+        );
+
+        println!(
+            "✅ フィードYAML読み込みテスト成功: {}件のフィードを読み込み",
+            feeds.len()
+        );
+    }
+}
