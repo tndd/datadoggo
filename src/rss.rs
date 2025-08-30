@@ -119,9 +119,82 @@ pub async fn save_rss_links_with_pool(
 // RSS記事のフィルター条件を表す構造体
 #[derive(Debug, Default)]
 pub struct RssLinkFilter {
-    pub link_contains: Option<String>,
+    pub link_pattern: Option<String>,
     pub pub_date_from: Option<DateTime<Utc>>,
     pub pub_date_to: Option<DateTime<Utc>>,
+}
+
+impl RssLinkFilter {
+    /// 文字列で日付を受け取るコンストラクタ
+    ///
+    /// # 引数
+    /// - `link_pattern`: リンクに含まれる文字列パターン（部分一致）
+    /// - `pub_date_from`: 開始日付文字列 (YYYY-MM-DD, RFC3339, RFC2822)
+    /// - `pub_date_to`: 終了日付文字列 (YYYY-MM-DD, RFC3339, RFC2822)
+    ///
+    /// # エラー
+    /// 不正な日付形式の場合はエラーを返す
+    pub fn new(
+        link_pattern: Option<String>,
+        pub_date_from: Option<&str>,
+        pub_date_to: Option<&str>,
+    ) -> Result<Self> {
+        let parsed_date_from = if let Some(date_str) = pub_date_from {
+            Some(
+                parse_date_string(date_str)
+                    .with_context(|| format!("pub_date_from の解析に失敗: {}", date_str))?,
+            )
+        } else {
+            None
+        };
+
+        let parsed_date_to = if let Some(date_str) = pub_date_to {
+            Some(
+                parse_date_string(date_str)
+                    .with_context(|| format!("pub_date_to の解析に失敗: {}", date_str))?,
+            )
+        } else {
+            None
+        };
+
+        Ok(RssLinkFilter {
+            link_pattern,
+            pub_date_from: parsed_date_from,
+            pub_date_to: parsed_date_to,
+        })
+    }
+}
+
+/// 文字列を日付型に変換するヘルパー関数
+///
+/// サポート形式:
+/// - ISO8601 日付のみ: "2025-01-15"
+/// - RFC3339: "2025-01-15T10:00:00Z"
+/// - RFC3339 with offset: "2025-01-15T10:00:00+09:00"
+fn parse_date_string(date_str: &str) -> Result<DateTime<Utc>> {
+    // RFC3339形式を試す
+    if let Ok(parsed) = DateTime::parse_from_rfc3339(date_str) {
+        return Ok(parsed.with_timezone(&Utc));
+    }
+
+    // RFC2822形式を試す
+    if let Ok(parsed) = DateTime::parse_from_rfc2822(date_str) {
+        return Ok(parsed.with_timezone(&Utc));
+    }
+
+    // ISO8601 日付のみの場合 (例: "2025-01-15")
+    if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        let naive_datetime = naive_date.and_hms_opt(0, 0, 0).unwrap();
+        return Ok(DateTime::<Utc>::from_naive_utc_and_offset(
+            naive_datetime,
+            Utc,
+        ));
+    }
+
+    anyhow::bail!(
+        "不正な日付形式: {}. サポート形式: YYYY-MM-DD, RFC3339, RFC2822",
+        date_str
+    )
 }
 
 /// # 概要
@@ -150,7 +223,7 @@ pub async fn get_rss_links_with_pool(
     let filter = filter.unwrap_or_default();
 
     // 固定クエリを使用してsqlx::query!マクロでタイプセーフティを確保
-    let rss_links = match (&filter.link_contains, &filter.pub_date_from, &filter.pub_date_to) {
+    let rss_links = match (&filter.link_pattern, &filter.pub_date_from, &filter.pub_date_to) {
         // フィルタなし
         (None, None, None) => {
             sqlx::query_as!(
@@ -195,14 +268,48 @@ pub async fn get_rss_links_with_pool(
             .fetch_all(pool)
             .await?
         }
-        // その他のパターンは簡易実装
-        _ => {
-            sqlx::query_as!(
-                RssLink,
-                "SELECT link, title, pub_date FROM rss_links ORDER BY pub_date DESC"
-            )
-            .fetch_all(pool)
-            .await?
+        // 片方だけの日付フィルタ
+        (link_opt, Some(date_from), None) => {
+            if let Some(link_pattern) = link_opt {
+                let link_query = format!("%{}%", link_pattern);
+                sqlx::query_as!(
+                    RssLink,
+                    "SELECT link, title, pub_date FROM rss_links WHERE link ILIKE $1 AND pub_date >= $2 ORDER BY pub_date DESC",
+                    link_query,
+                    date_from
+                )
+                .fetch_all(pool)
+                .await?
+            } else {
+                sqlx::query_as!(
+                    RssLink,
+                    "SELECT link, title, pub_date FROM rss_links WHERE pub_date >= $1 ORDER BY pub_date DESC",
+                    date_from
+                )
+                .fetch_all(pool)
+                .await?
+            }
+        }
+        (link_opt, None, Some(date_to)) => {
+            if let Some(link_pattern) = link_opt {
+                let link_query = format!("%{}%", link_pattern);
+                sqlx::query_as!(
+                    RssLink,
+                    "SELECT link, title, pub_date FROM rss_links WHERE link ILIKE $1 AND pub_date <= $2 ORDER BY pub_date DESC",
+                    link_query,
+                    date_to
+                )
+                .fetch_all(pool)
+                .await?
+            } else {
+                sqlx::query_as!(
+                    RssLink,
+                    "SELECT link, title, pub_date FROM rss_links WHERE pub_date <= $1 ORDER BY pub_date DESC",
+                    date_to
+                )
+                .fetch_all(pool)
+                .await?
+            }
         }
     };
 
@@ -550,11 +657,11 @@ mod tests {
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
             // 開始境界時刻の記事テスト
-            let filter_start_boundary = RssLinkFilter {
-                pub_date_from: Some("2025-01-15T00:00:00Z".parse().unwrap()),
-                pub_date_to: Some("2025-01-15T00:00:01Z".parse().unwrap()),
-                ..Default::default()
-            };
+            let filter_start_boundary = RssLinkFilter::new(
+                None,
+                Some("2025-01-15T00:00:00Z"),
+                Some("2025-01-15T00:00:01Z"),
+            )?;
             let articles_start =
                 get_rss_links_with_pool(Some(filter_start_boundary), &pool).await?;
             assert_eq!(articles_start.len(), 1);
@@ -564,11 +671,11 @@ mod tests {
             );
 
             // 終了境界時刻の記事テスト
-            let filter_end_boundary = RssLinkFilter {
-                pub_date_from: Some("2025-01-15T23:59:58Z".parse().unwrap()),
-                pub_date_to: Some("2025-01-15T23:59:59Z".parse().unwrap()),
-                ..Default::default()
-            };
+            let filter_end_boundary = RssLinkFilter::new(
+                None,
+                Some("2025-01-15T23:59:58Z"),
+                Some("2025-01-15T23:59:59Z"),
+            )?;
             let articles_end = get_rss_links_with_pool(Some(filter_end_boundary), &pool).await?;
             assert_eq!(articles_end.len(), 1);
             assert_eq!(
@@ -577,11 +684,11 @@ mod tests {
             );
 
             // 1日全体の境界記事確認
-            let filter_full_day = RssLinkFilter {
-                pub_date_from: Some("2025-01-15T00:00:00Z".parse().unwrap()),
-                pub_date_to: Some("2025-01-15T23:59:59Z".parse().unwrap()),
-                ..Default::default()
-            };
+            let filter_full_day = RssLinkFilter::new(
+                None,
+                Some("2025-01-15T00:00:00Z"),
+                Some("2025-01-15T23:59:59Z"),
+            )?;
             let articles_day = get_rss_links_with_pool(Some(filter_full_day), &pool).await?;
             let day_links: Vec<&str> = articles_day.iter().map(|a| a.link.as_str()).collect();
             assert!(day_links.contains(&"https://test.com/boundary/exactly-start"));
@@ -599,19 +706,16 @@ mod tests {
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
             // URL部分一致テスト
-            let filter_partial = RssLinkFilter {
-                link_contains: Some("example.com".to_string()),
-                ..Default::default()
-            };
+            let filter_partial = RssLinkFilter::new(Some("example.com".to_string()), None, None)?;
             let articles_partial = get_rss_links_with_pool(Some(filter_partial), &pool).await?;
             assert!(articles_partial.len() >= 4);
 
             // 日付+URL複合条件テスト
-            let filter_combined = RssLinkFilter {
-                link_contains: Some("example.com".to_string()),
-                pub_date_from: Some("2025-01-15T09:00:00Z".parse().unwrap()),
-                pub_date_to: Some("2025-01-15T11:00:00Z".parse().unwrap()),
-            };
+            let filter_combined = RssLinkFilter::new(
+                Some("example.com".to_string()),
+                Some("2025-01-15T09:00:00Z"),
+                Some("2025-01-15T11:00:00Z"),
+            )?;
             let articles_combined = get_rss_links_with_pool(Some(filter_combined), &pool).await?;
             assert_eq!(articles_combined.len(), 1);
             assert_eq!(
@@ -659,27 +763,19 @@ mod tests {
             pool: PgPool,
         ) -> Result<(), Box<dyn std::error::Error>> {
             // 大小文字無視検索
-            let filter_case = RssLinkFilter {
-                link_contains: Some("casesensitive".to_string()),
-                ..Default::default()
-            };
+            let filter_case = RssLinkFilter::new(Some("casesensitive".to_string()), None, None)?;
             let articles_case = get_rss_links_with_pool(Some(filter_case), &pool).await?;
             assert_eq!(articles_case.len(), 1);
             assert_eq!(articles_case[0].link, "https://CaseSensitive.com/MixedCase");
 
             // 特殊文字検索
-            let filter_special = RssLinkFilter {
-                link_contains: Some("%20with%20".to_string()),
-                ..Default::default()
-            };
+            let filter_special = RssLinkFilter::new(Some("%20with%20".to_string()), None, None)?;
             let articles_special = get_rss_links_with_pool(Some(filter_special), &pool).await?;
             assert_eq!(articles_special.len(), 1);
 
             // アンダースコア検索
-            let filter_underscore = RssLinkFilter {
-                link_contains: Some("article_with_underscore".to_string()),
-                ..Default::default()
-            };
+            let filter_underscore =
+                RssLinkFilter::new(Some("article_with_underscore".to_string()), None, None)?;
             let articles_underscore =
                 get_rss_links_with_pool(Some(filter_underscore), &pool).await?;
             assert_eq!(articles_underscore.len(), 1);
@@ -691,18 +787,12 @@ mod tests {
         #[sqlx::test(fixtures("rss"))]
         async fn test_filtering_edge_cases(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
             // 空文字列検索（全件取得）
-            let filter_empty = RssLinkFilter {
-                link_contains: Some("".to_string()),
-                ..Default::default()
-            };
+            let filter_empty = RssLinkFilter::new(Some("".to_string()), None, None)?;
             let articles_empty = get_rss_links_with_pool(Some(filter_empty), &pool).await?;
             assert!(articles_empty.len() > 0);
 
             // 長い検索文字列（0件）
-            let filter_long = RssLinkFilter {
-                link_contains: Some("a".repeat(1000)),
-                ..Default::default()
-            };
+            let filter_long = RssLinkFilter::new(Some("a".repeat(1000)), None, None)?;
             let articles_long = get_rss_links_with_pool(Some(filter_long), &pool).await?;
             assert_eq!(articles_long.len(), 0);
 
@@ -714,6 +804,45 @@ mod tests {
 
             println!("✅ RSSフィルタリング境界テスト成功");
             Ok(())
+        }
+
+        #[test]
+        fn test_invalid_date_strings() {
+            // 不正な日付形式でエラーになることを確認
+            let invalid_dates = [
+                "invalid-date",
+                "2025-13-01", // 無効な月
+                "2025-01-32", // 無効な日
+                "not-a-date",
+                "",
+            ];
+
+            for invalid_date in &invalid_dates {
+                let result = RssLinkFilter::new(None, Some(invalid_date), None);
+                assert!(
+                    result.is_err(),
+                    "不正な日付 '{}' でエラーになりませんでした",
+                    invalid_date
+                );
+            }
+
+            // 有効な日付形式は成功することを確認
+            let valid_dates = [
+                "2025-01-15",                // ISO8601日付のみ
+                "2025-01-15T10:00:00Z",      // RFC3339
+                "2025-01-15T10:00:00+09:00", // RFC3339 with offset
+            ];
+
+            for valid_date in &valid_dates {
+                let result = RssLinkFilter::new(None, Some(valid_date), None);
+                assert!(
+                    result.is_ok(),
+                    "有効な日付 '{}' でエラーになりました",
+                    valid_date
+                );
+            }
+
+            println!("✅ RSS日付バリデーションテスト成功");
         }
     }
 }
