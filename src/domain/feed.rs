@@ -21,7 +21,7 @@ pub struct FeedQuery {
 type FeedMap = HashMap<String, HashMap<String, String>>;
 
 /// src/domain/data/feeds.yamlからフィード情報を読み込み、Feedのベクタとして返す
-pub fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<Feed>> {
+fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<Feed>> {
     let feed_map: FeedMap = load_yaml_from_file(file_path)
         .with_context(|| format!("フィードYAMLファイルの読み込みに失敗: {}", file_path))?;
 
@@ -44,10 +44,13 @@ pub fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<Feed>> {
 /// 1. 絞り込みなし（全件）
 /// 2. groupのみ指定
 /// 3. group & name指定
-pub fn search_feeds(feeds: &[Feed], query: Option<FeedQuery>) -> Vec<Feed> {
+/// 
+/// 内部でfeeds.yamlファイルを読み込み、指定されたクエリでフィルタリングする
+pub fn search_feeds(query: Option<FeedQuery>) -> Result<Vec<Feed>> {
+    let feeds = load_feeds_from_yaml("src/domain/data/feeds.yaml")?;
     let query = query.unwrap_or_default();
 
-    feeds
+    let filtered_feeds = feeds
         .iter()
         .filter(|feed| {
             // groupフィルター
@@ -67,7 +70,9 @@ pub fn search_feeds(feeds: &[Feed], query: Option<FeedQuery>) -> Vec<Feed> {
             true
         })
         .cloned()
-        .collect()
+        .collect();
+
+    Ok(filtered_feeds)
 }
 
 #[cfg(test)]
@@ -98,25 +103,27 @@ mod tests {
     #[test]
     fn test_search_feeds_no_filter() {
         // 絞り込みなし（全件取得）
-        let feeds = create_test_feeds();
-        let result = search_feeds(&feeds, None);
-
-        assert_eq!(result.len(), 3, "全件取得で3件が期待されます");
+        let result = search_feeds(None);
+        assert!(result.is_ok(), "フィード検索に失敗");
+        
+        let feeds = result.unwrap();
+        assert!(!feeds.is_empty(), "フィードが取得されませんでした");
     }
 
     #[test]
     fn test_search_feeds_group_only() {
         // groupのみ絞り込み
-        let feeds = create_test_feeds();
         let query = FeedQuery {
             group: Some("bbc".to_string()),
             name: None,
         };
-        let result = search_feeds(&feeds, Some(query));
-
-        assert_eq!(result.len(), 2, "bbcグループで2件が期待されます");
+        let result = search_feeds(Some(query));
+        assert!(result.is_ok(), "フィード検索に失敗");
+        
+        let feeds = result.unwrap();
+        assert!(!feeds.is_empty(), "bbcグループのフィードが見つかりません");
         assert!(
-            result.iter().all(|f| f.group == "bbc"),
+            feeds.iter().all(|f| f.group == "bbc"),
             "全てbbcグループである必要があります"
         );
     }
@@ -124,22 +131,23 @@ mod tests {
     #[test]
     fn test_search_feeds_group_and_name() {
         // group & name絞り込み
-        let feeds = create_test_feeds();
         let query = FeedQuery {
             group: Some("bbc".to_string()),
             name: Some("world".to_string()),
         };
-        let result = search_feeds(&feeds, Some(query));
-
-        assert_eq!(result.len(), 1, "特定のフィードで1件が期待されます");
-        assert_eq!(result[0].group, "bbc");
-        assert_eq!(result[0].name, "world");
+        let result = search_feeds(Some(query));
+        assert!(result.is_ok(), "フィード検索に失敗");
+        
+        let feeds = result.unwrap();
+        assert_eq!(feeds.len(), 1, "特定のフィードで1件が期待されます");
+        assert_eq!(feeds[0].group, "bbc");
+        assert_eq!(feeds[0].name, "world");
     }
 
     #[test]
     fn test_load_feeds_from_yaml() {
-        // 実際のYAMLファイルからの読み込みテスト
-        let result = load_feeds_from_yaml("src/domain/data/feeds.yaml");
+        // 実際のYAMLファイルからの読み込みテスト（search_feeds経由）
+        let result = search_feeds(None);
         assert!(result.is_ok(), "YAMLファイルの読み込みに失敗");
 
         let feeds = result.unwrap();

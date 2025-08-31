@@ -3,7 +3,7 @@ mod domain;
 mod infra;
 
 use app::workflow::execute_rss_workflow_for_group;
-use domain::feed::{load_feeds_from_yaml, search_feeds, FeedQuery};
+use domain::feed::{search_feeds, FeedQuery};
 use domain::rss::{extract_rss_links_from_channel, store_rss_links};
 
 use infra::db::setup_database;
@@ -16,7 +16,7 @@ async fn main() {
 
     // フィード設定を読み込み
     println!("=== フィード設定の読み込み ===");
-    match load_feeds_from_yaml("src/domain/data/feeds.yaml") {
+    match search_feeds(None) {
         Ok(feeds) => {
             println!("全フィード数: {}", feeds.len());
 
@@ -25,10 +25,14 @@ async fn main() {
                 group: Some("bbc".to_string()),
                 name: None,
             };
-            let bbc_feeds = search_feeds(&feeds, Some(bbc_query));
-            println!("BBCフィード数: {}", bbc_feeds.len());
-            for feed in bbc_feeds.iter().take(3) {
-                println!("  - {}: {}", feed.name, feed.link);
+            match search_feeds(Some(bbc_query)) {
+                Ok(bbc_feeds) => {
+                    println!("BBCフィード数: {}", bbc_feeds.len());
+                    for feed in bbc_feeds.iter().take(3) {
+                        println!("  - {}: {}", feed.name, feed.link);
+                    }
+                }
+                Err(e) => eprintln!("BBCフィード検索エラー: {}", e),
             }
 
             // Yahoo Japanフィードの例
@@ -36,10 +40,14 @@ async fn main() {
                 group: Some("yahoo_japan".to_string()),
                 name: None,
             };
-            let yahoo_feeds = search_feeds(&feeds, Some(yahoo_query));
-            println!("Yahoo Japanフィード数: {}", yahoo_feeds.len());
-            for feed in yahoo_feeds.iter().take(3) {
-                println!("  - {}: {}", feed.name, feed.link);
+            match search_feeds(Some(yahoo_query)) {
+                Ok(yahoo_feeds) => {
+                    println!("Yahoo Japanフィード数: {}", yahoo_feeds.len());
+                    for feed in yahoo_feeds.iter().take(3) {
+                        println!("  - {}: {}", feed.name, feed.link);
+                    }
+                }
+                Err(e) => eprintln!("Yahoo Japanフィード検索エラー: {}", e),
             }
         }
         Err(e) => {

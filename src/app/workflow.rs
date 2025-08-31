@@ -18,7 +18,7 @@
 //! 外部への通信を行わずにテストできます。
 
 use crate::domain::article::{store_article, Article};
-use crate::domain::feed::{load_feeds_from_yaml, search_feeds, Feed, FeedQuery};
+use crate::domain::feed::{search_feeds, Feed, FeedQuery};
 use crate::domain::rss::{extract_rss_links_from_channel, store_rss_links, RssLink};
 use crate::infra::parser::parse_channel_from_xml_str;
 use anyhow::{Context, Result};
@@ -35,7 +35,7 @@ pub async fn execute_rss_workflow(pool: &PgPool) -> Result<()> {
     println!("=== RSSワークフロー開始 ===");
 
     // feeds.yamlからフィード設定を読み込み
-    let feeds = load_feeds_from_yaml("src/domain/data/feeds.yaml")
+    let feeds = search_feeds(None)
         .context("フィード設定の読み込みに失敗")?;
 
     println!("フィード設定読み込み完了: {}件", feeds.len());
@@ -57,16 +57,13 @@ pub async fn execute_rss_workflow(pool: &PgPool) -> Result<()> {
 pub async fn execute_rss_workflow_for_group(pool: &PgPool, group: &str) -> Result<()> {
     println!("=== RSSワークフロー開始（グループ: {}）===", group);
 
-    // feeds.yamlからフィード設定を読み込み
-    let feeds = load_feeds_from_yaml("src/domain/data/feeds.yaml")
-        .context("フィード設定の読み込みに失敗")?;
-
     // 指定されたグループのフィードのみを抽出
     let query = FeedQuery {
         group: Some(group.to_string()),
         name: None,
     };
-    let filtered_feeds = search_feeds(&feeds, Some(query));
+    let filtered_feeds = search_feeds(Some(query))
+        .context("フィード設定の読み込みに失敗")?;
 
     if filtered_feeds.is_empty() {
         println!(
