@@ -16,9 +16,12 @@ dateparser = "0.2"
 thiserror = "1.0"
 anyhow = "1.0"
 time = { version = "0.3", features = ["serde"] }
+reqwest = { version = "0.11", features = ["json"] }
+scraper = "0.17"
 
 [dev-dependencies]
 ctor = "0.2"
+wiremock = "0.5"
 
 [lints.rust]
 dead_code = "allow"

@@ -1,6 +1,8 @@
+mod app;
 mod domain;
 mod infra;
 
+use app::workflow::execute_rss_workflow_for_group;
 use domain::feed::{load_feeds_from_yaml, search_feeds, FeedQuery};
 use domain::rss::{extract_rss_links_from_channel, store_rss_links};
 
@@ -87,6 +89,17 @@ async fn main() {
         }
         Err(e) => {
             eprintln!("Firecrawlデータの読み込み中にエラーが発生しました: {}", e);
+        }
+    }
+
+    // RSSワークフローのデモンストレーション（BBCグループのみ）
+    println!("\n=== RSSワークフロー（デモ実行） ===");
+    match execute_rss_workflow_for_group(&pool, "bbc").await {
+        Ok(()) => {
+            println!("RSSワークフローが正常に完了しました");
+        }
+        Err(e) => {
+            eprintln!("RSSワークフローでエラーが発生しました: {}", e);
         }
     }
 }
