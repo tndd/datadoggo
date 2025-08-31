@@ -53,7 +53,7 @@ impl std::fmt::Display for DatabaseInsertResult {
 pub async fn create_pool() -> Result<PgPool> {
     let database_url = env::var("DATABASE_URL")
         .context("データベースURLの環境変数DATABASE_URLが設定されていません")?;
-    
+
     PgPool::connect(&database_url)
         .await
         .context("データベースへの接続に失敗しました")

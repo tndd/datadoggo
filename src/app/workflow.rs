@@ -1,25 +1,25 @@
 //! RSSワークフローモジュール
-//! 
+//!
 //! このモジュールは以下の機能を提供します：
 //! 1. RSSフィードからリンク情報を取得してデータベースに保存
 //! 2. 未処理のリンクから記事内容を取得してデータベースに保存
-//! 
+//!
 //! ## テスト実行方法
-//! 
+//!
 //! ```bash
 //! # 通常のテスト実行（外部通信なし、モック専用）
 //! cargo test
-//! 
+//!
 //! # オンラインテストを含む完全なテスト実行（外部通信あり）
 //! cargo test --features online_tests
 //! ```
-//! 
+//!
 //! テスト時は wiremock を使用してモックサーバーを立てることで
 //! 外部への通信を行わずにテストできます。
 
+use crate::domain::article::{store_article, Article};
 use crate::domain::feed::{load_feeds_from_yaml, search_feeds, Feed, FeedQuery};
 use crate::domain::rss::{extract_rss_links_from_channel, store_rss_links, RssLink};
-use crate::domain::article::{store_article, Article};
 use crate::infra::parser::parse_channel_from_xml_str;
 use anyhow::{Context, Result};
 use reqwest::Client;
@@ -27,7 +27,7 @@ use scraper::{Html, Selector};
 use sqlx::PgPool;
 
 /// RSSワークフローのメイン実行関数
-/// 
+///
 /// 1. feeds.yamlからフィード設定を読み込み
 /// 2. 各RSSフィードからリンクを取得してDBに保存
 /// 3. 未処理のリンクから記事内容を取得してDBに保存
@@ -37,7 +37,7 @@ pub async fn execute_rss_workflow(pool: &PgPool) -> Result<()> {
     // feeds.yamlからフィード設定を読み込み
     let feeds = load_feeds_from_yaml("src/domain/data/feeds.yaml")
         .context("フィード設定の読み込みに失敗")?;
-    
+
     println!("フィード設定読み込み完了: {}件", feeds.len());
 
     // HTTPクライアントを作成
@@ -60,16 +60,19 @@ pub async fn execute_rss_workflow_for_group(pool: &PgPool, group: &str) -> Resul
     // feeds.yamlからフィード設定を読み込み
     let feeds = load_feeds_from_yaml("src/domain/data/feeds.yaml")
         .context("フィード設定の読み込みに失敗")?;
-    
+
     // 指定されたグループのフィードのみを抽出
     let query = FeedQuery {
         group: Some(group.to_string()),
         name: None,
     };
     let filtered_feeds = search_feeds(&feeds, Some(query));
-    
+
     if filtered_feeds.is_empty() {
-        println!("指定されたグループ '{}' のフィードが見つかりませんでした", group);
+        println!(
+            "指定されたグループ '{}' のフィードが見つかりませんでした",
+            group
+        );
         return Ok(());
     }
 
@@ -91,14 +94,14 @@ pub async fn execute_rss_workflow_for_group(pool: &PgPool, group: &str) -> Resul
 /// RSSフィードからリンクを取得してDBに保存
 async fn fetch_rss_links(client: &Client, feeds: &[Feed], pool: &PgPool) -> Result<()> {
     println!("--- RSSフィードからリンク取得開始 ---");
-    
+
     for feed in feeds {
         println!("フィード処理中: {} - {}", feed.group, feed.name);
-        
+
         match fetch_single_rss_feed(client, feed).await {
             Ok(rss_links) => {
                 println!("  {}件のリンクを抽出", rss_links.len());
-                
+
                 match store_rss_links(&rss_links, pool).await {
                     Ok(result) => {
                         println!("  DB保存結果: {}", result);
@@ -113,7 +116,7 @@ async fn fetch_rss_links(client: &Client, feeds: &[Feed], pool: &PgPool) -> Resu
             }
         }
     }
-    
+
     println!("--- RSSフィードからリンク取得完了 ---");
     Ok(())
 }
@@ -132,40 +135,37 @@ async fn fetch_single_rss_feed(client: &Client, feed: &Feed) -> Result<Vec<RssLi
         .await
         .context("レスポンステキストの取得に失敗")?;
 
-    let channel = parse_channel_from_xml_str(&xml_content)
-        .context("XMLの解析に失敗")?;
+    let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
 
     let rss_links = extract_rss_links_from_channel(&channel);
-    
+
     Ok(rss_links)
 }
 
 /// 未処理のリンクから記事内容を取得してDBに保存
 async fn fetch_article_contents(client: &Client, pool: &PgPool) -> Result<()> {
     println!("--- 記事内容取得開始 ---");
-    
+
     // 未処理のリンクを取得（articleテーブルに存在しないrss_linkを取得）
     let unprocessed_links = get_unprocessed_rss_links(pool).await?;
-    
+
     println!("未処理リンク数: {}件", unprocessed_links.len());
-    
+
     for rss_link in unprocessed_links {
         println!("記事処理中: {}", rss_link.link);
-        
+
         match fetch_single_article(client, &rss_link.link).await {
-            Ok(article) => {
-                match store_article(&article, pool).await {
-                    Ok(result) => {
-                        println!("  記事保存結果: {}", result);
-                    }
-                    Err(e) => {
-                        eprintln!("  記事保存エラー: {}", e);
-                    }
+            Ok(article) => match store_article(&article, pool).await {
+                Ok(result) => {
+                    println!("  記事保存結果: {}", result);
                 }
-            }
+                Err(e) => {
+                    eprintln!("  記事保存エラー: {}", e);
+                }
+            },
             Err(e) => {
                 eprintln!("  記事取得エラー: {}", e);
-                
+
                 // エラーが発生した場合も、status_codeを記録してスキップ
                 let error_article = Article {
                     url: rss_link.link,
@@ -173,14 +173,14 @@ async fn fetch_article_contents(client: &Client, pool: &PgPool) -> Result<()> {
                     status_code: 500, // エラー用のステータスコード
                     content: format!("取得エラー: {}", e),
                 };
-                
+
                 if let Err(store_err) = store_article(&error_article, pool).await {
                     eprintln!("  エラー記事の保存に失敗: {}", store_err);
                 }
             }
         }
     }
-    
+
     println!("--- 記事内容取得完了 ---");
     Ok(())
 }
@@ -195,7 +195,7 @@ async fn fetch_single_article(client: &Client, url: &str) -> Result<Article> {
         .context(format!("記事の取得に失敗: {}", url))?;
 
     let status_code = response.status().as_u16() as i32;
-    
+
     if !response.status().is_success() {
         return Ok(Article {
             url: url.to_string(),
@@ -224,7 +224,7 @@ async fn fetch_single_article(client: &Client, url: &str) -> Result<Article> {
 /// HTMLから記事本文を抽出
 fn extract_article_content(html: &str) -> Result<String> {
     let document = Html::parse_document(html);
-    
+
     // よくある記事本文セレクタを試行
     let selectors = [
         "article",
@@ -236,18 +236,19 @@ fn extract_article_content(html: &str) -> Result<String> {
         "#content",
         ".story-body",
     ];
-    
+
     for selector_str in &selectors {
         if let Ok(selector) = Selector::parse(selector_str) {
             if let Some(element) = document.select(&selector).next() {
                 let text = element.text().collect::<Vec<_>>().join(" ");
-                if text.len() > 100 { // 十分な長さのコンテンツのみ採用
+                if text.len() > 100 {
+                    // 十分な長さのコンテンツのみ採用
                     return Ok(text);
                 }
             }
         }
     }
-    
+
     // フォールバック: bodyタグの内容を取得
     if let Ok(selector) = Selector::parse("body") {
         if let Some(element) = document.select(&selector).next() {
@@ -255,7 +256,7 @@ fn extract_article_content(html: &str) -> Result<String> {
             return Ok(text);
         }
     }
-    
+
     // 最終フォールバック: HTMLをそのまま返す
     Ok(html.to_string())
 }
@@ -283,17 +284,17 @@ async fn get_unprocessed_rss_links(pool: &PgPool) -> Result<Vec<RssLink>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::{method, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     // テスト用のモックサーバーを構築
     async fn setup_mock_server() -> (MockServer, Vec<Feed>) {
         let mock_server = MockServer::start().await;
-        
+
         // BBCのRSSフィードをモック
         let bbc_rss = std::fs::read_to_string("mock/rss/bbc.rss")
             .expect("BBCのモックRSSファイルが見つかりません");
-        
+
         Mock::given(method("GET"))
             .and(path_regex(r"/bbc.*"))
             .respond_with(ResponseTemplate::new(200).set_body_string(bbc_rss))
@@ -312,20 +313,18 @@ mod tests {
                 </body>
             </html>
         "#;
-        
+
         Mock::given(method("GET"))
             .and(path_regex(r"/article.*"))
             .respond_with(ResponseTemplate::new(200).set_body_string(test_html))
             .mount(&mock_server)
             .await;
 
-        let test_feeds = vec![
-            Feed {
-                group: "bbc".to_string(),
-                name: "top".to_string(),
-                link: format!("{}/bbc/rss.xml", mock_server.uri()),
-            }
-        ];
+        let test_feeds = vec![Feed {
+            group: "bbc".to_string(),
+            name: "top".to_string(),
+            link: format!("{}/bbc/rss.xml", mock_server.uri()),
+        }];
 
         (mock_server, test_feeds)
     }
@@ -334,13 +333,13 @@ mod tests {
     async fn test_fetch_single_rss_feed() {
         let (_mock_server, feeds) = setup_mock_server().await;
         let client = Client::new();
-        
+
         let result = fetch_single_rss_feed(&client, &feeds[0]).await;
         assert!(result.is_ok(), "RSSフィードの取得に失敗");
-        
+
         let rss_links = result.unwrap();
         assert!(!rss_links.is_empty(), "RSSリンクが取得されませんでした");
-        
+
         println!("取得されたRSSリンク数: {}", rss_links.len());
     }
 
@@ -357,24 +356,29 @@ mod tests {
                 </body>
             </html>
         "#;
-        
+
         let result = extract_article_content(html);
         assert!(result.is_ok(), "記事内容の抽出に失敗");
-        
+
         let content = result.unwrap();
-        assert!(content.contains("テストタイトル"), "タイトルが含まれていません");
-        assert!(content.contains("テスト記事の内容"), "記事内容が含まれていません");
-        
+        assert!(
+            content.contains("テストタイトル"),
+            "タイトルが含まれていません"
+        );
+        assert!(
+            content.contains("テスト記事の内容"),
+            "記事内容が含まれていません"
+        );
+
         println!("抽出された内容: {}", content);
     }
 
     #[sqlx::test]
     #[cfg(feature = "online_tests")]
     async fn test_rss_workflow_integration_online(pool: sqlx::PgPool) -> Result<(), anyhow::Error> {
-        
         // モックサーバーをセットアップ
         let mock_server = MockServer::start().await;
-        
+
         // BBC RSSフィードをモック
         let bbc_rss = std::fs::read_to_string("mock/rss/bbc.rss")?;
         Mock::given(method("GET"))
@@ -396,7 +400,7 @@ mod tests {
                 </body>
             </html>
         "#;
-        
+
         Mock::given(method("GET"))
             .and(path_regex(r".*"))
             .respond_with(ResponseTemplate::new(200).set_body_string(test_html))
@@ -404,13 +408,11 @@ mod tests {
             .await;
 
         // テスト用フィード設定
-        let test_feeds = vec![
-            Feed {
-                group: "bbc".to_string(),
-                name: "top".to_string(),
-                link: format!("{}/bbc/rss.xml", mock_server.uri()),
-            }
-        ];
+        let test_feeds = vec![Feed {
+            group: "bbc".to_string(),
+            name: "top".to_string(),
+            link: format!("{}/bbc/rss.xml", mock_server.uri()),
+        }];
 
         // HTTPクライアント作成
         let client = Client::new();
@@ -422,8 +424,11 @@ mod tests {
         let rss_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
             .fetch_one(&pool)
             .await?;
-        
-        assert!(rss_count.unwrap_or(0) > 0, "RSSリンクがデータベースに保存されませんでした");
+
+        assert!(
+            rss_count.unwrap_or(0) > 0,
+            "RSSリンクがデータベースに保存されませんでした"
+        );
 
         // 段階2: 記事内容を取得
         fetch_article_contents(&client, &pool).await?;
@@ -432,8 +437,11 @@ mod tests {
         let article_count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
             .fetch_one(&pool)
             .await?;
-        
-        assert!(article_count.unwrap_or(0) > 0, "記事がデータベースに保存されませんでした");
+
+        assert!(
+            article_count.unwrap_or(0) > 0,
+            "記事がデータベースに保存されませんでした"
+        );
 
         // 保存された記事の内容を確認
         let sample_article = sqlx::query_as!(
@@ -443,7 +451,10 @@ mod tests {
         .fetch_one(&pool)
         .await?;
 
-        assert_eq!(sample_article.status_code, 200, "記事のステータスコードが200ではありません");
+        assert_eq!(
+            sample_article.status_code, 200,
+            "記事のステータスコードが200ではありません"
+        );
         assert!(!sample_article.content.is_empty(), "記事内容が空です");
         assert!(sample_article.content.len() > 50, "記事内容が短すぎます");
 
@@ -456,11 +467,12 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_rss_workflow_integration_mock_only(pool: sqlx::PgPool) -> Result<(), anyhow::Error> {
-        
+    async fn test_rss_workflow_integration_mock_only(
+        pool: sqlx::PgPool,
+    ) -> Result<(), anyhow::Error> {
         // モックサーバーをセットアップ
         let mock_server = MockServer::start().await;
-        
+
         // BBC RSSフィードをモック
         let bbc_rss = std::fs::read_to_string("mock/rss/bbc.rss")?;
         Mock::given(method("GET"))
@@ -482,26 +494,26 @@ mod tests {
                 </body>
             </html>
         "#;
-        
+
         // BBCの実際の記事URLパターンをモック
         Mock::given(method("GET"))
             .and(path_regex(r".*/news/.*"))
             .respond_with(ResponseTemplate::new(200).set_body_string(test_html))
             .mount(&mock_server)
             .await;
-            
+
         Mock::given(method("GET"))
             .and(path_regex(r".*/sport/.*"))
             .respond_with(ResponseTemplate::new(200).set_body_string(test_html))
             .mount(&mock_server)
             .await;
-            
+
         Mock::given(method("GET"))
             .and(path_regex(r".*/sounds/.*"))
             .respond_with(ResponseTemplate::new(200).set_body_string(test_html))
             .mount(&mock_server)
             .await;
-            
+
         Mock::given(method("GET"))
             .and(path_regex(r".*/iplayer/.*"))
             .respond_with(ResponseTemplate::new(200).set_body_string(test_html))
@@ -509,13 +521,11 @@ mod tests {
             .await;
 
         // テスト用フィード設定（モックサーバーのURLを使用）
-        let test_feeds = vec![
-            Feed {
-                group: "test".to_string(),
-                name: "mock".to_string(),
-                link: format!("{}/feed/rss.xml", mock_server.uri()),
-            }
-        ];
+        let test_feeds = vec![Feed {
+            group: "test".to_string(),
+            name: "mock".to_string(),
+            link: format!("{}/feed/rss.xml", mock_server.uri()),
+        }];
 
         // HTTPクライアント作成
         let client = Client::new();
@@ -527,8 +537,11 @@ mod tests {
         let rss_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
             .fetch_one(&pool)
             .await?;
-        
-        assert!(rss_count.unwrap_or(0) > 0, "RSSリンクがデータベースに保存されませんでした");
+
+        assert!(
+            rss_count.unwrap_or(0) > 0,
+            "RSSリンクがデータベースに保存されませんでした"
+        );
 
         // テスト用のダミー記事URLをデータベースに追加
         let test_urls = vec![
@@ -557,8 +570,11 @@ mod tests {
         let article_count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
             .fetch_one(&pool)
             .await?;
-        
-        assert!(article_count.unwrap_or(0) > 0, "記事がデータベースに保存されませんでした");
+
+        assert!(
+            article_count.unwrap_or(0) > 0,
+            "記事がデータベースに保存されませんでした"
+        );
 
         // 保存された記事の内容を確認
         let sample_article = sqlx::query_as!(
@@ -568,15 +584,24 @@ mod tests {
         .fetch_one(&pool)
         .await?;
 
-        assert_eq!(sample_article.status_code, 200, "記事のステータスコードが200ではありません");
+        assert_eq!(
+            sample_article.status_code, 200,
+            "記事のステータスコードが200ではありません"
+        );
         assert!(!sample_article.content.is_empty(), "記事内容が空です");
         assert!(sample_article.content.len() > 50, "記事内容が短すぎます");
-        assert!(sample_article.content.contains("モックテスト記事"), "記事内容が正しく抽出されませんでした");
+        assert!(
+            sample_article.content.contains("モックテスト記事"),
+            "記事内容が正しく抽出されませんでした"
+        );
 
         println!("✅ RSS統合テスト成功（モック専用版）");
         println!("  - RSSリンク数: {}", rss_count.unwrap_or(0));
         println!("  - 記事数: {}", article_count.unwrap_or(0));
-        println!("  - サンプル記事内容長: {}文字", sample_article.content.len());
+        println!(
+            "  - サンプル記事内容長: {}文字",
+            sample_article.content.len()
+        );
 
         Ok(())
     }
