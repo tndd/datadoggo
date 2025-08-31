@@ -33,18 +33,13 @@ use sqlx::PgPool;
 /// 3. 未処理のリンクから記事内容を取得してDBに保存
 pub async fn execute_rss_workflow(pool: &PgPool) -> Result<()> {
     println!("=== RSSワークフロー開始 ===");
-
     // feeds.yamlからフィード設定を読み込み
     let feeds = search_feeds(None).context("フィード設定の読み込みに失敗")?;
-
     println!("フィード設定読み込み完了: {}件", feeds.len());
-
     // HTTPクライアントを作成
     let client = Client::new();
-
     // 段階1: RSSフィードからリンクを取得
     fetch_rss_links(&client, &feeds, pool).await?;
-
     // 段階2: 未処理のリンクから記事内容を取得
     fetch_article_contents(&client, pool).await?;
 
@@ -55,7 +50,6 @@ pub async fn execute_rss_workflow(pool: &PgPool) -> Result<()> {
 /// 特定のグループのRSSワークフローを実行
 pub async fn execute_rss_workflow_for_group(pool: &PgPool, group: &str) -> Result<()> {
     println!("=== RSSワークフロー開始（グループ: {}）===", group);
-
     // 指定されたグループのフィードのみを抽出
     let query = FeedQuery {
         group: Some(group.to_string()),
@@ -70,15 +64,12 @@ pub async fn execute_rss_workflow_for_group(pool: &PgPool, group: &str) -> Resul
         );
         return Ok(());
     }
-
     println!("対象フィード数: {}件", filtered_feeds.len());
 
     // HTTPクライアントを作成
     let client = Client::new();
-
     // 段階1: RSSフィードからリンクを取得
     fetch_rss_links(&client, &filtered_feeds, pool).await?;
-
     // 段階2: 未処理のリンクから記事内容を取得
     fetch_article_contents(&client, pool).await?;
 
@@ -129,9 +120,7 @@ async fn fetch_single_rss_feed(client: &Client, feed: &Feed) -> Result<Vec<RssLi
         .text()
         .await
         .context("レスポンステキストの取得に失敗")?;
-
     let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
-
     let rss_links = extract_rss_links_from_channel(&channel);
 
     Ok(rss_links)
@@ -140,10 +129,8 @@ async fn fetch_single_rss_feed(client: &Client, feed: &Feed) -> Result<Vec<RssLi
 /// 未処理のリンクから記事内容を取得してDBに保存
 async fn fetch_article_contents(client: &Client, pool: &PgPool) -> Result<()> {
     println!("--- 記事内容取得開始 ---");
-
     // 未処理のリンクを取得（articleテーブルに存在しないrss_linkを取得）
     let unprocessed_links = get_unprocessed_rss_links(pool).await?;
-
     println!("未処理リンク数: {}件", unprocessed_links.len());
 
     for rss_link in unprocessed_links {
@@ -204,7 +191,6 @@ async fn fetch_single_article(client: &Client, url: &str) -> Result<Article> {
         .text()
         .await
         .context("レスポンステキストの取得に失敗")?;
-
     // HTMLから記事本文を抽出
     let content = extract_article_content(&html_content)?;
 
@@ -219,7 +205,6 @@ async fn fetch_single_article(client: &Client, url: &str) -> Result<Article> {
 /// HTMLから記事本文を抽出
 fn extract_article_content(html: &str) -> Result<String> {
     let document = Html::parse_document(html);
-
     // よくある記事本文セレクタを試行
     let selectors = [
         "article",
@@ -243,7 +228,6 @@ fn extract_article_content(html: &str) -> Result<String> {
             }
         }
     }
-
     // フォールバック: bodyタグの内容を取得
     if let Ok(selector) = Selector::parse("body") {
         if let Some(element) = document.select(&selector).next() {
@@ -251,7 +235,6 @@ fn extract_article_content(html: &str) -> Result<String> {
             return Ok(text);
         }
     }
-
     // 最終フォールバック: HTMLをそのまま返す
     Ok(html.to_string())
 }
