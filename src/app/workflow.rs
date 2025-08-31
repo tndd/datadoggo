@@ -230,6 +230,7 @@ mod tests {
         println!("取得されたRSSリンク数: {}", rss_links.len());
     }
 
+    #[cfg(feature = "online")]
     #[tokio::test]
     async fn test_fetch_article_from_url() {
         let test_url = "https://httpbin.org/html";
