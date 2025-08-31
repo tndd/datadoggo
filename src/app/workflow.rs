@@ -39,9 +39,9 @@ pub async fn execute_rss_workflow(pool: &PgPool) -> Result<()> {
     // HTTPクライアントを作成
     let client = Client::new();
     // 段階1: RSSフィードからリンクを取得
-    fetch_rss_links(&client, &feeds, pool).await?;
+    process_collect_rss_links(&client, &feeds, pool).await?;
     // 段階2: 未処理のリンクから記事内容を取得
-    fetch_article_contents(&client, pool).await?;
+    process_collect_backlog_articles(&client, pool).await?;
 
     println!("=== RSSワークフロー完了 ===");
     Ok(())
@@ -69,16 +69,16 @@ pub async fn execute_rss_workflow_for_group(pool: &PgPool, group: &str) -> Resul
     // HTTPクライアントを作成
     let client = Client::new();
     // 段階1: RSSフィードからリンクを取得
-    fetch_rss_links(&client, &filtered_feeds, pool).await?;
+    process_collect_rss_links(&client, &filtered_feeds, pool).await?;
     // 段階2: 未処理のリンクから記事内容を取得
-    fetch_article_contents(&client, pool).await?;
+    process_collect_backlog_articles(&client, pool).await?;
 
     println!("=== RSSワークフロー完了（グループ: {}）===", group);
     Ok(())
 }
 
-/// RSSフィードからリンクを取得してDBに保存
-async fn fetch_rss_links(client: &Client, feeds: &[Feed], pool: &PgPool) -> Result<()> {
+/// RSSフィードからリンクを収集してDBに保存する
+async fn process_collect_rss_links(client: &Client, feeds: &[Feed], pool: &PgPool) -> Result<()> {
     println!("--- RSSフィードからリンク取得開始 ---");
 
     for feed in feeds {
@@ -126,8 +126,8 @@ async fn fetch_single_rss_feed(client: &Client, feed: &Feed) -> Result<Vec<RssLi
     Ok(rss_links)
 }
 
-/// 未処理のリンクから記事内容を取得してDBに保存
-async fn fetch_article_contents(client: &Client, pool: &PgPool) -> Result<()> {
+/// 未処理のリンクから処理待ちの記事を収集してDBに保存する
+async fn process_collect_backlog_articles(client: &Client, pool: &PgPool) -> Result<()> {
     println!("--- 記事内容取得開始 ---");
     // 未処理のリンクを取得（articleテーブルに存在しないrss_linkを取得）
     let unprocessed_links = get_unprocessed_rss_links(pool).await?;
@@ -376,7 +376,7 @@ mod tests {
         let client = Client::new();
 
         // 段階1: RSSフィードからリンクを取得
-        fetch_rss_links(&client, &test_feeds, &pool).await?;
+        process_collect_rss_links(&client, &test_feeds, &pool).await?;
 
         // データベースにRSSリンクが保存されたか確認
         let rss_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
@@ -389,7 +389,7 @@ mod tests {
         );
 
         // 段階2: 記事内容を取得
-        fetch_article_contents(&client, &pool).await?;
+        process_collect_backlog_articles(&client, &pool).await?;
 
         // データベースに記事が保存されたか確認
         let article_count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
@@ -489,7 +489,7 @@ mod tests {
         let client = Client::new();
 
         // 段階1: RSSフィードからリンクを取得
-        fetch_rss_links(&client, &test_feeds, &pool).await?;
+        process_collect_rss_links(&client, &test_feeds, &pool).await?;
 
         // データベースにRSSリンクが保存されたか確認
         let rss_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
