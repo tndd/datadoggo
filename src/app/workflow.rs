@@ -11,7 +11,7 @@
 //! cargo test
 //!
 //! # オンラインテストを含む完全なテスト実行（外部通信あり）
-//! cargo test --features online_tests
+//! cargo test --features online
 //! ```
 //!
 //! テスト時は wiremock を使用してモックサーバーを立てることで
@@ -374,7 +374,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    #[cfg(feature = "online_tests")]
+    #[cfg(feature = "online")]
     async fn test_rss_workflow_integration_online(pool: sqlx::PgPool) -> Result<(), anyhow::Error> {
         // モックサーバーをセットアップ
         let mock_server = MockServer::start().await;
