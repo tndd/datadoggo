@@ -232,7 +232,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_article_from_url() {
-        let test_url = "https://www.example.com/test-article";
+        let test_url = "https://httpbin.org/html";
 
         // 実際のFirecrawl APIが利用可能な場合のみテスト
         // Note: ローカルでdocker compose upが必要
