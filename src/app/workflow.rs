@@ -17,13 +17,14 @@
 //! テスト時は wiremock を使用してモックサーバーを立てることで
 //! 外部への通信を行わずにテストできます。
 
-use crate::domain::article::{get_unprocessed_rss_links, store_article, Article};
+use crate::domain::article::{
+    fetch_article_from_url, get_unprocessed_rss_links, store_article, Article,
+};
 use crate::domain::feed::{search_feeds, Feed, FeedQuery};
 use crate::domain::rss::{extract_rss_links_from_channel, store_rss_links, RssLink};
 use crate::infra::parser::parse_channel_from_xml_str;
 use anyhow::{Context, Result};
 use reqwest::Client;
-use scraper::{Html, Selector};
 use sqlx::PgPool;
 
 /// RSSワークフローのメイン実行関数
@@ -136,7 +137,7 @@ async fn process_collect_backlog_articles(client: &Client, pool: &PgPool) -> Res
     for rss_link in unprocessed_links {
         println!("記事処理中: {}", rss_link.link);
 
-        match fetch_single_article(client, &rss_link.link).await {
+        match fetch_article_from_url(client, &rss_link.link).await {
             Ok(article) => match store_article(&article, pool).await {
                 Ok(result) => {
                     println!("  記事保存結果: {}", result);
@@ -165,78 +166,6 @@ async fn process_collect_backlog_articles(client: &Client, pool: &PgPool) -> Res
 
     println!("--- 記事内容取得完了 ---");
     Ok(())
-}
-
-/// 単一の記事を取得してArticleを返す
-async fn fetch_single_article(client: &Client, url: &str) -> Result<Article> {
-    let response = client
-        .get(url)
-        .timeout(std::time::Duration::from_secs(60))
-        .send()
-        .await
-        .context(format!("記事の取得に失敗: {}", url))?;
-
-    let status_code = response.status().as_u16() as i32;
-
-    if !response.status().is_success() {
-        return Ok(Article {
-            url: url.to_string(),
-            timestamp: chrono::Utc::now(),
-            status_code,
-            content: format!("HTTPエラー: {}", response.status()),
-        });
-    }
-
-    let html_content = response
-        .text()
-        .await
-        .context("レスポンステキストの取得に失敗")?;
-    // HTMLから記事本文を抽出
-    let content = extract_article_content(&html_content)?;
-
-    Ok(Article {
-        url: url.to_string(),
-        timestamp: chrono::Utc::now(),
-        status_code,
-        content,
-    })
-}
-
-/// HTMLから記事本文を抽出
-fn extract_article_content(html: &str) -> Result<String> {
-    let document = Html::parse_document(html);
-    // よくある記事本文セレクタを試行
-    let selectors = [
-        "article",
-        ".article-content",
-        ".content",
-        ".post-content",
-        ".entry-content",
-        "main",
-        "#content",
-        ".story-body",
-    ];
-
-    for selector_str in &selectors {
-        if let Ok(selector) = Selector::parse(selector_str) {
-            if let Some(element) = document.select(&selector).next() {
-                let text = element.text().collect::<Vec<_>>().join(" ");
-                if text.len() > 100 {
-                    // 十分な長さのコンテンツのみ採用
-                    return Ok(text);
-                }
-            }
-        }
-    }
-    // フォールバック: bodyタグの内容を取得
-    if let Ok(selector) = Selector::parse("body") {
-        if let Some(element) = document.select(&selector).next() {
-            let text = element.text().collect::<Vec<_>>().join(" ");
-            return Ok(text);
-        }
-    }
-    // 最終フォールバック: HTMLをそのまま返す
-    Ok(html.to_string())
 }
 
 #[cfg(test)]
@@ -302,33 +231,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_extract_article_content() {
-        let html = r#"
-            <html>
-                <body>
-                    <article>
-                        <h1>テストタイトル</h1>
-                        <p>テスト記事の内容です。</p>
-                        <p>複数の段落があります。</p>
-                    </article>
-                </body>
-            </html>
-        "#;
+    async fn test_fetch_article_from_url() {
+        let client = Client::new();
+        let test_url = "https://www.example.com/test-article";
 
-        let result = extract_article_content(html);
-        assert!(result.is_ok(), "記事内容の抽出に失敗");
-
-        let content = result.unwrap();
-        assert!(
-            content.contains("テストタイトル"),
-            "タイトルが含まれていません"
-        );
-        assert!(
-            content.contains("テスト記事の内容"),
-            "記事内容が含まれていません"
-        );
-
-        println!("抽出された内容: {}", content);
+        // 実際のFirecrawl APIが利用可能な場合のみテスト
+        // Note: ローカルでdocker compose upが必要
+        if let Ok(article) = fetch_article_from_url(&client, test_url).await {
+            assert!(!article.content.is_empty(), "記事内容が空です");
+            assert_eq!(article.url, test_url);
+            println!("✅ Firecrawl API記事取得テスト成功");
+            println!("取得された記事内容長: {}文字", article.content.len());
+        } else {
+            println!("⚠️ Firecrawl APIが利用できないため、テストをスキップしました");
+        }
     }
 
     #[sqlx::test]
@@ -520,7 +436,7 @@ mod tests {
 
         // 段階2: 記事内容を取得（テスト用URLのみ）
         for url in &test_urls {
-            let article = fetch_single_article(&client, url).await?;
+            let article = fetch_article_from_url(&client, url).await?;
             store_article(&article, &pool).await?;
         }
 

@@ -1,8 +1,30 @@
 use crate::infra::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{FromRow, PgPool};
+
+// Firecrawl APIのレスポンス構造体
+#[derive(Debug, Deserialize)]
+struct FirecrawlResponse {
+    success: bool,
+    data: FirecrawlData,
+}
+
+#[derive(Debug, Deserialize)]
+struct FirecrawlData {
+    markdown: String,
+    metadata: FirecrawlMetadata,
+}
+
+#[derive(Debug, Deserialize)]
+struct FirecrawlMetadata {
+    url: Option<String>,
+    #[serde(rename = "statusCode")]
+    status_code: Option<i32>,
+}
 
 // Firecrawl記事構造体（テーブル定義と一致）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -288,6 +310,55 @@ pub async fn get_rss_links_needing_processing(
         .collect();
 
     Ok(processing_links)
+}
+
+/// URLから記事内容を取得してArticle構造体に変換する（Firecrawl API使用）
+pub async fn fetch_article_from_url(client: &Client, url: &str) -> Result<Article> {
+    let firecrawl_url = "http://localhost:13002/v1/scrape";
+    let payload = json!({
+        "url": url,
+        "formats": ["markdown"]
+    });
+
+    let response = client
+        .post(firecrawl_url)
+        .json(&payload)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
+        .await
+        .context(format!("Firecrawl APIへのリクエストに失敗: {}", url))?;
+
+    let status_code = response.status().as_u16() as i32;
+
+    if !response.status().is_success() {
+        return Ok(Article {
+            url: url.to_string(),
+            timestamp: chrono::Utc::now(),
+            status_code,
+            content: format!("Firecrawl APIエラー: {}", response.status()),
+        });
+    }
+
+    let firecrawl_response: FirecrawlResponse = response
+        .json()
+        .await
+        .context("Firecrawlレスポンスのパースに失敗")?;
+
+    if !firecrawl_response.success {
+        return Ok(Article {
+            url: url.to_string(),
+            timestamp: chrono::Utc::now(),
+            status_code: 500,
+            content: "Firecrawlでの記事取得に失敗".to_string(),
+        });
+    }
+
+    Ok(Article {
+        url: url.to_string(),
+        timestamp: chrono::Utc::now(),
+        status_code: firecrawl_response.data.metadata.status_code.unwrap_or(200),
+        content: firecrawl_response.data.markdown,
+    })
 }
 
 #[cfg(test)]
