@@ -25,7 +25,7 @@ WIP
 ## Google News
 WIP
 
-## スクレイピング対象
+## Scrape
 - BIS（国際決済銀行） - 四半期報告書、年次経済報告書で中銀政策の知的枠組みを提供
 - Federal Reserve System - FOMC議事録、経済分析、Beige Bookなど市場を動かす情報発信
 - IMF - World Economic Outlook、国別審査報告書で各国政策を「採点」
@@ -37,3 +37,18 @@ WIP
 - WEF（世界経済フォーラム） - Global Risks Report、ダボス会議で議題設定
 - CFR（外交問題評議会） - Foreign Affairs誌、CFR報告書で米国外交思想を形成
 - ...
+
+# Workflow
+## rss
+1. rssフィードからニュースのリンク(`rss_link`)を取得
+    - 取得した情報は`rss_link`という構造体にしてDBに保存
+    - `rss_link`は、`article`の進捗管理のアンカーとしても機能してる
+	- もし`rss_link`に`article`が紐ついてない場合は、記事が未取得であるという判断を行う
+2. linkからニュースの内容(`article`)を取得
+	- urlから取得した記事は`article`という構造体として保存する
+	- `article`には正常に記事が保存されたかどうかが記録されてる`status_code`がある
+	- `status_code`が200ではない場合、記事再取得の対象となる
+
+## bluesky
+## google news
+## scrape
