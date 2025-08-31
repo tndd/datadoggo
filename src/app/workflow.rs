@@ -17,7 +17,7 @@
 //! テスト時は wiremock を使用してモックサーバーを立てることで
 //! 外部への通信を行わずにテストできます。
 
-use crate::domain::article::{store_article, Article};
+use crate::domain::article::{get_unprocessed_rss_links, store_article, Article};
 use crate::domain::feed::{search_feeds, Feed, FeedQuery};
 use crate::domain::rss::{extract_rss_links_from_channel, store_rss_links, RssLink};
 use crate::infra::parser::parse_channel_from_xml_str;
@@ -35,8 +35,7 @@ pub async fn execute_rss_workflow(pool: &PgPool) -> Result<()> {
     println!("=== RSSワークフロー開始 ===");
 
     // feeds.yamlからフィード設定を読み込み
-    let feeds = search_feeds(None)
-        .context("フィード設定の読み込みに失敗")?;
+    let feeds = search_feeds(None).context("フィード設定の読み込みに失敗")?;
 
     println!("フィード設定読み込み完了: {}件", feeds.len());
 
@@ -62,8 +61,7 @@ pub async fn execute_rss_workflow_for_group(pool: &PgPool, group: &str) -> Resul
         group: Some(group.to_string()),
         name: None,
     };
-    let filtered_feeds = search_feeds(Some(query))
-        .context("フィード設定の読み込みに失敗")?;
+    let filtered_feeds = search_feeds(Some(query)).context("フィード設定の読み込みに失敗")?;
 
     if filtered_feeds.is_empty() {
         println!(
@@ -256,26 +254,6 @@ fn extract_article_content(html: &str) -> Result<String> {
 
     // 最終フォールバック: HTMLをそのまま返す
     Ok(html.to_string())
-}
-
-/// 未処理のRSSリンクを取得
-async fn get_unprocessed_rss_links(pool: &PgPool) -> Result<Vec<RssLink>> {
-    let links = sqlx::query_as!(
-        RssLink,
-        r#"
-        SELECT rl.link, rl.title, rl.pub_date
-        FROM rss_links rl
-        LEFT JOIN articles a ON rl.link = a.url
-        WHERE a.url IS NULL OR a.status_code != 200
-        ORDER BY rl.pub_date DESC
-        LIMIT 100
-        "#
-    )
-    .fetch_all(pool)
-    .await
-    .context("未処理RSSリンクの取得に失敗")?;
-
-    Ok(links)
 }
 
 #[cfg(test)]
