@@ -293,9 +293,9 @@ pub async fn get_rss_links_needing_processing(
 
 /// URLから記事内容を取得してArticle構造体に変換する（Firecrawl SDK使用）
 pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
-    // ローカル環境用の設定でFirecrawlAppを初期化
-    // TODO: ローカル環境用のbase_url設定方法を調査
-    let firecrawl = FirecrawlApp::new("dummy_key").context("Firecrawl SDKの初期化に失敗")?;
+    // セルフホスト環境用の初期化
+    let firecrawl = FirecrawlApp::new_selfhosted("http://localhost:13002", Some("fc-test"))
+        .context("Firecrawl SDKの初期化に失敗")?;
 
     match firecrawl.scrape_url(url, None).await {
         Ok(result) => Ok(Article {
