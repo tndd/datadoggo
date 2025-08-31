@@ -128,7 +128,7 @@ async fn fetch_rss_links_from_feed(client: &Client, feed: &Feed) -> Result<Vec<R
 }
 
 /// 未処理のリンクから処理待ちの記事を収集してDBに保存する
-async fn process_collect_backlog_articles(client: &Client, pool: &PgPool) -> Result<()> {
+async fn process_collect_backlog_articles(_client: &Client, pool: &PgPool) -> Result<()> {
     println!("--- 記事内容取得開始 ---");
     // 未処理のリンクを取得（articleテーブルに存在しないrss_linkを取得）
     let unprocessed_links = get_unprocessed_rss_links(pool).await?;
@@ -137,7 +137,7 @@ async fn process_collect_backlog_articles(client: &Client, pool: &PgPool) -> Res
     for rss_link in unprocessed_links {
         println!("記事処理中: {}", rss_link.link);
 
-        match fetch_article_from_url(client, &rss_link.link).await {
+        match fetch_article_from_url(&rss_link.link).await {
             Ok(article) => match store_article(&article, pool).await {
                 Ok(result) => {
                     println!("  記事保存結果: {}", result);
@@ -232,12 +232,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_article_from_url() {
-        let client = Client::new();
         let test_url = "https://www.example.com/test-article";
 
         // 実際のFirecrawl APIが利用可能な場合のみテスト
         // Note: ローカルでdocker compose upが必要
-        if let Ok(article) = fetch_article_from_url(&client, test_url).await {
+        if let Ok(article) = fetch_article_from_url(test_url).await {
             assert!(!article.content.is_empty(), "記事内容が空です");
             assert_eq!(article.url, test_url);
             println!("✅ Firecrawl API記事取得テスト成功");
@@ -436,7 +435,7 @@ mod tests {
 
         // 段階2: 記事内容を取得（テスト用URLのみ）
         for url in &test_urls {
-            let article = fetch_article_from_url(&client, url).await?;
+            let article = fetch_article_from_url(url).await?;
             store_article(&article, &pool).await?;
         }
 
