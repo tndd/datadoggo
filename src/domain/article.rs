@@ -217,7 +217,6 @@ pub async fn get_rss_links_with_article_status(
             qb.push(" AND ");
         } else {
             qb.push(" WHERE ");
-            has_where = true;
         }
 
         match status {
