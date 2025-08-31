@@ -23,5 +23,9 @@ scraper = "0.17"
 ctor = "0.2"
 wiremock = "0.5"
 
+[features]
+default = []
+online_tests = []
+
 [lints.rust]
 dead_code = "allow"

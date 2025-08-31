@@ -1,3 +1,22 @@
+//! RSSワークフローモジュール
+//! 
+//! このモジュールは以下の機能を提供します：
+//! 1. RSSフィードからリンク情報を取得してデータベースに保存
+//! 2. 未処理のリンクから記事内容を取得してデータベースに保存
+//! 
+//! ## テスト実行方法
+//! 
+//! ```bash
+//! # 通常のテスト実行（外部通信なし、モック専用）
+//! cargo test
+//! 
+//! # オンラインテストを含む完全なテスト実行（外部通信あり）
+//! cargo test --features online_tests
+//! ```
+//! 
+//! テスト時は wiremock を使用してモックサーバーを立てることで
+//! 外部への通信を行わずにテストできます。
+
 use crate::domain::feed::{load_feeds_from_yaml, search_feeds, Feed, FeedQuery};
 use crate::domain::rss::{extract_rss_links_from_channel, store_rss_links, RssLink};
 use crate::domain::article::{store_article, Article};
@@ -350,7 +369,8 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_rss_workflow_integration(pool: sqlx::PgPool) -> Result<(), anyhow::Error> {
+    #[cfg(feature = "online_tests")]
+    async fn test_rss_workflow_integration_online(pool: sqlx::PgPool) -> Result<(), anyhow::Error> {
         
         // モックサーバーをセットアップ
         let mock_server = MockServer::start().await;
@@ -427,10 +447,136 @@ mod tests {
         assert!(!sample_article.content.is_empty(), "記事内容が空です");
         assert!(sample_article.content.len() > 50, "記事内容が短すぎます");
 
-        println!("✅ RSS統合テスト成功");
+        println!("✅ RSS統合テスト成功（オンライン版）");
         println!("  - RSSリンク数: {}", rss_count.unwrap_or(0));
         println!("  - 記事数: {}", article_count.unwrap_or(0));
         println!("  - サンプル記事URL: {}", sample_article.url);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_rss_workflow_integration_mock_only(pool: sqlx::PgPool) -> Result<(), anyhow::Error> {
+        
+        // モックサーバーをセットアップ
+        let mock_server = MockServer::start().await;
+        
+        // BBC RSSフィードをモック
+        let bbc_rss = std::fs::read_to_string("mock/rss/bbc.rss")?;
+        Mock::given(method("GET"))
+            .and(path_regex(r"/feed/rss\.xml"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(bbc_rss))
+            .mount(&mock_server)
+            .await;
+
+        // 記事HTMLをモック（BBCの記事URLパターンに対応）
+        let test_html = r#"
+            <html>
+                <body>
+                    <article>
+                        <h1>モックテスト記事</h1>
+                        <p>これは完全にモック環境でのテストです。外部通信は一切行いません。</p>
+                        <p>記事内容の抽出機能をテストするための十分な長さのコンテンツです。</p>
+                        <p>RSSワークフローの動作を確認するためのテスト記事として機能します。</p>
+                    </article>
+                </body>
+            </html>
+        "#;
+        
+        // BBCの実際の記事URLパターンをモック
+        Mock::given(method("GET"))
+            .and(path_regex(r".*/news/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(test_html))
+            .mount(&mock_server)
+            .await;
+            
+        Mock::given(method("GET"))
+            .and(path_regex(r".*/sport/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(test_html))
+            .mount(&mock_server)
+            .await;
+            
+        Mock::given(method("GET"))
+            .and(path_regex(r".*/sounds/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(test_html))
+            .mount(&mock_server)
+            .await;
+            
+        Mock::given(method("GET"))
+            .and(path_regex(r".*/iplayer/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(test_html))
+            .mount(&mock_server)
+            .await;
+
+        // テスト用フィード設定（モックサーバーのURLを使用）
+        let test_feeds = vec![
+            Feed {
+                group: "test".to_string(),
+                name: "mock".to_string(),
+                link: format!("{}/feed/rss.xml", mock_server.uri()),
+            }
+        ];
+
+        // HTTPクライアント作成
+        let client = Client::new();
+
+        // 段階1: RSSフィードからリンクを取得
+        fetch_rss_links(&client, &test_feeds, &pool).await?;
+
+        // データベースにRSSリンクが保存されたか確認
+        let rss_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            .fetch_one(&pool)
+            .await?;
+        
+        assert!(rss_count.unwrap_or(0) > 0, "RSSリンクがデータベースに保存されませんでした");
+
+        // テスト用のダミー記事URLをデータベースに追加
+        let test_urls = vec![
+            format!("{}/news/test1", mock_server.uri()),
+            format!("{}/sport/test2", mock_server.uri()),
+            format!("{}/sounds/test3", mock_server.uri()),
+        ];
+
+        for (i, url) in test_urls.iter().enumerate() {
+            sqlx::query!(
+                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP) ON CONFLICT (link) DO NOTHING",
+                url,
+                format!("テスト記事{}", i + 1)
+            )
+            .execute(&pool)
+            .await?;
+        }
+
+        // 段階2: 記事内容を取得（テスト用URLのみ）
+        for url in &test_urls {
+            let article = fetch_single_article(&client, url).await?;
+            store_article(&article, &pool).await?;
+        }
+
+        // データベースに記事が保存されたか確認
+        let article_count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
+            .fetch_one(&pool)
+            .await?;
+        
+        assert!(article_count.unwrap_or(0) > 0, "記事がデータベースに保存されませんでした");
+
+        // 保存された記事の内容を確認
+        let sample_article = sqlx::query_as!(
+            Article,
+            "SELECT url, timestamp, status_code, content FROM articles LIMIT 1"
+        )
+        .fetch_one(&pool)
+        .await?;
+
+        assert_eq!(sample_article.status_code, 200, "記事のステータスコードが200ではありません");
+        assert!(!sample_article.content.is_empty(), "記事内容が空です");
+        assert!(sample_article.content.len() > 50, "記事内容が短すぎます");
+        assert!(sample_article.content.contains("モックテスト記事"), "記事内容が正しく抽出されませんでした");
+
+        println!("✅ RSS統合テスト成功（モック専用版）");
+        println!("  - RSSリンク数: {}", rss_count.unwrap_or(0));
+        println!("  - 記事数: {}", article_count.unwrap_or(0));
+        println!("  - サンプル記事内容長: {}文字", sample_article.content.len());
 
         Ok(())
     }
