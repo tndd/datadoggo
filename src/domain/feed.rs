@@ -44,7 +44,7 @@ fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<Feed>> {
 /// 1. 絞り込みなし（全件）
 /// 2. groupのみ指定
 /// 3. group & name指定
-/// 
+///
 /// 内部でfeeds.yamlファイルを読み込み、指定されたクエリでフィルタリングする
 pub fn search_feeds(query: Option<FeedQuery>) -> Result<Vec<Feed>> {
     let feeds = load_feeds_from_yaml("src/domain/data/feeds.yaml")?;
@@ -105,7 +105,7 @@ mod tests {
         // 絞り込みなし（全件取得）
         let result = search_feeds(None);
         assert!(result.is_ok(), "フィード検索に失敗");
-        
+
         let feeds = result.unwrap();
         assert!(!feeds.is_empty(), "フィードが取得されませんでした");
     }
@@ -119,7 +119,7 @@ mod tests {
         };
         let result = search_feeds(Some(query));
         assert!(result.is_ok(), "フィード検索に失敗");
-        
+
         let feeds = result.unwrap();
         assert!(!feeds.is_empty(), "bbcグループのフィードが見つかりません");
         assert!(
@@ -137,7 +137,7 @@ mod tests {
         };
         let result = search_feeds(Some(query));
         assert!(result.is_ok(), "フィード検索に失敗");
-        
+
         let feeds = result.unwrap();
         assert_eq!(feeds.len(), 1, "特定のフィードで1件が期待されます");
         assert_eq!(feeds[0].group, "bbc");
