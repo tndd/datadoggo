@@ -84,7 +84,7 @@ async fn process_collect_rss_links(client: &Client, feeds: &[Feed], pool: &PgPoo
     for feed in feeds {
         println!("フィード処理中: {} - {}", feed.group, feed.name);
 
-        match fetch_single_rss_feed(client, feed).await {
+        match fetch_rss_links_from_feed(client, feed).await {
             Ok(rss_links) => {
                 println!("  {}件のリンクを抽出", rss_links.len());
 
@@ -107,8 +107,8 @@ async fn process_collect_rss_links(client: &Client, feeds: &[Feed], pool: &PgPoo
     Ok(())
 }
 
-/// 単一のRSSフィードを取得してRssLinkのベクタを返す
-async fn fetch_single_rss_feed(client: &Client, feed: &Feed) -> Result<Vec<RssLink>> {
+/// feedからrss_linkのリストを取得する
+async fn fetch_rss_links_from_feed(client: &Client, feed: &Feed) -> Result<Vec<RssLink>> {
     let response = client
         .get(&feed.link)
         .timeout(std::time::Duration::from_secs(30))
@@ -288,11 +288,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fetch_single_rss_feed() {
+    async fn test_fetch_rss_links_from_feed() {
         let (_mock_server, feeds) = setup_mock_server().await;
         let client = Client::new();
 
-        let result = fetch_single_rss_feed(&client, &feeds[0]).await;
+        let result = fetch_rss_links_from_feed(&client, &feeds[0]).await;
         assert!(result.is_ok(), "RSSフィードの取得に失敗");
 
         let rss_links = result.unwrap();
