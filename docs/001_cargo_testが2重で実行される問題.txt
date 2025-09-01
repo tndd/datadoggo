@@ -1,0 +1,109 @@
+commit id: 28e3c56c57c6ce39d37f55e81873c0a35772d357
+---
+
+⏺ なぜmod宣言でテストが二重実行されるのか
+
+  1. Cargoのクレート認識
+
+  Cargoは以下のルールでクレートを識別します：
+
+  src/lib.rs  → ライブラリクレート（名前: datadoggo）
+  src/main.rs → バイナリクレート（実行可能ファイル）
+
+  これらは完全に独立したコンパイル単位として扱われます。
+
+  2. mod宣言の意味
+
+  // src/lib.rs
+  pub mod app;    // app/フォルダをライブラリクレートに取り込む
+  pub mod domain; // domain/フォルダをライブラリクレートに取り込む
+  pub mod infra;  // infra/フォルダをライブラリクレートに取り込む
+
+  // src/main.rs
+  mod app;    // app/フォルダをバイナリクレートに取り込む
+  mod domain; // domain/フォルダをバイナリクレートに取り込む
+  mod infra;  // infra/フォルダをバイナリクレートに取り込む
+
+  重要: mod宣言は「そのフォルダの内容をこのクレートの一部として組み込む」という意味です。
+
+  3. ファイルシステム上の実態
+
+  src/
+  ├── lib.rs
+  ├── main.rs
+  ├── app/
+  │   ├── mod.rs
+  │   └── workflow.rs（テストを含む）
+  ├── domain/
+  │   ├── article.rs（テストを含む）
+  │   ├── feed.rs（テストを含む）
+  │   └── rss.rs（テストを含む）
+  └── infra/
+      ├── api/
+      │   └── firecrawl.rs（テストを含む）
+      └── parser.rs（テストを含む）
+
+  4. テスト実行時に何が起きるか
+
+  ライブラリクレートの視点:
+  // src/lib.rs経由で
+  pub mod app;     // app/workflow.rs内のテストを発見
+  pub mod domain;  // domain/article.rs, feed.rs, rss.rs内のテストを発見
+  pub mod infra;   // infra/以下のテストを発見
+
+  バイナリクレートの視点:
+  // src/main.rs経由で
+  mod app;     // 同じapp/workflow.rs内のテストを発見（重複！）
+  mod domain;  // 同じdomain/以下のテストを発見（重複！）
+  mod infra;   // 同じinfra/以下のテストを発見（重複！）
+
+  5. cargo testの実行結果
+
+  Running unittests src/lib.rs    ← ライブラリクレートのテスト
+  running 29 tests
+
+  Running unittests src/main.rs   ← バイナリクレートのテスト
+  running 29 tests（同じテスト！）
+
+⏺ 6. なぜuse datadoggo::{app, domain, infra}で解決するのか
+
+  修正後のsrc/main.rs：
+  use datadoggo::{app, domain, infra};  // ライブラリクレートから借用
+  // mod宣言なし = バイナリクレート自体にはテストなし
+
+  結果:
+  - ライブラリクレート: テストを含むモジュールを所有
+  - バイナリクレート: ライブラリクレートを利用するだけ（テスト所有せず）
+
+  7. 類推で理解する
+
+  // 問題のあるパターン（テスト重複）
+  図書館A: 「源氏物語」を所蔵
+  図書館B: 同じ「源氏物語」を別途所蔵
+  → 蔵書点検で同じ本が2回カウントされる
+
+  // 修正後のパターン（正常）
+  図書館A: 「源氏物語」を所蔵
+  図書館B: 図書館Aから「源氏物語」を借用
+  → 蔵書点検で1回だけカウントされる
+
+⏺ まとめ
+
+  核心: mod宣言は「そのモジュール（とそのテスト）をこのクレートが所有する」という宣言です。
+
+  // lib.rsとmain.rsの両方で同じmod宣言
+  mod app;    // = 「appモジュールとそのテストを所有する」
+  mod domain; // = 「domainモジュールとそのテストを所有する」
+  mod infra;  // = 「infraモジュールとそのテストを所有する」
+
+  これにより：
+  1. ライブラリクレートがapp/, domain/, infra/のテストを所有
+  2. バイナリクレートも同じapp/, domain/, infra/のテストを所有
+  3. cargo testが両方のクレートでテストを実行
+  4. 結果：同じテストが2回実行される
+
+  修正方法: バイナリクレートは自分でモジュールを所有せず、ライブラリクレートから借用する
+  // src/main.rs
+  use datadoggo::{app, domain, infra}; // 借用（所有しない）
+
+  これがRustのモジュールシステムとテスト実行の仕組みです。
