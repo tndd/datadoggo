@@ -1,4 +1,4 @@
-use crate::infra::loader::load_yaml_from_file;
+use crate::infra::storage::file::load_yaml_from_file;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

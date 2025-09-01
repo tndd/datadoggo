@@ -1,5 +1,5 @@
-use crate::domain::services::firecrawl::{FirecrawlClient, FirecrawlClientProtocol};
-use crate::infra::db::DatabaseInsertResult;
+use crate::infra::api::firecrawl::{FirecrawlClient, FirecrawlClientProtocol};
+use crate::infra::storage::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -326,7 +326,7 @@ pub async fn fetch_article_with_client(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::loader::load_json_from_file;
+    use crate::infra::storage::file::load_json_from_file;
 
     // ファイルからFirecrawlデータを読み込み、Articleに変換する
     fn read_article_from_file(file_path: &str) -> Result<Article> {
@@ -760,7 +760,7 @@ mod tests {
         /// 統一されたFirecrawlテスト - 1つのコードでモック/オンライン切り替え
         #[tokio::test]
         async fn test_fetch_article_unified() -> Result<(), anyhow::Error> {
-            use crate::domain::services::firecrawl::MockFirecrawlClient;
+            use crate::infra::api::firecrawl::MockFirecrawlClient;
 
             let test_url = "https://httpbin.org/html";
             let mock_content = "統合テスト記事内容\n\nこれは1つのテストコードでモック/オンライン切り替えをテストする記事です。";
