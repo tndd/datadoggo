@@ -432,4 +432,20 @@ mod tests {
 
         Ok(())
     }
+
+    /// 統一されたWorkflowテスト - 1つのコードでモック/オンライン切り替え
+    #[tokio::test]
+    async fn test_workflow_fetch_article_unified() -> Result<(), anyhow::Error> {
+        // TODO: この実装は後でtest_mode_controllerが正しく統合された後に実装予定
+        // 現在はプレースホルダー
+        
+        let test_url = "https://httpbin.org/html";
+        let mock_content = "ワークフロー統合テスト記事\n\nWorkflowモジュールでのFirecrawl統合テストです。";
+        
+        println!("✅ Workflow統一テストのプレースホルダー実行完了");
+        println!("テスト対象URL: {}", test_url);
+        println!("モック内容: {}", mock_content);
+        
+        Ok(())
+    }
 }
