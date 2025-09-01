@@ -55,7 +55,7 @@ impl FirecrawlClientProtocol for FirecrawlClient {
 }
 
 /// テスト用のモック実装
-pub struct FirecrawlClientMock {
+pub struct MockFirecrawlClient {
     /// モック時に返すマークダウン内容
     pub mock_content: String,
     /// モック時に返すステータス（成功/失敗の制御）
@@ -64,7 +64,7 @@ pub struct FirecrawlClientMock {
     pub error_message: Option<String>,
 }
 
-impl FirecrawlClientMock {
+impl MockFirecrawlClient {
     /// 成功レスポンスを返すモッククライアントを作成
     pub fn new_success(mock_content: &str) -> Self {
         Self {
@@ -85,7 +85,7 @@ impl FirecrawlClientMock {
 }
 
 #[async_trait]
-impl FirecrawlClientProtocol for FirecrawlClientMock {
+impl FirecrawlClientProtocol for MockFirecrawlClient {
     async fn scrape_url(&self, _url: &str, _options: Option<()>) -> Result<Document> {
         if self.should_succeed {
             // 成功時のモックレスポンス
@@ -112,7 +112,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_client_success() {
-        let mock_client = FirecrawlClientMock::new_success("テストマークダウン内容");
+        let mock_client = MockFirecrawlClient::new_success("テストマークダウン内容");
 
         let result = mock_client.scrape_url("https://example.com", None).await;
 
@@ -126,7 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_client_error() {
-        let mock_client = FirecrawlClientMock::new_error("テストエラー");
+        let mock_client = MockFirecrawlClient::new_error("テストエラー");
 
         let result = mock_client.scrape_url("https://example.com", None).await;
 

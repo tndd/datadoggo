@@ -169,32 +169,4 @@ async fn process_collect_backlog_articles(_client: &Client, pool: &PgPool) -> Re
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 統一されたWorkflowテスト - 1つのコードでモック/オンライン切り替え
-    #[tokio::test]
-    async fn test_workflow_fetch_article_unified() -> Result<(), anyhow::Error> {
-        use crate::domain::article::fetch_article_with_client;
-        use crate::domain::firecrawl::FirecrawlClientMock;
-
-        let test_url = "https://httpbin.org/html";
-        let mock_content =
-            "ワークフロー統合テスト記事\n\nWorkflowモジュールでのFirecrawl統合テストです。";
-
-        // モッククライアントを使用してワークフローの記事取得をテスト
-        let mock_client = FirecrawlClientMock::new_success(mock_content);
-        let article = fetch_article_with_client(test_url, &mock_client).await?;
-
-        // 基本的なアサーション
-        assert_eq!(article.url, test_url);
-        assert_eq!(article.status_code, 200);
-        assert!(article.content.contains(mock_content));
-
-        println!("✅ Workflow統一テスト成功");
-        println!("URL: {}", article.url);
-        println!("内容長: {}文字", article.content.len());
-
-        Ok(())
-    }
-}
+mod tests {}

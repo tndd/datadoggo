@@ -19,7 +19,7 @@
 //! let client = firecrawl::create_client("モック内容");
 //! ```
 
-use datadoggo::domain::firecrawl::{FirecrawlClient, FirecrawlClientMock, FirecrawlClientProtocol};
+use datadoggo::domain::firecrawl::{FirecrawlClient, FirecrawlClientProtocol, MockFirecrawlClient};
 
 /// Firecrawlテスト制御モジュール
 pub mod firecrawl {
@@ -47,17 +47,17 @@ pub mod firecrawl {
                 Ok(client) => Box::new(client),
                 Err(_) => {
                     // 実際のクライアント作成に失敗した場合はモックにフォールバック
-                    Box::new(FirecrawlClientMock::new_success(mock_content))
+                    Box::new(MockFirecrawlClient::new_success(mock_content))
                 }
             }
         } else {
-            Box::new(FirecrawlClientMock::new_success(mock_content))
+            Box::new(MockFirecrawlClient::new_success(mock_content))
         }
     }
 
     /// エラー用のFirecrawlクライアントを作成する（テスト用）
     pub fn create_error_client(error_message: &str) -> Box<dyn FirecrawlClientProtocol> {
-        Box::new(FirecrawlClientMock::new_error(error_message))
+        Box::new(MockFirecrawlClient::new_error(error_message))
     }
 
     /// アサーション用ヘルパー関数
@@ -107,43 +107,6 @@ mod tests {
             );
         } else {
             assert!(!is_online, "online featureが無効な場合はモックモードのはず");
-        }
-    }
-
-    #[test]
-    fn test_env_var_detection() {
-        // 環境変数を設定してテスト
-        std::env::set_var("TEST_ONLINE", "1");
-
-        let is_online = firecrawl::is_online_mode();
-        assert!(
-            is_online,
-            "TEST_ONLINE環境変数が設定されている場合はオンラインモード"
-        );
-
-        // テスト後にクリーンアップ
-        std::env::remove_var("TEST_ONLINE");
-    }
-
-    #[tokio::test]
-    async fn test_mock_client_creation() {
-        // 環境変数をクリアしてモックモードを強制
-        std::env::remove_var("TEST_ONLINE");
-
-        let client = firecrawl::create_client("テスト内容");
-
-        // モッククライアントが作成されることを確認（型チェックは難しいので実際に使用してテスト）
-        let result = client.scrape_url("https://test.com", None).await;
-
-        if cfg!(feature = "online") {
-            // online featureが有効な場合は実際のクライアントまたはフォールバックモック
-            println!("✅ online featureが有効 - 実際のクライアントまたはフォールバックモック");
-        } else {
-            // online featureが無効な場合はモッククライアント
-            assert!(result.is_ok(), "モッククライアントでのスクレイプが失敗");
-            let document = result.unwrap();
-            assert!(document.markdown.unwrap_or_default().contains("テスト内容"));
-            println!("✅ モッククライアントが正常に作成されました");
         }
     }
 

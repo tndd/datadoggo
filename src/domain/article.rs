@@ -760,13 +760,13 @@ mod tests {
         /// 統一されたFirecrawlテスト - 1つのコードでモック/オンライン切り替え
         #[tokio::test]
         async fn test_fetch_article_unified() -> Result<(), anyhow::Error> {
-            use crate::domain::firecrawl::FirecrawlClientMock;
+            use crate::domain::firecrawl::MockFirecrawlClient;
 
             let test_url = "https://httpbin.org/html";
             let mock_content = "統合テスト記事内容\n\nこれは1つのテストコードでモック/オンライン切り替えをテストする記事です。";
 
             // モッククライアントを使用して統一関数をテスト
-            let mock_client = FirecrawlClientMock::new_success(mock_content);
+            let mock_client = MockFirecrawlClient::new_success(mock_content);
             let article = fetch_article_with_client(test_url, &mock_client).await?;
 
             // 基本的なアサーション
