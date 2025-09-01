@@ -19,7 +19,7 @@
 //! let client = firecrawl::create_client("モック内容");
 //! ```
 
-use datadoggo::domain::firecrawl::{FirecrawlClient, MockFirecrawlClient, RealFirecrawlClient};
+use datadoggo::domain::firecrawl::{FirecrawlClientProtocol, FirecrawlClientMock, FirecrawlClient};
 
 /// Firecrawlテスト制御モジュール
 pub mod firecrawl {
@@ -41,23 +41,23 @@ pub mod firecrawl {
     ///
     /// # Returns
     /// オンラインモードなら実際のクライアント、モックモードならモッククライアント
-    pub fn create_client(mock_content: &str) -> Box<dyn FirecrawlClient> {
+    pub fn create_client(mock_content: &str) -> Box<dyn FirecrawlClientProtocol> {
         if is_online_mode() {
-            match RealFirecrawlClient::new() {
+            match FirecrawlClient::new() {
                 Ok(client) => Box::new(client),
                 Err(_) => {
                     // 実際のクライアント作成に失敗した場合はモックにフォールバック
-                    Box::new(MockFirecrawlClient::new_success(mock_content))
+                    Box::new(FirecrawlClientMock::new_success(mock_content))
                 }
             }
         } else {
-            Box::new(MockFirecrawlClient::new_success(mock_content))
+            Box::new(FirecrawlClientMock::new_success(mock_content))
         }
     }
 
     /// エラー用のFirecrawlクライアントを作成する（テスト用）
-    pub fn create_error_client(error_message: &str) -> Box<dyn FirecrawlClient> {
-        Box::new(MockFirecrawlClient::new_error(error_message))
+    pub fn create_error_client(error_message: &str) -> Box<dyn FirecrawlClientProtocol> {
+        Box::new(FirecrawlClientMock::new_error(error_message))
     }
 
     /// アサーション用ヘルパー関数

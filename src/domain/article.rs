@@ -1,4 +1,4 @@
-use crate::domain::firecrawl::{FirecrawlClient, RealFirecrawlClient};
+use crate::domain::firecrawl::{FirecrawlClientProtocol, FirecrawlClient};
 use crate::infra::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -293,7 +293,7 @@ pub async fn get_rss_links_needing_processing(
 
 /// URLから記事内容を取得してArticle構造体に変換する（Firecrawl SDK使用）
 pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
-    let client = RealFirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
+    let client = FirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
     fetch_article_with_client(url, &client).await
 }
 
@@ -301,7 +301,7 @@ pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
 ///
 /// この関数は依存注入をサポートし、テスト時にモッククライアントを
 /// 注入することでFirecrawl APIへの実際の通信を避けることができます。
-pub async fn fetch_article_with_client(url: &str, client: &dyn FirecrawlClient) -> Result<Article> {
+pub async fn fetch_article_with_client(url: &str, client: &dyn FirecrawlClientProtocol) -> Result<Article> {
     match client.scrape_url(url, None).await {
         Ok(result) => Ok(Article {
             url: url.to_string(),
@@ -757,13 +757,13 @@ mod tests {
         /// 統一されたFirecrawlテスト - 1つのコードでモック/オンライン切り替え
         #[tokio::test]
         async fn test_fetch_article_unified() -> Result<(), anyhow::Error> {
-            use crate::domain::firecrawl::MockFirecrawlClient;
+            use crate::domain::firecrawl::FirecrawlClientMock;
 
             let test_url = "https://httpbin.org/html";
             let mock_content = "統合テスト記事内容\n\nこれは1つのテストコードでモック/オンライン切り替えをテストする記事です。";
 
             // モッククライアントを使用して統一関数をテスト
-            let mock_client = MockFirecrawlClient::new_success(mock_content);
+            let mock_client = FirecrawlClientMock::new_success(mock_content);
             let article = fetch_article_with_client(test_url, &mock_client).await?;
 
             // 基本的なアサーション

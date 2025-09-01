@@ -1,18 +1,18 @@
 //! Firecrawl クライアント抽象化モジュール
 //!
 //! このモジュールは、Firecrawl APIへのアクセスを抽象化し、
-//! テスト時のモック化を容易にするトレイトとその実装を提供します。
+//! テスト時のモック化を容易にするプロトコルとその実装を提供します。
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use firecrawl_sdk::{FirecrawlApp, document::Document};
 
-/// Firecrawl APIの抽象化トレイト
+/// Firecrawl APIの抽象化プロトコル
 /// 
-/// このトレイトは、実際のFirecrawl APIとモック実装の両方を
+/// このプロトコルは、実際のFirecrawl APIとモック実装の両方を
 /// 統一的に扱えるようにするためのインターフェースです。
 #[async_trait]
-pub trait FirecrawlClient {
+pub trait FirecrawlClientProtocol {
     /// URLをスクレイピングして結果を返す
     /// 
     /// # Arguments
@@ -22,11 +22,11 @@ pub trait FirecrawlClient {
 }
 
 /// 実際のFirecrawl APIを使用する実装
-pub struct RealFirecrawlClient {
+pub struct FirecrawlClient {
     firecrawl_app: FirecrawlApp,
 }
 
-impl RealFirecrawlClient {
+impl FirecrawlClient {
     /// デフォルトのFirecrawl設定で新しいクライアントを作成
     pub fn new() -> Result<Self> {
         let firecrawl_app = FirecrawlApp::new_selfhosted("http://localhost:13002", Some("fc-test"))
@@ -45,7 +45,7 @@ impl RealFirecrawlClient {
 }
 
 #[async_trait]
-impl FirecrawlClient for RealFirecrawlClient {
+impl FirecrawlClientProtocol for FirecrawlClient {
     async fn scrape_url(&self, url: &str, _options: Option<()>) -> Result<Document> {
         self.firecrawl_app
             .scrape_url(url, None)
@@ -55,7 +55,7 @@ impl FirecrawlClient for RealFirecrawlClient {
 }
 
 /// テスト用のモック実装
-pub struct MockFirecrawlClient {
+pub struct FirecrawlClientMock {
     /// モック時に返すマークダウン内容
     pub mock_content: String,
     /// モック時に返すステータス（成功/失敗の制御）
@@ -64,7 +64,7 @@ pub struct MockFirecrawlClient {
     pub error_message: Option<String>,
 }
 
-impl MockFirecrawlClient {
+impl FirecrawlClientMock {
     /// 成功レスポンスを返すモッククライアントを作成
     pub fn new_success(mock_content: &str) -> Self {
         Self {
@@ -85,7 +85,7 @@ impl MockFirecrawlClient {
 }
 
 #[async_trait]
-impl FirecrawlClient for MockFirecrawlClient {
+impl FirecrawlClientProtocol for FirecrawlClientMock {
     async fn scrape_url(&self, _url: &str, _options: Option<()>) -> Result<Document> {
         if self.should_succeed {
             // 成功時のモックレスポンス
@@ -111,7 +111,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_client_success() {
-        let mock_client = MockFirecrawlClient::new_success("テストマークダウン内容");
+        let mock_client = FirecrawlClientMock::new_success("テストマークダウン内容");
         
         let result = mock_client.scrape_url("https://example.com", None).await;
         
@@ -122,7 +122,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_client_error() {
-        let mock_client = MockFirecrawlClient::new_error("テストエラー");
+        let mock_client = FirecrawlClientMock::new_error("テストエラー");
         
         let result = mock_client.scrape_url("https://example.com", None).await;
         
