@@ -21,7 +21,7 @@ firecrawl-sdk = "0.3.1"
 
 [dev-dependencies]
 ctor = "0.2"
-wiremock = "0.5"
+httpmock = "0.7"
 
 [features]
 default = []
