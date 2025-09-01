@@ -175,16 +175,14 @@ mod tests {
     /// 統一されたWorkflowテスト - 1つのコードでモック/オンライン切り替え
     #[tokio::test]
     async fn test_workflow_fetch_article_unified() -> Result<(), anyhow::Error> {
-        use crate::domain::article::fetch_article_with_client;
-        use crate::domain::firecrawl::MockFirecrawlClient;
+        use crate::domain::article::fetch_article_with_mock;
 
         let test_url = "https://httpbin.org/html";
         let mock_content =
             "ワークフロー統合テスト記事\n\nWorkflowモジュールでのFirecrawl統合テストです。";
 
-        // モッククライアントを使用してワークフローの記事取得をテスト
-        let mock_client = MockFirecrawlClient::new_success(mock_content);
-        let article = fetch_article_with_client(test_url, &mock_client).await?;
+        // 新しい関数ベースのモジュールを使用してテスト
+        let article = fetch_article_with_mock(test_url, Some(mock_content)).await?;
 
         // 基本的なアサーション
         assert_eq!(article.url, test_url);

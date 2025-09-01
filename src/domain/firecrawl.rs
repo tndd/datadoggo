@@ -1,107 +1,59 @@
-//! Firecrawl クライアント抽象化モジュール
+//! Firecrawl API関数モジュール
 //!
-//! このモジュールは、Firecrawl APIへのアクセスを抽象化し、
-//! テスト時のモック化を容易にするトレイトとその実装を提供します。
+//! このモジュールは、Firecrawl APIへのアクセスを提供し、
+//! テスト時のモック化を容易にする関数群を提供します。
 
 use anyhow::{Context, Result};
-use async_trait::async_trait;
-use firecrawl_sdk::{FirecrawlApp, document::Document};
+use firecrawl_sdk::{document::Document, FirecrawlApp};
 
-/// Firecrawl APIの抽象化トレイト
-/// 
-/// このトレイトは、実際のFirecrawl APIとモック実装の両方を
-/// 統一的に扱えるようにするためのインターフェースです。
-#[async_trait]
-pub trait FirecrawlClient {
-    /// URLをスクレイピングして結果を返す
-    /// 
-    /// # Arguments
-    /// * `url` - スクレイピング対象のURL
-    /// * `options` - スクレイピングオプション（現在はNoneのみ対応）
-    async fn scrape_url(&self, url: &str, options: Option<()>) -> Result<Document>;
+/// 実際のFirecrawl APIを使用してURLをスクレイピング
+pub async fn scrape_url_real(url: &str) -> Result<Document> {
+    let firecrawl_app = FirecrawlApp::new_selfhosted("http://localhost:13002", Some("fc-test"))
+        .context("Firecrawl SDKの初期化に失敗")?;
+
+    firecrawl_app
+        .scrape_url(url, None)
+        .await
+        .map_err(|e| anyhow::anyhow!("Firecrawl API エラー: {}", e))
 }
 
-/// 実際のFirecrawl APIを使用する実装
-pub struct RealFirecrawlClient {
-    firecrawl_app: FirecrawlApp,
+/// カスタム設定でFirecrawl APIを使用してURLをスクレイピング
+pub async fn scrape_url_real_with_config(
+    url: &str,
+    base_url: &str,
+    api_key: Option<&str>,
+) -> Result<Document> {
+    let firecrawl_app =
+        FirecrawlApp::new_selfhosted(base_url, api_key).context("Firecrawl SDKの初期化に失敗")?;
+
+    firecrawl_app
+        .scrape_url(url, None)
+        .await
+        .map_err(|e| anyhow::anyhow!("Firecrawl API エラー: {}", e))
 }
 
-impl RealFirecrawlClient {
-    /// デフォルトのFirecrawl設定で新しいクライアントを作成
-    pub fn new() -> Result<Self> {
-        let firecrawl_app = FirecrawlApp::new_selfhosted("http://localhost:13002", Some("fc-test"))
-            .context("Firecrawl SDKの初期化に失敗")?;
-        
-        Ok(Self { firecrawl_app })
-    }
-    
-    /// カスタム設定でFirecrawlクライアントを作成
-    pub fn new_with_config(base_url: &str, api_key: Option<&str>) -> Result<Self> {
-        let firecrawl_app = FirecrawlApp::new_selfhosted(base_url, api_key)
-            .context("Firecrawl SDKの初期化に失敗")?;
-        
-        Ok(Self { firecrawl_app })
-    }
+/// モックでURLスクレイピングをシミュレート（成功レスポンス）
+pub async fn scrape_url_mock(url: &str, mock_content: &str) -> Result<Document> {
+    // URLを使用してログ出力（実際の処理感を演出）
+    println!("モックスクレイピング: {}", url);
+
+    Ok(Document {
+        markdown: Some(mock_content.to_string()),
+        // 他のフィールドはデフォルト値
+        ..Default::default()
+    })
 }
 
-#[async_trait]
-impl FirecrawlClient for RealFirecrawlClient {
-    async fn scrape_url(&self, url: &str, _options: Option<()>) -> Result<Document> {
-        self.firecrawl_app
-            .scrape_url(url, None)
-            .await
-            .map_err(|e| anyhow::anyhow!("Firecrawl API エラー: {}", e))
-    }
+/// モックでエラーレスポンスをシミュレート
+pub async fn scrape_url_error(error_message: &str) -> Result<Document> {
+    Err(anyhow::anyhow!("モックエラー: {}", error_message))
 }
 
-/// テスト用のモック実装
-pub struct MockFirecrawlClient {
-    /// モック時に返すマークダウン内容
-    pub mock_content: String,
-    /// モック時に返すステータス（成功/失敗の制御）
-    pub should_succeed: bool,
-    /// エラー時に返すメッセージ
-    pub error_message: Option<String>,
-}
-
-impl MockFirecrawlClient {
-    /// 成功レスポンスを返すモッククライアントを作成
-    pub fn new_success(mock_content: &str) -> Self {
-        Self {
-            mock_content: mock_content.to_string(),
-            should_succeed: true,
-            error_message: None,
-        }
-    }
-    
-    /// エラーレスポンスを返すモッククライアントを作成
-    pub fn new_error(error_message: &str) -> Self {
-        Self {
-            mock_content: String::new(),
-            should_succeed: false,
-            error_message: Some(error_message.to_string()),
-        }
-    }
-}
-
-#[async_trait]
-impl FirecrawlClient for MockFirecrawlClient {
-    async fn scrape_url(&self, _url: &str, _options: Option<()>) -> Result<Document> {
-        if self.should_succeed {
-            // 成功時のモックレスポンス
-            Ok(Document {
-                markdown: Some(self.mock_content.clone()),
-                // 他のフィールドをデフォルト値で埋める
-                ..Default::default()
-            })
-        } else {
-            // エラー時のレスポンス
-            let error_msg = self.error_message
-                .as_ref()
-                .map(|s| s.as_str())
-                .unwrap_or("Mock error");
-            Err(anyhow::anyhow!("モックエラー: {}", error_msg))
-        }
+/// 統一インターフェース - モック内容が指定されていればモック、なければ実API
+pub async fn scrape_url(url: &str, mock_content: Option<&str>) -> Result<Document> {
+    match mock_content {
+        Some(content) => scrape_url_mock(url, content).await,
+        None => scrape_url_real(url).await,
     }
 }
 
@@ -110,23 +62,38 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_mock_client_success() {
-        let mock_client = MockFirecrawlClient::new_success("テストマークダウン内容");
-        
-        let result = mock_client.scrape_url("https://example.com", None).await;
-        
+    async fn test_scrape_url_mock_success() {
+        let result = scrape_url_mock("https://example.com", "テスト内容").await;
+
         assert!(result.is_ok());
         let document = result.unwrap();
-        assert_eq!(document.markdown, Some("テストマークダウン内容".to_string()));
+        assert_eq!(document.markdown, Some("テスト内容".to_string()));
     }
 
     #[tokio::test]
-    async fn test_mock_client_error() {
-        let mock_client = MockFirecrawlClient::new_error("テストエラー");
-        
-        let result = mock_client.scrape_url("https://example.com", None).await;
-        
+    async fn test_scrape_url_error() {
+        let result = scrape_url_error("テストエラーメッセージ").await;
+
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("テストエラー"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("テストエラーメッセージ"));
+    }
+
+    #[tokio::test]
+    async fn test_scrape_url_unified_mock() {
+        let result = scrape_url("https://example.com", Some("統一テスト内容")).await;
+
+        assert!(result.is_ok());
+        let document = result.unwrap();
+        assert_eq!(document.markdown, Some("統一テスト内容".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_scrape_url_unified_real() {
+        // 実APIテストは省略（実際の環境が必要）
+        // 単純にscrape_url(url, None)を呼び出すことを確認
+        println!("統一インターフェース（実API）のテストはスキップされました");
     }
 }

@@ -19,7 +19,7 @@
 //! let client = firecrawl::create_client("モック内容");
 //! ```
 
-use datadoggo::domain::firecrawl::{FirecrawlClient, MockFirecrawlClient, RealFirecrawlClient};
+use datadoggo::domain::article::fetch_article_with_mock;
 
 /// Firecrawlテスト制御モジュール
 pub mod firecrawl {
@@ -34,30 +34,19 @@ pub mod firecrawl {
         cfg!(feature = "online") || std::env::var("TEST_ONLINE").is_ok()
     }
 
-    /// テスト用のFirecrawlクライアントを作成する
-    ///
-    /// # Arguments
-    /// * `mock_content` - モックモード時に返される内容
-    ///
-    /// # Returns
-    /// オンラインモードなら実際のクライアント、モックモードならモッククライアント
-    pub fn create_client(mock_content: &str) -> Box<dyn FirecrawlClient> {
+    /// 統一されたfetch_article関数
+    /// テストモードに応じて適切な実装を使用する
+    pub async fn fetch_article_unified(
+        url: &str,
+        mock_content: &str,
+    ) -> anyhow::Result<datadoggo::domain::article::Article> {
         if is_online_mode() {
-            match RealFirecrawlClient::new() {
-                Ok(client) => Box::new(client),
-                Err(_) => {
-                    // 実際のクライアント作成に失敗した場合はモックにフォールバック
-                    Box::new(MockFirecrawlClient::new_success(mock_content))
-                }
-            }
+            // オンラインモード: 実際のAPI呼び出し
+            fetch_article_with_mock(url, None).await
         } else {
-            Box::new(MockFirecrawlClient::new_success(mock_content))
+            // モックモード: モック内容を使用
+            fetch_article_with_mock(url, Some(mock_content)).await
         }
-    }
-
-    /// エラー用のFirecrawlクライアントを作成する（テスト用）
-    pub fn create_error_client(error_message: &str) -> Box<dyn FirecrawlClient> {
-        Box::new(MockFirecrawlClient::new_error(error_message))
     }
 
     /// アサーション用ヘルパー関数
@@ -73,18 +62,6 @@ pub mod firecrawl {
             );
             println!("✅ モックテスト成功: {}文字", content.len());
         }
-    }
-
-    /// 統一されたfetch_article関数
-    /// テストモードに応じて適切なクライアントを使用する
-    pub async fn fetch_article_unified(
-        url: &str,
-        mock_content: &str,
-    ) -> anyhow::Result<datadoggo::domain::article::Article> {
-        use datadoggo::domain::article::fetch_article_with_client;
-
-        let client = create_client(mock_content);
-        fetch_article_with_client(url, client.as_ref()).await
     }
 }
 
@@ -126,24 +103,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_mock_client_creation() {
+    async fn test_unified_mode() {
         // 環境変数をクリアしてモックモードを強制
         std::env::remove_var("TEST_ONLINE");
 
-        let client = firecrawl::create_client("テスト内容");
-
-        // モッククライアントが作成されることを確認（型チェックは難しいので実際に使用してテスト）
-        let result = client.scrape_url("https://test.com", None).await;
+        let result = firecrawl::fetch_article_unified("https://test.com", "テスト内容").await;
 
         if cfg!(feature = "online") {
-            // online featureが有効な場合は実際のクライアントまたはフォールバックモック
-            println!("✅ online featureが有効 - 実際のクライアントまたはフォールバックモック");
+            // online featureが有効な場合は実際のAPI呼び出し
+            println!("✅ online featureが有効 - 実際のAPI呼び出しまたはフォールバック");
         } else {
-            // online featureが無効な場合はモッククライアント
-            assert!(result.is_ok(), "モッククライアントでのスクレイプが失敗");
-            let document = result.unwrap();
-            assert!(document.markdown.unwrap_or_default().contains("テスト内容"));
-            println!("✅ モッククライアントが正常に作成されました");
+            // online featureが無効な場合はモック
+            assert!(result.is_ok(), "統一記事取得が失敗");
+            let article = result.unwrap();
+            assert!(article.content.contains("テスト内容"));
+            println!("✅ モック統一テストが正常に完了しました");
         }
     }
 

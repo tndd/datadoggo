@@ -1,4 +1,4 @@
-use crate::domain::firecrawl::{FirecrawlClient, RealFirecrawlClient};
+use crate::domain::firecrawl;
 use crate::infra::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -293,21 +293,35 @@ pub async fn get_rss_links_needing_processing(
 
 /// URLから記事内容を取得してArticle構造体に変換する（Firecrawl SDK使用）
 pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
-    let client = RealFirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
-    fetch_article_with_client(url, &client).await
-}
-
-/// 指定されたFirecrawlクライアントを使用して記事内容を取得
-///
-/// この関数は依存注入をサポートし、テスト時にモッククライアントを
-/// 注入することでFirecrawl APIへの実際の通信を避けることができます。
-pub async fn fetch_article_with_client(url: &str, client: &dyn FirecrawlClient) -> Result<Article> {
-    match client.scrape_url(url, None).await {
-        Ok(result) => Ok(Article {
+    match firecrawl::scrape_url(url, None).await {
+        Ok(document) => Ok(Article {
             url: url.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 200,
-            content: result
+            content: document
+                .markdown
+                .unwrap_or_else(|| "記事内容が取得できませんでした".to_string()),
+        }),
+        Err(e) => Ok(Article {
+            url: url.to_string(),
+            timestamp: chrono::Utc::now(),
+            status_code: 500,
+            content: format!("Firecrawl API エラー: {}", e),
+        }),
+    }
+}
+
+/// URLから記事内容を取得する（テスト時にモック内容を指定可能）
+///
+/// この関数はテスト時にモック内容を注入することで
+/// Firecrawl APIへの実際の通信を避けることができます。
+pub async fn fetch_article_with_mock(url: &str, mock_content: Option<&str>) -> Result<Article> {
+    match firecrawl::scrape_url(url, mock_content).await {
+        Ok(document) => Ok(Article {
+            url: url.to_string(),
+            timestamp: chrono::Utc::now(),
+            status_code: 200,
+            content: document
                 .markdown
                 .unwrap_or_else(|| "記事内容が取得できませんでした".to_string()),
         }),
@@ -757,14 +771,11 @@ mod tests {
         /// 統一されたFirecrawlテスト - 1つのコードでモック/オンライン切り替え
         #[tokio::test]
         async fn test_fetch_article_unified() -> Result<(), anyhow::Error> {
-            use crate::domain::firecrawl::MockFirecrawlClient;
-
             let test_url = "https://httpbin.org/html";
             let mock_content = "統合テスト記事内容\n\nこれは1つのテストコードでモック/オンライン切り替えをテストする記事です。";
 
-            // モッククライアントを使用して統一関数をテスト
-            let mock_client = MockFirecrawlClient::new_success(mock_content);
-            let article = fetch_article_with_client(test_url, &mock_client).await?;
+            // 新しい関数ベースのfirerawlモジュールを使用してテスト
+            let article = fetch_article_with_mock(test_url, Some(mock_content)).await?;
 
             // 基本的なアサーション
             assert_eq!(article.url, test_url);
