@@ -107,3 +107,44 @@ commit id: 28e3c56c57c6ce39d37f55e81873c0a35772d357
   use datadoggo::{app, domain, infra}; // 借用（所有しない）
 
   これがRustのモジュールシステムとテスト実行の仕組みです。
+
+  ---
+
+  テスト実行が分かれる理由
+
+  1. ライブラリクレートのテスト（29個）
+
+  Running unittests src/lib.rs (target/debug/deps/datadoggo-fcbd59338464bf88)
+  running 29 tests
+  これはsrc/lib.rs経由で公開されているモジュール（app, domain, infra）内の全てのユニットテストです。
+
+  2. バイナリクレートのテスト（0個）
+
+  Running unittests src/main.rs (target/debug/deps/datadoggo-f605c52816d7da4b)
+  running 0 tests
+  src/main.rsは現在実行ロジックのみで、独自の#[test]関数を持っていないため0個です。
+
+  3. 統合テスト（2個）
+
+  Running tests/test_mode_controller.rs (target/debug/deps/test_mode_controller-55d937726e02778a)
+  running 2 tests
+  tests/フォルダ内のテストです。これらはクレート全体を外部から使用するテストです。
+
+  4. ドキュメントテスト（0個）
+
+  Doc-tests datadoggo
+  running 0 tests
+  Rustdocのコメント内にある# Examplesセクションのテストです。現在は書かれていないため0個です。
+
+  これは正常な動作
+
+  この分離は意図的な設計です：
+
+  - ユニットテスト: モジュール内の個別機能をテスト
+  - 統合テスト: クレート全体の動作をテスト
+  - ドキュメントテスト: APIドキュメントの例が動作することを確認
+
+  以前の問題: 同じユニットテストが2回実行されていた
+  現在の状況: 適切に分離されたテストが1回ずつ実行されている
+
+  この構造はRustプロジェクトでは標準的で、問題ありません。
