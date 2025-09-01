@@ -1,4 +1,4 @@
-use crate::domain::firecrawl::{FirecrawlClientProtocol, FirecrawlClient};
+use crate::domain::firecrawl::{FirecrawlClient, FirecrawlClientProtocol};
 use crate::infra::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -301,7 +301,10 @@ pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
 ///
 /// この関数は依存注入をサポートし、テスト時にモッククライアントを
 /// 注入することでFirecrawl APIへの実際の通信を避けることができます。
-pub async fn fetch_article_with_client(url: &str, client: &dyn FirecrawlClientProtocol) -> Result<Article> {
+pub async fn fetch_article_with_client(
+    url: &str,
+    client: &dyn FirecrawlClientProtocol,
+) -> Result<Article> {
     match client.scrape_url(url, None).await {
         Ok(result) => Ok(Article {
             url: url.to_string(),

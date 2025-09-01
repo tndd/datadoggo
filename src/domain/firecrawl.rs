@@ -5,16 +5,16 @@
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use firecrawl_sdk::{FirecrawlApp, document::Document};
+use firecrawl_sdk::{document::Document, FirecrawlApp};
 
 /// Firecrawl APIの抽象化プロトコル
-/// 
+///
 /// このプロトコルは、実際のFirecrawl APIとモック実装の両方を
 /// 統一的に扱えるようにするためのインターフェースです。
 #[async_trait]
 pub trait FirecrawlClientProtocol {
     /// URLをスクレイピングして結果を返す
-    /// 
+    ///
     /// # Arguments
     /// * `url` - スクレイピング対象のURL
     /// * `options` - スクレイピングオプション（現在はNoneのみ対応）
@@ -31,15 +31,15 @@ impl FirecrawlClient {
     pub fn new() -> Result<Self> {
         let firecrawl_app = FirecrawlApp::new_selfhosted("http://localhost:13002", Some("fc-test"))
             .context("Firecrawl SDKの初期化に失敗")?;
-        
+
         Ok(Self { firecrawl_app })
     }
-    
+
     /// カスタム設定でFirecrawlクライアントを作成
     pub fn new_with_config(base_url: &str, api_key: Option<&str>) -> Result<Self> {
         let firecrawl_app = FirecrawlApp::new_selfhosted(base_url, api_key)
             .context("Firecrawl SDKの初期化に失敗")?;
-        
+
         Ok(Self { firecrawl_app })
     }
 }
@@ -73,7 +73,7 @@ impl FirecrawlClientMock {
             error_message: None,
         }
     }
-    
+
     /// エラーレスポンスを返すモッククライアントを作成
     pub fn new_error(error_message: &str) -> Self {
         Self {
@@ -96,7 +96,8 @@ impl FirecrawlClientProtocol for FirecrawlClientMock {
             })
         } else {
             // エラー時のレスポンス
-            let error_msg = self.error_message
+            let error_msg = self
+                .error_message
                 .as_ref()
                 .map(|s| s.as_str())
                 .unwrap_or("Mock error");
@@ -112,20 +113,23 @@ mod tests {
     #[tokio::test]
     async fn test_mock_client_success() {
         let mock_client = FirecrawlClientMock::new_success("テストマークダウン内容");
-        
+
         let result = mock_client.scrape_url("https://example.com", None).await;
-        
+
         assert!(result.is_ok());
         let document = result.unwrap();
-        assert_eq!(document.markdown, Some("テストマークダウン内容".to_string()));
+        assert_eq!(
+            document.markdown,
+            Some("テストマークダウン内容".to_string())
+        );
     }
 
     #[tokio::test]
     async fn test_mock_client_error() {
         let mock_client = FirecrawlClientMock::new_error("テストエラー");
-        
+
         let result = mock_client.scrape_url("https://example.com", None).await;
-        
+
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("テストエラー"));
     }

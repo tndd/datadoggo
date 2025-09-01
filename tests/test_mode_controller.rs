@@ -19,7 +19,7 @@
 //! let client = firecrawl::create_client("モック内容");
 //! ```
 
-use datadoggo::domain::firecrawl::{FirecrawlClientProtocol, FirecrawlClientMock, FirecrawlClient};
+use datadoggo::domain::firecrawl::{FirecrawlClient, FirecrawlClientMock, FirecrawlClientProtocol};
 
 /// Firecrawlテスト制御モジュール
 pub mod firecrawl {
