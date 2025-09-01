@@ -186,12 +186,12 @@ mod tests {
     /// テスト用のFirecrawl環境を設定（必要に応じてモックサーバーを用意）
     async fn setup_firecrawl_if_needed() -> Option<()> {
         if !is_online_mode() {
-            // モックモードの場合、後でFirecrawl APIをモックする予定
-            // 現在は環境変数設定のみ
-            std::env::set_var("FIRECRAWL_BASE_URL", "http://localhost:13002");
+            // モックモードの場合、外部通信を完全に遮断
+            std::env::set_var("FIRECRAWL_TEST_MODE", "mock");
             None
         } else {
             // オンラインモードの場合、実際のFirecrawl API (localhost:13002) を使用
+            std::env::set_var("FIRECRAWL_TEST_MODE", "online");
             None
         }
     }

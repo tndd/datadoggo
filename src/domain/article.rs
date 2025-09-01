@@ -293,7 +293,18 @@ pub async fn get_rss_links_needing_processing(
 
 /// URLから記事内容を取得してArticle構造体に変換する（Firecrawl SDK使用）
 pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
-    // セルフホスト環境用の初期化
+    // テスト用モックモードのチェック
+    if std::env::var("FIRECRAWL_TEST_MODE").unwrap_or_default() == "mock" {
+        // モックモードの場合、外部通信なしで固定内容を返す
+        return Ok(Article {
+            url: url.to_string(),
+            timestamp: chrono::Utc::now(),
+            status_code: 200,
+            content: "# テスト記事タイトル\n\nこれはモック環境で生成されたテスト記事です。記事の本文がここに表示されます。\n\n複数の段落で構成された記事の内容をテストします。十分な長さのコンテンツを提供し、記事抽出機能の動作を確認します。".to_string(),
+        });
+    }
+
+    // セルフホスト環境用の初期化（本番・オンラインテスト用）
     let firecrawl = FirecrawlApp::new_selfhosted("http://localhost:13002", Some("fc-test"))
         .context("Firecrawl SDKの初期化に失敗")?;
 
