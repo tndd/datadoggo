@@ -1,9 +1,10 @@
-use datadoggo::app::workflow::execute_rss_workflow_for_group;
-use datadoggo::domain::feed::{search_feeds, FeedQuery};
-use datadoggo::domain::rss::{extract_rss_links_from_channel, store_rss_links};
+use datadoggo::{app, domain, infra};
 
-use datadoggo::infra::storage::db::setup_database;
-use datadoggo::infra::storage::file::{load_channel_from_xml_file, load_json_from_file};
+use app::workflow::execute_rss_workflow_for_group;
+use domain::feed::{search_feeds, FeedQuery};
+use domain::rss::{extract_rss_links_from_channel, store_rss_links};
+use infra::storage::db::setup_database;
+use infra::storage::file::{load_channel_from_xml_file, load_json_from_file};
 
 #[tokio::main]
 async fn main() {
