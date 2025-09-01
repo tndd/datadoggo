@@ -18,8 +18,17 @@
 //! 外部への通信を行わずにテストできます。
 
 use crate::domain::article::{
-    fetch_article_from_url, get_unprocessed_rss_links, store_article, Article,
+    get_unprocessed_rss_links, store_article, Article,
 };
+
+#[cfg(not(test))]
+use crate::domain::article::fetch_article_from_url;
+
+#[cfg(test)]
+use crate::domain::article::fetch_article_with_client;
+
+#[cfg(test)]
+use crate::infra::api::firecrawl::MockFirecrawlClient;
 use crate::domain::feed::{search_feeds, Feed, FeedQuery};
 use crate::domain::rss::{extract_rss_links_from_channel, store_rss_links, RssLink};
 use crate::infra::parser::parse_channel_from_xml_str;
@@ -137,7 +146,21 @@ async fn process_collect_backlog_articles(_client: &Client, pool: &PgPool) -> Re
     for rss_link in unprocessed_links {
         println!("記事処理中: {}", rss_link.link);
 
-        match fetch_article_from_url(&rss_link.link).await {
+        let article_result = {
+            #[cfg(test)]
+            {
+                // テスト時はモッククライアントを使用
+                let mock_client = MockFirecrawlClient::new_success("テスト記事内容");
+                fetch_article_with_client(&rss_link.link, &mock_client).await
+            }
+            #[cfg(not(test))]
+            {
+                // 実行時は実際のクライアントを使用
+                fetch_article_from_url(&rss_link.link).await
+            }
+        };
+
+        match article_result {
             Ok(article) => match store_article(&article, pool).await {
                 Ok(result) => {
                     println!("  記事保存結果: {}", result);
@@ -169,4 +192,161 @@ async fn process_collect_backlog_articles(_client: &Client, pool: &PgPool) -> Re
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use sqlx::PgPool;
+
+    /// 基本的なワークフロー動作テスト
+    mod basic_workflow_tests {
+        use super::*;
+
+        #[sqlx::test]
+        async fn test_empty_feeds_processing(
+            _pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            // 空のフィード配列のテスト
+            let empty_feeds: Vec<Feed> = vec![];
+            let client = reqwest::Client::new();
+            let result = process_collect_rss_links(&client, &empty_feeds, &_pool).await;
+
+            assert!(result.is_ok(), "空フィードでもエラーにならないはず");
+            println!("✅ 空フィード処理テスト完了");
+            Ok(())
+        }
+
+        #[sqlx::test]
+        async fn test_empty_backlog_articles(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            // 未処理リンクが0件の場合のテスト
+            let client = reqwest::Client::new();
+            let result = process_collect_backlog_articles(&client, &pool).await;
+
+            assert!(result.is_ok(), "未処理リンクが0件でもエラーにならないはず");
+            println!("✅ 空の未処理リンク処理テスト完了");
+            Ok(())
+        }
+
+        #[test]
+        fn test_feed_search_logic() {
+            // フィード検索ロジックのテスト（外部通信なし）
+            use crate::domain::feed::FeedQuery;
+            
+            let query = FeedQuery {
+                group: Some("存在しないグループ".to_string()),
+                name: None,
+            };
+            
+            let result = search_feeds(Some(query));
+            match result {
+                Ok(feeds) => {
+                    assert!(feeds.is_empty(), "存在しないグループでフィードが見つからないはず");
+                },
+                Err(_) => {
+                    // ファイル読み込みエラーは許容
+                }
+            }
+            
+            println!("✅ フィード検索ロジックテスト完了");
+        }
+    }
+
+    /// 統合テスト（モック使用）
+    mod integration_tests {
+        use super::*;
+
+        #[sqlx::test]
+        async fn test_article_fetch_with_mock(pool: PgPool) -> Result<(), anyhow::Error> {
+            // テスト用RSSリンクを挿入
+            sqlx::query!(
+                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                "https://test.example.com/article",
+                "モック統合テスト記事"
+            )
+            .execute(&pool)
+            .await?;
+
+            // 記事取得を実行（モック使用）
+            let client = reqwest::Client::new();
+            let result = process_collect_backlog_articles(&client, &pool).await;
+            
+            assert!(result.is_ok(), "記事取得処理が失敗");
+            
+            // 記事がデータベースに保存されたことを確認
+            let article_count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
+                .fetch_one(&pool)
+                .await?;
+            
+            assert!(article_count.unwrap_or(0) >= 1, "記事が保存されていない");
+            
+            println!("✅ モック記事取得統合テスト完了");
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn test_mock_client_direct() -> Result<(), anyhow::Error> {
+            // モッククライアントの直接テスト
+            let mock_client = MockFirecrawlClient::new_success("直接テスト用モック内容");
+            let result = fetch_article_with_client("https://test.com", &mock_client).await;
+            
+            assert!(result.is_ok(), "モック記事取得が失敗");
+            
+            let article = result.unwrap();
+            assert!(!article.content.is_empty(), "記事内容が空");
+            assert_eq!(article.url, "https://test.com");
+            assert!(article.content.contains("直接テスト用モック内容"), "モック内容が含まれていない");
+            
+            println!("✅ モッククライアント直接テスト完了");
+            Ok(())
+        }
+    }
+
+    /// エラーハンドリングテスト
+    mod error_handling_tests {
+        use super::*;
+
+        #[sqlx::test]
+        async fn test_invalid_url_with_mock(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 無効なURLを含むRSSリンクを挿入
+            sqlx::query!(
+                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                "invalid-url",
+                "無効URLテスト"
+            )
+            .execute(&pool)
+            .await?;
+
+            let client = reqwest::Client::new();
+            let result = process_collect_backlog_articles(&client, &pool).await;
+            
+            // エラーが発生してもワークフロー全体は継続すること
+            assert!(result.is_ok(), "無効URLがあってもワークフロー全体は成功するべき");
+            
+            // テスト時はモッククライアントが成功を返すので記事が保存される
+            let article_count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
+                .fetch_one(&pool)
+                .await?;
+            
+            assert!(article_count.unwrap_or(0) >= 1, "記事が保存されていない");
+            
+            println!("✅ 無効URL処理テスト完了（モックで成功）");
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn test_error_client_handling() -> Result<(), anyhow::Error> {
+            // エラークライアントを使用したテスト
+            let error_client = MockFirecrawlClient::new_error("テストエラー");
+            let result = fetch_article_with_client("https://test.com", &error_client).await;
+            
+            assert!(result.is_ok(), "エラークライアントでも結果を返すべき");
+            
+            let article = result.unwrap();
+            assert_eq!(article.status_code, 500, "エラー時はstatus_code=500になるべき");
+            assert!(article.content.contains("エラー"), "エラー内容が記録されるべき");
+            
+            println!("✅ エラークライアント処理テスト完了");
+            Ok(())
+        }
+    }
+}
