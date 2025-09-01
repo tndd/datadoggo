@@ -1,4 +1,4 @@
-use crate::domain::firecrawl::{FirecrawlClient, FirecrawlClientProtocol};
+use crate::domain::services::firecrawl::{FirecrawlClient, FirecrawlClientProtocol};
 use crate::infra::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -760,7 +760,7 @@ mod tests {
         /// 統一されたFirecrawlテスト - 1つのコードでモック/オンライン切り替え
         #[tokio::test]
         async fn test_fetch_article_unified() -> Result<(), anyhow::Error> {
-            use crate::domain::firecrawl::MockFirecrawlClient;
+            use crate::domain::services::firecrawl::MockFirecrawlClient;
 
             let test_url = "https://httpbin.org/html";
             let mock_content = "統合テスト記事内容\n\nこれは1つのテストコードでモック/オンライン切り替えをテストする記事です。";
