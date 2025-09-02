@@ -26,10 +26,7 @@ use crate::{
         feed::{search_feeds, Feed, FeedQuery},
         rss::{extract_rss_links_from_channel, store_rss_links, RssLink},
     },
-    infra::{
-        api::http::HttpClientProtocol,
-        parser::parse_channel_from_xml_str,
-    },
+    infra::{api::http::HttpClientProtocol, parser::parse_channel_from_xml_str},
 };
 use anyhow::{Context, Result};
 use sqlx::PgPool;
@@ -37,8 +34,7 @@ use sqlx::PgPool;
 // --- Production/Online Test Imports ---
 #[cfg(any(not(test), feature = "online"))]
 use crate::{
-    domain::article::fetch_article_from_url,
-    infra::api::http::ReqwestHttpClient as HttpClient,
+    domain::article::fetch_article_from_url, infra::api::http::ReqwestHttpClient as HttpClient,
 };
 
 // --- Offline Test Imports ---
