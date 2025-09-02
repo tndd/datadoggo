@@ -31,3 +31,7 @@ online-slow = ["online"] # 重い統合テスト (完全フロー)
 
 [lints.rust]
 dead_code = "allow"
+
+[alias]
+test-online = "test --no-default-features --features online"
+test-slow = "test --no-default-features --features online-slow"
