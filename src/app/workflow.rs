@@ -20,29 +20,33 @@
 //! テスト時は httpmock を使用してモックサーバーを立てることで
 //! 外部への通信を行わずにテストできます。
 
-use crate::domain::article::{get_unprocessed_rss_links, store_article, Article};
-
-#[cfg(any(not(test), feature = "online"))]
-use crate::domain::article::fetch_article_from_url;
-
-#[cfg(all(test, not(feature = "online")))]
-use crate::domain::article::fetch_article_with_client;
-
-#[cfg(all(test, not(feature = "online")))]
-use crate::infra::api::firecrawl::MockFirecrawlClient;
-
-#[cfg(any(not(test), feature = "online"))]
-use crate::infra::api::http::ReqwestHttpClient;
-
-#[cfg(all(test, not(feature = "online")))]
-use crate::infra::api::http::MockHttpClient;
-
-use crate::domain::feed::{search_feeds, Feed, FeedQuery};
-use crate::domain::rss::{extract_rss_links_from_channel, store_rss_links, RssLink};
-use crate::infra::api::http::HttpClientProtocol;
-use crate::infra::parser::parse_channel_from_xml_str;
+use crate::{
+    domain::{
+        article::{get_unprocessed_rss_links, store_article, Article},
+        feed::{search_feeds, Feed, FeedQuery},
+        rss::{extract_rss_links_from_channel, store_rss_links, RssLink},
+    },
+    infra::{
+        api::http::HttpClientProtocol,
+        parser::parse_channel_from_xml_str,
+    },
+};
 use anyhow::{Context, Result};
 use sqlx::PgPool;
+
+// --- Production/Online Test Imports ---
+#[cfg(any(not(test), feature = "online"))]
+use crate::{
+    domain::article::fetch_article_from_url,
+    infra::api::http::ReqwestHttpClient as HttpClient,
+};
+
+// --- Offline Test Imports ---
+#[cfg(all(test, not(feature = "online")))]
+use crate::{
+    domain::article::fetch_article_with_client,
+    infra::api::{firecrawl::MockFirecrawlClient, http::MockHttpClient as HttpClient},
+};
 
 /// RSSワークフローのメイン実行関数
 ///
@@ -57,10 +61,10 @@ pub async fn execute_rss_workflow(pool: &PgPool) -> Result<()> {
 
     // HTTPクライアントを作成
     #[cfg(any(not(test), feature = "online"))]
-    let http_client = ReqwestHttpClient::new();
+    let http_client = HttpClient::new();
 
     #[cfg(all(test, not(feature = "online")))]
-    let http_client = MockHttpClient::new_success("<rss><channel><item><title>テスト</title><link>https://test.com</link></item></channel></rss>");
+    let http_client = HttpClient::new_success("<rss><channel><item><title>テスト</title><link>https://test.com</link></item></channel></rss>");
     // 段階1: RSSフィードからリンクを取得
     process_collect_rss_links(&http_client, &feeds, pool).await?;
     // 段階2: 未処理のリンクから記事内容を取得
@@ -91,10 +95,10 @@ pub async fn execute_rss_workflow_for_group(pool: &PgPool, group: &str) -> Resul
 
     // HTTPクライアントを作成
     #[cfg(any(not(test), feature = "online"))]
-    let http_client = ReqwestHttpClient::new();
+    let http_client = HttpClient::new();
 
     #[cfg(all(test, not(feature = "online")))]
-    let http_client = MockHttpClient::new_success("<rss><channel><item><title>テスト</title><link>https://test.com</link></item></channel></rss>");
+    let http_client = HttpClient::new_success("<rss><channel><item><title>テスト</title><link>https://test.com</link></item></channel></rss>");
 
     // 段階1: RSSフィードからリンクを取得
     process_collect_rss_links(&http_client, &filtered_feeds, pool).await?;
