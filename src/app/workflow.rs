@@ -239,32 +239,6 @@ mod tests {
             println!("✅ 空の未処理リンク処理テスト完了");
             Ok(())
         }
-
-        #[test]
-        fn test_feed_search_logic() {
-            // フィード検索ロジックのテスト（外部通信なし）
-            use crate::domain::feed::FeedQuery;
-
-            let query = FeedQuery {
-                group: Some("存在しないグループ".to_string()),
-                name: None,
-            };
-
-            let result = search_feeds(Some(query));
-            match result {
-                Ok(feeds) => {
-                    assert!(
-                        feeds.is_empty(),
-                        "存在しないグループでフィードが見つからないはず"
-                    );
-                }
-                Err(_) => {
-                    // ファイル読み込みエラーは許容
-                }
-            }
-
-            println!("✅ フィード検索ロジックテスト完了");
-        }
     }
 
     /// 統合テスト（モック使用）
@@ -295,26 +269,6 @@ mod tests {
             assert!(article_count.unwrap_or(0) >= 1, "記事が保存されていない");
 
             println!("✅ モック記事取得統合テスト完了");
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn test_mock_client_direct() -> Result<(), anyhow::Error> {
-            // モッククライアントの直接テスト
-            let mock_client = MockFirecrawlClient::new_success("直接テスト用モック内容");
-            let result = fetch_article_with_client("https://test.com", &mock_client).await;
-
-            assert!(result.is_ok(), "モック記事取得が失敗");
-
-            let article = result.unwrap();
-            assert!(!article.content.is_empty(), "記事内容が空");
-            assert_eq!(article.url, "https://test.com");
-            assert!(
-                article.content.contains("直接テスト用モック内容"),
-                "モック内容が含まれていない"
-            );
-
-            println!("✅ モッククライアント直接テスト完了");
             Ok(())
         }
     }
@@ -350,28 +304,6 @@ mod tests {
             assert!(article_count.unwrap_or(0) >= 1, "記事が保存されていない");
 
             println!("✅ 無効URL処理テスト完了（モックで成功）");
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn test_error_client_handling() -> Result<(), anyhow::Error> {
-            // エラークライアントを使用したテスト
-            let error_client = MockFirecrawlClient::new_error("テストエラー");
-            let result = fetch_article_with_client("https://test.com", &error_client).await;
-
-            assert!(result.is_ok(), "エラークライアントでも結果を返すべき");
-
-            let article = result.unwrap();
-            assert_eq!(
-                article.status_code, 500,
-                "エラー時はstatus_code=500になるべき"
-            );
-            assert!(
-                article.content.contains("エラー"),
-                "エラー内容が記録されるべき"
-            );
-
-            println!("✅ エラークライアント処理テスト完了");
             Ok(())
         }
     }

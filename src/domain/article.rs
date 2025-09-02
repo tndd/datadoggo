@@ -780,5 +780,29 @@ mod tests {
 
             Ok(())
         }
+
+        #[tokio::test]
+        async fn test_error_client_handling() -> Result<(), anyhow::Error> {
+            // エラークライアントを使用したテスト
+            use crate::infra::api::firecrawl::MockFirecrawlClient;
+
+            let error_client = MockFirecrawlClient::new_error("テストエラー");
+            let result = fetch_article_with_client("https://test.com", &error_client).await;
+
+            assert!(result.is_ok(), "エラークライアントでも結果を返すべき");
+
+            let article = result.unwrap();
+            assert_eq!(
+                article.status_code, 500,
+                "エラー時はstatus_code=500になるべき"
+            );
+            assert!(
+                article.content.contains("エラー"),
+                "エラー内容が記録されるべき"
+            );
+
+            println!("✅ エラークライアント処理テスト完了");
+            Ok(())
+        }
     }
 }

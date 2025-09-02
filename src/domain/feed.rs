@@ -165,4 +165,28 @@ mod tests {
             feeds.len()
         );
     }
+
+    #[test]
+    fn test_feed_search_logic() {
+        // フィード検索ロジックのテスト（外部通信なし）
+        let query = FeedQuery {
+            group: Some("存在しないグループ".to_string()),
+            name: None,
+        };
+
+        let result = search_feeds(Some(query));
+        match result {
+            Ok(feeds) => {
+                assert!(
+                    feeds.is_empty(),
+                    "存在しないグループでフィードが見つからないはず"
+                );
+            }
+            Err(_) => {
+                // ファイル読み込みエラーは許容
+            }
+        }
+
+        println!("✅ フィード検索ロジックテスト完了");
+    }
 }
