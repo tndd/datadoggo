@@ -27,11 +27,39 @@ use crate::{
 /// 1. feeds.yamlからフィード設定を読み込み
 /// 2. 各RSSフィードからリンクを取得してDBに保存
 /// 3. 未処理のリンクから記事内容を取得してDBに保存
-pub async fn execute_rss_workflow(pool: &PgPool) -> Result<()> {
-    println!("=== RSSワークフロー開始 ===");
+///
+/// # 引数
+/// * `pool` - データベース接続プール
+/// * `group` - 処理対象のグループ（Noneの場合は全フィードを処理）
+pub async fn execute_rss_workflow(pool: &PgPool, group: Option<&str>) -> Result<()> {
+    match group {
+        Some(group_name) => {
+            println!("=== RSSワークフロー開始（グループ: {}）===", group_name);
+        }
+        None => {
+            println!("=== RSSワークフロー開始 ===");
+        }
+    }
+
     // feeds.yamlからフィード設定を読み込み
-    let feeds = search_feeds(None).context("フィード設定の読み込みに失敗")?;
-    println!("フィード設定読み込み完了: {}件", feeds.len());
+    let query = group.map(|g| FeedQuery {
+        group: Some(g.to_string()),
+        name: None,
+    });
+    let feeds = search_feeds(query).context("フィード設定の読み込みに失敗")?;
+
+    if let Some(group_name) = group {
+        if feeds.is_empty() {
+            println!(
+                "指定されたグループ '{}' のフィードが見つかりませんでした",
+                group_name
+            );
+            return Ok(());
+        }
+        println!("対象フィード数: {}件", feeds.len());
+    } else {
+        println!("フィード設定読み込み完了: {}件", feeds.len());
+    }
 
     // HTTPクライアントを作成
     #[cfg(any(not(test), feature = "online"))]
@@ -39,47 +67,20 @@ pub async fn execute_rss_workflow(pool: &PgPool) -> Result<()> {
 
     #[cfg(all(test, not(feature = "online")))]
     let http_client = HttpClient::new_success("<rss><channel><item><title>テスト</title><link>https://test.com</link></item></channel></rss>");
+
     // 段階1: RSSフィードからリンクを取得
     process_collect_rss_links(&http_client, &feeds, pool).await?;
     // 段階2: 未処理のリンクから記事内容を取得
     process_collect_backlog_articles(pool).await?;
 
-    println!("=== RSSワークフロー完了 ===");
-    Ok(())
-}
-
-/// 特定のグループのRSSワークフローを実行
-pub async fn execute_rss_workflow_for_group(pool: &PgPool, group: &str) -> Result<()> {
-    println!("=== RSSワークフロー開始（グループ: {}）===", group);
-    // 指定されたグループのフィードのみを抽出
-    let query = FeedQuery {
-        group: Some(group.to_string()),
-        name: None,
-    };
-    let filtered_feeds = search_feeds(Some(query)).context("フィード設定の読み込みに失敗")?;
-
-    if filtered_feeds.is_empty() {
-        println!(
-            "指定されたグループ '{}' のフィードが見つかりませんでした",
-            group
-        );
-        return Ok(());
+    match group {
+        Some(group_name) => {
+            println!("=== RSSワークフロー完了（グループ: {}）===", group_name);
+        }
+        None => {
+            println!("=== RSSワークフロー完了 ===");
+        }
     }
-    println!("対象フィード数: {}件", filtered_feeds.len());
-
-    // HTTPクライアントを作成
-    #[cfg(any(not(test), feature = "online"))]
-    let http_client = HttpClient::new();
-
-    #[cfg(all(test, not(feature = "online")))]
-    let http_client = HttpClient::new_success("<rss><channel><item><title>テスト</title><link>https://test.com</link></item></channel></rss>");
-
-    // 段階1: RSSフィードからリンクを取得
-    process_collect_rss_links(&http_client, &filtered_feeds, pool).await?;
-    // 段階2: 未処理のリンクから記事内容を取得
-    process_collect_backlog_articles(pool).await?;
-
-    println!("=== RSSワークフロー完了（グループ: {}）===", group);
     Ok(())
 }
 

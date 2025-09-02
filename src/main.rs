@@ -1,6 +1,6 @@
 use datadoggo::{app, domain, infra};
 
-use app::workflow::execute_rss_workflow_for_group;
+use app::workflow::execute_rss_workflow;
 use domain::feed::{search_feeds, FeedQuery};
 use domain::rss::{extract_rss_links_from_channel, store_rss_links};
 use infra::storage::db::setup_database;
@@ -99,7 +99,7 @@ async fn main() {
 
     // RSSワークフローのデモンストレーション（BBCグループのみ）
     println!("\n=== RSSワークフロー（デモ実行） ===");
-    match execute_rss_workflow_for_group(&pool, "bbc").await {
+    match execute_rss_workflow(&pool, Some("bbc")).await {
         Ok(()) => {
             println!("RSSワークフローが正常に完了しました");
         }
