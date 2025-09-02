@@ -26,7 +26,8 @@ httpmock = "0.7"
 
 [features]
 default = []
-online = []
+online = []              # 軽量オンラインテスト (接続確認)
+online-slow = ["online"] # 重い統合テスト (完全フロー)
 
 [lints.rust]
 dead_code = "allow"

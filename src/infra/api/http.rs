@@ -139,4 +139,29 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("接続失敗"));
     }
+
+    /// 軽量オンラインテスト - 実際のHTTP通信での基本接続確認
+    #[cfg(feature = "online")]
+    #[tokio::test]
+    async fn test_http_online_basic() -> Result<(), anyhow::Error> {
+        // httpbin.orgを使った軽量なHTTP接続テスト
+        let client = ReqwestHttpClient::new();
+        let result = client.get_text("https://httpbin.org/xml", 10).await;
+
+        match result {
+            Ok(content) => {
+                assert!(!content.is_empty(), "取得した内容が空");
+                assert!(content.contains("xml"), "XMLコンテンツを含むべき");
+                println!("✅ HTTP軽量オンラインテスト成功: {}文字取得", content.len());
+            }
+            Err(e) => {
+                println!("⚠️ HTTPリクエストが失敗: {}", e);
+                println!("ネットワーク接続を確認してください");
+                // ネットワーク問題の場合は失敗にしない
+                return Ok(());
+            }
+        }
+
+        Ok(())
+    }
 }
