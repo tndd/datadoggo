@@ -1,7 +1,7 @@
-use crate::infra::db::DatabaseInsertResult;
+use crate::infra::api::firecrawl::{FirecrawlClient, FirecrawlClientProtocol};
+use crate::infra::storage::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use firecrawl_sdk::FirecrawlApp;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 
@@ -293,22 +293,19 @@ pub async fn get_rss_links_needing_processing(
 
 /// URLから記事内容を取得してArticle構造体に変換する（Firecrawl SDK使用）
 pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
-    // テスト用モックモードのチェック
-    if std::env::var("FIRECRAWL_TEST_MODE").unwrap_or_default() == "mock" {
-        // モックモードの場合、外部通信なしで固定内容を返す
-        return Ok(Article {
-            url: url.to_string(),
-            timestamp: chrono::Utc::now(),
-            status_code: 200,
-            content: "# テスト記事タイトル\n\nこれはモック環境で生成されたテスト記事です。記事の本文がここに表示されます。\n\n複数の段落で構成された記事の内容をテストします。十分な長さのコンテンツを提供し、記事抽出機能の動作を確認します。".to_string(),
-        });
-    }
+    let client = FirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
+    fetch_article_with_client(url, &client).await
+}
 
-    // セルフホスト環境用の初期化（本番・オンラインテスト用）
-    let firecrawl = FirecrawlApp::new_selfhosted("http://localhost:13002", Some("fc-test"))
-        .context("Firecrawl SDKの初期化に失敗")?;
-
-    match firecrawl.scrape_url(url, None).await {
+/// 指定されたFirecrawlクライアントを使用して記事内容を取得
+///
+/// この関数は依存注入をサポートし、テスト時にモッククライアントを
+/// 注入することでFirecrawl APIへの実際の通信を避けることができます。
+pub async fn fetch_article_with_client(
+    url: &str,
+    client: &dyn FirecrawlClientProtocol,
+) -> Result<Article> {
+    match client.scrape_url(url, None).await {
         Ok(result) => Ok(Article {
             url: url.to_string(),
             timestamp: chrono::Utc::now(),
@@ -321,7 +318,7 @@ pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
             url: url.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 500,
-            content: format!("Firecrawl SDKエラー: {}", e),
+            content: format!("Firecrawl API エラー: {}", e),
         }),
     }
 }
@@ -329,7 +326,7 @@ pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::loader::load_json_from_file;
+    use crate::infra::storage::file::load_json_from_file;
 
     // ファイルからFirecrawlデータを読み込み、Articleに変換する
     fn read_article_from_file(file_path: &str) -> Result<Article> {
@@ -757,6 +754,30 @@ mod tests {
             );
 
             println!("✅ クエリフィルターテスト成功");
+            Ok(())
+        }
+
+        /// 統一されたFirecrawlテスト - 1つのコードでモック/オンライン切り替え
+        #[tokio::test]
+        async fn test_fetch_article_unified() -> Result<(), anyhow::Error> {
+            use crate::infra::api::firecrawl::MockFirecrawlClient;
+
+            let test_url = "https://httpbin.org/html";
+            let mock_content = "統合テスト記事内容\n\nこれは1つのテストコードでモック/オンライン切り替えをテストする記事です。";
+
+            // モッククライアントを使用して統一関数をテスト
+            let mock_client = MockFirecrawlClient::new_success(mock_content);
+            let article = fetch_article_with_client(test_url, &mock_client).await?;
+
+            // 基本的なアサーション
+            assert_eq!(article.url, test_url);
+            assert_eq!(article.status_code, 200);
+            assert!(article.content.contains(mock_content));
+
+            println!("✅ 統一記事取得テスト成功");
+            println!("URL: {}", article.url);
+            println!("内容長: {}文字", article.content.len());
+
             Ok(())
         }
     }

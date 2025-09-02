@@ -1,0 +1,142 @@
+//! HTTP クライアント抽象化モジュール
+//!
+//! このモジュールは、HTTP通信を抽象化し、
+//! テスト時のモック化を容易にするプロトコルとその実装を提供します。
+
+use anyhow::{Context, Result};
+use async_trait::async_trait;
+use reqwest::Client;
+use std::time::Duration;
+
+/// HTTP クライアントの抽象化プロトコル
+///
+/// このプロトコルは、実際のHTTP通信とモック実装の両方を
+/// 統一的に扱えるようにするためのインターフェースです。
+#[async_trait]
+pub trait HttpClientProtocol {
+    /// 指定されたURLからテキストを取得する
+    ///
+    /// # Arguments
+    /// * `url` - 取得対象のURL
+    /// * `timeout_secs` - タイムアウト時間（秒）
+    async fn get_text(&self, url: &str, timeout_secs: u64) -> Result<String>;
+}
+
+/// 実際のHTTP通信を使用する実装
+pub struct ReqwestHttpClient {
+    client: Client,
+}
+
+impl ReqwestHttpClient {
+    /// 新しいHTTPクライアントを作成
+    pub fn new() -> Self {
+        Self {
+            client: Client::new(),
+        }
+    }
+}
+
+impl Default for ReqwestHttpClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl HttpClientProtocol for ReqwestHttpClient {
+    async fn get_text(&self, url: &str, timeout_secs: u64) -> Result<String> {
+        let response = self
+            .client
+            .get(url)
+            .timeout(Duration::from_secs(timeout_secs))
+            .send()
+            .await
+            .context(format!("HTTPリクエストの送信に失敗: {}", url))?;
+
+        response
+            .text()
+            .await
+            .context("レスポンステキストの取得に失敗")
+    }
+}
+
+/// テスト用のモック実装
+#[cfg(test)]
+pub struct MockHttpClient {
+    /// モック時に返すレスポンス内容
+    pub mock_response: String,
+    /// モック時に返すステータス（成功/失敗の制御）
+    pub should_succeed: bool,
+    /// エラー時に返すメッセージ
+    pub error_message: Option<String>,
+}
+
+#[cfg(test)]
+impl MockHttpClient {
+    /// 成功レスポンスを返すモッククライアントを作成
+    pub fn new_success(mock_response: &str) -> Self {
+        Self {
+            mock_response: mock_response.to_string(),
+            should_succeed: true,
+            error_message: None,
+        }
+    }
+
+    /// エラーレスポンスを返すモッククライアントを作成
+    pub fn new_error(error_message: &str) -> Self {
+        Self {
+            mock_response: String::new(),
+            should_succeed: false,
+            error_message: Some(error_message.to_string()),
+        }
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl HttpClientProtocol for MockHttpClient {
+    async fn get_text(&self, _url: &str, _timeout_secs: u64) -> Result<String> {
+        if self.should_succeed {
+            // 成功時のモックレスポンス
+            Ok(self.mock_response.clone())
+        } else {
+            // エラー時のレスポンス
+            let error_msg = self
+                .error_message
+                .as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or("Mock HTTP error");
+            Err(anyhow::anyhow!("モックHTTPエラー: {}", error_msg))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_mock_http_client_success() {
+        let mock_client = MockHttpClient::new_success("<rss>テストXML内容</rss>");
+
+        let result = mock_client
+            .get_text("https://example.com/rss.xml", 30)
+            .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.contains("テストXML内容"));
+    }
+
+    #[tokio::test]
+    async fn test_mock_http_client_error() {
+        let mock_client = MockHttpClient::new_error("接続失敗");
+
+        let result = mock_client
+            .get_text("https://example.com/rss.xml", 30)
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("接続失敗"));
+    }
+}

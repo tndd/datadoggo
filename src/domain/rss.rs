@@ -1,5 +1,5 @@
-use crate::infra::db::DatabaseInsertResult;
 use crate::infra::parser::parse_date;
+use crate::infra::storage::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rss::Channel;
@@ -124,8 +124,8 @@ pub async fn search_rss_links(query: Option<RssLinkQuery>, pool: &PgPool) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::loader::load_channel_from_xml_file;
     use crate::infra::parser::parse_channel_from_xml_str;
+    use crate::infra::storage::file::load_channel_from_xml_file;
 
     // 記事の基本構造をチェックするヘルパー関数
     fn validate_rss_links(rss_links: &[RssLink]) {
