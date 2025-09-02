@@ -157,7 +157,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
 }
 
 /// RSSリンクと記事の紐付き状態を取得する
-pub async fn get_rss_links_with_article_status(
+pub async fn search_rss_links_with_articles(
     query: Option<RssLinkArticleQuery>,
     pool: &PgPool,
 ) -> Result<Vec<RssLinkWithArticle>> {
@@ -180,7 +180,7 @@ pub async fn get_rss_links_with_article_status(
 
     let mut has_where = false;
 
-    // link_pattern フィルター
+    // link_pattern query
     if let Some(ref link_pattern) = query.link_pattern {
         if !has_where {
             qb.push(" WHERE ");
@@ -190,7 +190,7 @@ pub async fn get_rss_links_with_article_status(
         qb.push("rl.link ILIKE ").push_bind(pattern);
     }
 
-    // pub_date_from フィルター
+    // pub_date_from query
     if let Some(pub_date_from) = query.pub_date_from {
         if has_where {
             qb.push(" AND ");
@@ -201,7 +201,7 @@ pub async fn get_rss_links_with_article_status(
         qb.push("rl.pub_date >= ").push_bind(pub_date_from);
     }
 
-    // pub_date_to フィルター
+    // pub_date_to query
     if let Some(pub_date_to) = query.pub_date_to {
         if has_where {
             qb.push(" AND ");
@@ -212,7 +212,7 @@ pub async fn get_rss_links_with_article_status(
         qb.push("rl.pub_date <= ").push_bind(pub_date_to);
     }
 
-    // article_status フィルター
+    // article_status query
     if let Some(ref status) = query.article_status {
         if has_where {
             qb.push(" AND ");
@@ -235,7 +235,7 @@ pub async fn get_rss_links_with_article_status(
 
     qb.push(" ORDER BY rl.pub_date DESC");
 
-    // limit フィルター
+    // limit
     if let Some(limit) = query.limit {
         qb.push(" LIMIT ").push_bind(limit);
     }
@@ -280,7 +280,7 @@ pub async fn get_rss_links_needing_processing(
         ..Default::default()
     };
 
-    let all_links = get_rss_links_with_article_status(Some(query), pool).await?;
+    let all_links = search_rss_links_with_articles(Some(query), pool).await?;
 
     // needs_processing()でフィルタリング
     let processing_links = all_links
@@ -617,7 +617,7 @@ mod tests {
             .await?;
 
             // 全件取得テスト
-            let all_links = get_rss_links_with_article_status(None, &pool).await?;
+            let all_links = search_rss_links_with_articles(None, &pool).await?;
             assert!(all_links.len() >= 2, "最低2件のリンクが取得されるべき");
 
             // link1は記事が紐づいているはず
@@ -733,7 +733,7 @@ mod tests {
                 link_pattern: Some("example.com".to_string()),
                 ..Default::default()
             };
-            let example_links = get_rss_links_with_article_status(Some(query), &pool).await?;
+            let example_links = search_rss_links_with_articles(Some(query), &pool).await?;
             assert_eq!(example_links.len(), 2, "example.comのリンクは2件のはず");
 
             // article_statusフィルターのテスト（成功のみ）
@@ -741,7 +741,7 @@ mod tests {
                 article_status: Some(ArticleStatus::Success),
                 ..Default::default()
             };
-            let success_links = get_rss_links_with_article_status(Some(query), &pool).await?;
+            let success_links = search_rss_links_with_articles(Some(query), &pool).await?;
 
             let success_count = success_links
                 .iter()
