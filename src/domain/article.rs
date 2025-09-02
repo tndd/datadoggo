@@ -250,7 +250,9 @@ pub async fn search_rss_links_with_articles(
 }
 
 /// 未処理のRSSリンクを取得する（articleテーブルに存在しないか、status_code != 200）
-pub async fn get_unprocessed_rss_links(pool: &PgPool) -> Result<Vec<crate::domain::rss::RssLink>> {
+pub async fn search_unprocessed_rss_links(
+    pool: &PgPool,
+) -> Result<Vec<crate::domain::rss::RssLink>> {
     let links = sqlx::query_as!(
         crate::domain::rss::RssLink,
         r#"
@@ -270,7 +272,7 @@ pub async fn get_unprocessed_rss_links(pool: &PgPool) -> Result<Vec<crate::domai
 }
 
 /// 処理が必要なRSSリンクをRssLinkWithArticle形式で取得する
-pub async fn get_rss_links_needing_processing(
+pub async fn search_rss_links_needing_processing(
     pool: &PgPool,
     limit: Option<i64>,
 ) -> Result<Vec<RssLinkWithArticle>> {
@@ -647,7 +649,7 @@ mod tests {
         }
 
         #[sqlx::test]
-        async fn test_get_unprocessed_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_search_unprocessed_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // テスト用のRSSリンクを挿入
             sqlx::query!(
                 "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
@@ -676,7 +678,7 @@ mod tests {
             .await?;
 
             // 未処理リンクを取得
-            let unprocessed_links = get_unprocessed_rss_links(&pool).await?;
+            let unprocessed_links = search_unprocessed_rss_links(&pool).await?;
 
             // unprocessedは含まれるべき、processedは含まれないべき
             let unprocessed_urls: Vec<&str> = unprocessed_links

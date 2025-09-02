@@ -1,6 +1,6 @@
 use crate::{
     domain::{
-        article::{get_unprocessed_rss_links, store_article, Article},
+        article::{search_unprocessed_rss_links, store_article, Article},
         feed::{search_feeds, Feed, FeedQuery},
         rss::{extract_rss_links_from_channel, store_rss_links, RssLink},
     },
@@ -136,7 +136,7 @@ async fn fetch_rss_links_from_feed(
 async fn process_collect_backlog_articles(pool: &PgPool) -> Result<()> {
     println!("--- 記事内容取得開始 ---");
     // 未処理のリンクを取得（articleテーブルに存在しないrss_linkを取得）
-    let unprocessed_links = get_unprocessed_rss_links(pool).await?;
+    let unprocessed_links = search_unprocessed_rss_links(pool).await?;
     println!("未処理リンク数: {}件", unprocessed_links.len());
 
     for rss_link in unprocessed_links {
