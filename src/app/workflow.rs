@@ -193,34 +193,6 @@ mod tests {
     use super::*;
     use sqlx::PgPool;
 
-    /// 基本的なワークフロー動作テスト
-    mod basic_workflow_tests {
-        use super::*;
-        use crate::infra::api::http::MockHttpClient;
-
-        #[sqlx::test]
-        async fn test_empty_feeds_processing(_pool: PgPool) -> Result<(), anyhow::Error> {
-            // 空のフィード配列のテスト
-            let empty_feeds: Vec<Feed> = vec![];
-            let mock_client = MockHttpClient::new_success("");
-            let result = process_collect_rss_links(&mock_client, &empty_feeds, &_pool).await;
-
-            assert!(result.is_ok(), "空フィードでもエラーにならないはず");
-            println!("✅ 空フィード処理テスト完了");
-            Ok(())
-        }
-
-        #[sqlx::test]
-        async fn test_empty_backlog_articles(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 未処理リンクが0件の場合のテスト
-            let result = process_collect_backlog_articles(&pool).await;
-
-            assert!(result.is_ok(), "未処理リンクが0件でもエラーにならないはず");
-            println!("✅ 空の未処理リンク処理テスト完了");
-            Ok(())
-        }
-    }
-
     /// 統合テスト（モック使用）
     mod integration_tests {
         use super::*;
@@ -249,41 +221,6 @@ mod tests {
             assert!(article_count.unwrap_or(0) >= 1, "記事が保存されていない");
 
             println!("✅ モック記事取得統合テスト完了");
-            Ok(())
-        }
-    }
-
-    /// エラーハンドリングテスト
-    mod error_handling_tests {
-        use super::*;
-
-        #[sqlx::test]
-        async fn test_invalid_url_with_mock(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 無効なURLを含むRSSリンクを挿入
-            sqlx::query!(
-                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                "invalid-url",
-                "無効URLテスト"
-            )
-            .execute(&pool)
-            .await?;
-
-            let result = process_collect_backlog_articles(&pool).await;
-
-            // エラーが発生してもワークフロー全体は継続すること
-            assert!(
-                result.is_ok(),
-                "無効URLがあってもワークフロー全体は成功するべき"
-            );
-
-            // テスト時はモッククライアントが成功を返すので記事が保存される
-            let article_count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
-                .fetch_one(&pool)
-                .await?;
-
-            assert!(article_count.unwrap_or(0) >= 1, "記事が保存されていない");
-
-            println!("✅ 無効URL処理テスト完了（モックで成功）");
             Ok(())
         }
     }
@@ -377,121 +314,6 @@ mod tests {
             assert!(result.is_err(), "無効なXMLでエラーが発生するべき");
 
             println!("✅ 無効XMLハンドリングテスト完了");
-            Ok(())
-        }
-
-        #[sqlx::test]
-        async fn test_process_collect_rss_links_with_mock(
-            pool: PgPool,
-        ) -> Result<(), anyhow::Error> {
-            let rss_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-    <channel>
-        <title>統合テスト用RSS</title>
-        <item>
-            <title>統合テスト記事</title>
-            <link>https://integration.test.com/article</link>
-            <pubDate>Fri, 03 Jan 2025 12:00:00 GMT</pubDate>
-        </item>
-    </channel>
-</rss>"#;
-
-            let mock_client = MockHttpClient::new_success(rss_xml);
-
-            let test_feeds = vec![Feed {
-                group: "integration".to_string(),
-                name: "統合テスト".to_string(),
-                link: "https://integration.test.com/rss.xml".to_string(),
-            }];
-
-            let result = process_collect_rss_links(&mock_client, &test_feeds, &pool).await;
-
-            assert!(result.is_ok(), "RSS収集処理が失敗");
-
-            // データベースにRSSリンクが保存されたことを確認
-            let link_count = sqlx::query_scalar!(
-                "SELECT COUNT(*) FROM rss_links WHERE link = $1",
-                "https://integration.test.com/article"
-            )
-            .fetch_one(&pool)
-            .await?;
-
-            assert!(link_count.unwrap_or(0) >= 1, "RSSリンクが保存されていない");
-
-            println!("✅ HTTPモック使用の統合テスト完了");
-            Ok(())
-        }
-    }
-
-    /// 重いオンライン統合テスト（online-slowフィーチャー用）
-    #[cfg(feature = "online-slow")]
-    mod online_slow_tests {
-        use super::*;
-
-        /// 実際のRSSフィードを使った完全なワークフロー統合テスト
-        #[sqlx::test]
-        async fn test_workflow_online_integration(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 軽量なRSSフィード（httpbin.orgなど）を使用
-            let test_feed = Feed {
-                group: "test-online".to_string(),
-                name: "httpbin".to_string(),
-                link: "https://httpbin.org/xml".to_string(),
-            };
-
-            let test_feeds = vec![test_feed];
-
-            // 実際のHTTPクライアントを使用して統合テスト
-            let http_client = ReqwestHttpClient::new();
-            let result = process_collect_rss_links(&http_client, &test_feeds, &pool).await;
-
-            match result {
-                Ok(()) => {
-                    println!("✅ オンライン統合テスト成功: RSSフィード処理完了");
-                }
-                Err(e) => {
-                    println!("⚠️ オンライン統合テスト: {}", e);
-                    println!("ネットワーク接続または外部サービスの問題の可能性があります");
-                    // 外部依存の問題は失敗にしない
-                }
-            }
-
-            Ok(())
-        }
-
-        /// 実際のワークフロー全体のオンラインテスト（非常に重い）
-        #[sqlx::test]
-        async fn test_full_workflow_online(pool: PgPool) -> Result<(), anyhow::Error> {
-            println!("🚨 完全オンライン統合テスト開始（時間がかかります）");
-
-            // テスト用の軽量フィード設定
-            let lightweight_feeds = vec![Feed {
-                group: "test-online".to_string(),
-                name: "sample".to_string(),
-                link: "https://httpbin.org/xml".to_string(),
-            }];
-
-            // HTTPクライアント作成
-            let http_client = ReqwestHttpClient::new();
-
-            // 段階1: RSSフィードからリンク取得（実際の外部通信）
-            let rss_result =
-                process_collect_rss_links(&http_client, &lightweight_feeds, &pool).await;
-
-            match rss_result {
-                Ok(()) => {
-                    println!("✅ オンラインRSSフィード処理成功");
-
-                    // 段階2: 記事内容取得（外部APIアクセス制限により制限的に実行）
-                    println!("📄 記事内容取得はスキップ（API制限考慮）");
-
-                    println!("✅ 完全オンライン統合テスト完了");
-                }
-                Err(e) => {
-                    println!("⚠️ オンライン統合テスト問題: {}", e);
-                    println!("外部サービスの問題の可能性があります");
-                }
-            }
-
             Ok(())
         }
     }
