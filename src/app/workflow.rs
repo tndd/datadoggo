@@ -1,25 +1,3 @@
-//! RSSワークフローモジュール
-//!
-//! このモジュールは以下の機能を提供します：
-//! 1. RSSフィードからリンク情報を取得してデータベースに保存
-//! 2. 未処理のリンクから記事内容を取得してデータベースに保存
-//!
-//! ## テスト実行方法
-//!
-//! ```bash
-//! # 通常のテスト実行（モック専用、高速）
-//! cargo test
-//!
-//! # 機能フラグでオンラインテストを実行
-//! cargo test --features online
-//!
-//! # 環境変数でオンラインモードを有効化
-//! FIRECRAWL_TEST_MODE=online cargo test
-//! ```
-//!
-//! テスト時は httpmock を使用してモックサーバーを立てることで
-//! 外部への通信を行わずにテストできます。
-
 use crate::{
     domain::{
         article::{get_unprocessed_rss_links, store_article, Article},

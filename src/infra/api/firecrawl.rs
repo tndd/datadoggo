@@ -1,8 +1,3 @@
-//! Firecrawl クライアント抽象化モジュール
-//!
-//! このモジュールは、Firecrawl APIへのアクセスを抽象化し、
-//! テスト時のモック化を容易にするプロトコルとその実装を提供します。
-
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use firecrawl_sdk::{document::Document, FirecrawlApp};
