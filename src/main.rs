@@ -3,7 +3,7 @@ use datadoggo::{app, domain, infra};
 
 use app::workflow::execute_rss_workflow;
 use domain::feed::{search_feeds, FeedQuery};
-use domain::rss::{extract_rss_links_from_channel, store_rss_links};
+use domain::rss::{get_rss_links_from_channel, store_rss_links};
 use infra::api::firecrawl::ReqwestFirecrawlClient;
 use infra::api::http::ReqwestHttpClient;
 use infra::storage::db::setup_database;
@@ -68,7 +68,7 @@ async fn main() {
     println!("=== RSS処理を開始 ===");
     match load_channel_from_xml_file("mock/rss/bbc.rss") {
         Ok(channel) => {
-            let links = extract_rss_links_from_channel(&channel);
+            let links = get_rss_links_from_channel(&channel);
             println!("BBCのRSSから{}件のリンクを抽出しました。", links.len());
 
             match store_rss_links(&links, &pool).await {

@@ -15,7 +15,7 @@ pub struct RssLink {
 }
 
 // RSSのチャンネルから<item>要素のリンク情報を抽出する関数
-pub fn extract_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
+pub fn get_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
     channel
         .items()
         .iter()
@@ -198,7 +198,7 @@ mod tests {
                 </rss>
                 "#;
             let channel = parse_channel_from_xml_str(xml).expect("Failed to parse test RSS");
-            let rss_links = extract_rss_links_from_channel(&channel);
+            let rss_links = get_rss_links_from_channel(&channel);
 
             assert_eq!(rss_links.len(), 2, "2件の記事が抽出されるはず");
             assert_eq!(rss_links[0].title, "Test Article 1");
@@ -221,7 +221,7 @@ mod tests {
                 assert!(result.is_ok(), "{}のRSSファイル読み込みに失敗", feed_name);
 
                 let channel = result.unwrap();
-                let rss_links = extract_rss_links_from_channel(&channel);
+                let rss_links = get_rss_links_from_channel(&channel);
                 assert!(!rss_links.is_empty(), "{}の記事が0件", feed_name);
 
                 validate_rss_links(&rss_links);

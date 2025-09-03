@@ -1,10 +1,8 @@
 use crate::{
     domain::{
-        article::{
-            fetch_article_with_client, search_unprocessed_rss_links, store_article, Article,
-        },
+        article::{get_article_with_client, search_unprocessed_rss_links, store_article, Article},
         feed::{search_feeds, Feed, FeedQuery},
-        rss::{extract_rss_links_from_channel, store_rss_links, RssLink},
+        rss::{get_rss_links_from_channel, store_rss_links, RssLink},
     },
     infra::{
         api::{firecrawl::FirecrawlClient, http::HttpClient},
@@ -81,7 +79,7 @@ async fn process_collect_rss_links<H: HttpClient>(
     for feed in feeds {
         println!("フィード処理中: {} - {}", feed.group, feed.name);
 
-        match fetch_rss_links_from_feed(client, feed).await {
+        match get_rss_links_from_feed(client, feed).await {
             Ok(rss_links) => {
                 println!("  {}件のリンクを抽出", rss_links.len());
 
@@ -105,13 +103,13 @@ async fn process_collect_rss_links<H: HttpClient>(
 }
 
 /// feedからrss_linkのリストを取得する
-async fn fetch_rss_links_from_feed<H: HttpClient>(client: &H, feed: &Feed) -> Result<Vec<RssLink>> {
+async fn get_rss_links_from_feed<H: HttpClient>(client: &H, feed: &Feed) -> Result<Vec<RssLink>> {
     let xml_content = client
         .get_text(&feed.link, 30)
         .await
         .context(format!("RSSフィードの取得に失敗: {}", feed.link))?;
     let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
-    let rss_links = extract_rss_links_from_channel(&channel);
+    let rss_links = get_rss_links_from_channel(&channel);
 
     Ok(rss_links)
 }
@@ -129,7 +127,7 @@ async fn process_collect_backlog_articles<F: FirecrawlClient>(
     for rss_link in unprocessed_links {
         println!("記事処理中: {}", rss_link.link);
 
-        let article_result = fetch_article_with_client(&rss_link.link, firecrawl_client).await;
+        let article_result = get_article_with_client(&rss_link.link, firecrawl_client).await;
 
         match article_result {
             Ok(article) => match store_article(&article, pool).await {
@@ -209,7 +207,7 @@ mod tests {
         use crate::infra::api::http::MockHttpClient;
 
         #[tokio::test]
-        async fn test_fetch_rss_links_with_mock() -> Result<(), anyhow::Error> {
+        async fn test_get_rss_links_with_mock() -> Result<(), anyhow::Error> {
             let rss_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
     <channel>
@@ -236,7 +234,7 @@ mod tests {
                 link: "https://example.com/rss.xml".to_string(),
             };
 
-            let result = fetch_rss_links_from_feed(&mock_client, &test_feed).await;
+            let result = get_rss_links_from_feed(&mock_client, &test_feed).await;
 
             assert!(result.is_ok(), "RSSフィードの取得が失敗");
 
@@ -252,7 +250,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn test_fetch_rss_links_with_error_mock() -> Result<(), anyhow::Error> {
+        async fn test_get_rss_links_with_error_mock() -> Result<(), anyhow::Error> {
             // エラーを返すモッククライアント
             let error_client = MockHttpClient::new_error("接続タイムアウト");
 
@@ -262,7 +260,7 @@ mod tests {
                 link: "https://example.com/error.xml".to_string(),
             };
 
-            let result = fetch_rss_links_from_feed(&error_client, &test_feed).await;
+            let result = get_rss_links_from_feed(&error_client, &test_feed).await;
 
             assert!(result.is_err(), "エラーが発生するべき");
             let error_msg = result.unwrap_err().to_string();
@@ -275,7 +273,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn test_fetch_rss_links_with_invalid_xml() -> Result<(), anyhow::Error> {
+        async fn test_get_rss_links_with_invalid_xml() -> Result<(), anyhow::Error> {
             let invalid_xml = "<invalid>xml content</broken>";
 
             let mock_client = MockHttpClient::new_success(invalid_xml);
@@ -286,7 +284,7 @@ mod tests {
                 link: "https://example.com/invalid.xml".to_string(),
             };
 
-            let result = fetch_rss_links_from_feed(&mock_client, &test_feed).await;
+            let result = get_rss_links_from_feed(&mock_client, &test_feed).await;
 
             // XMLパースエラーが発生するべき
             assert!(result.is_err(), "無効なXMLでエラーが発生するべき");

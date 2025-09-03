@@ -294,17 +294,17 @@ pub async fn search_rss_links_needing_processing(
 }
 
 /// URLから記事内容を取得してArticle構造体に変換する（Firecrawl SDK使用）
-pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
+pub async fn get_article_from_url(url: &str) -> Result<Article> {
     let client =
         ReqwestFirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
-    fetch_article_with_client(url, &client).await
+    get_article_with_client(url, &client).await
 }
 
 /// 指定されたFirecrawlクライアントを使用して記事内容を取得
 ///
 /// この関数は依存注入をサポートし、テスト時にモッククライアントを
 /// 注入することでFirecrawl APIへの実際の通信を避けることができます。
-pub async fn fetch_article_with_client(url: &str, client: &dyn FirecrawlClient) -> Result<Article> {
+pub async fn get_article_with_client(url: &str, client: &dyn FirecrawlClient) -> Result<Article> {
     match client.scrape_url(url, None).await {
         Ok(result) => Ok(Article {
             url: url.to_string(),
@@ -767,7 +767,7 @@ mod tests {
 
             // モッククライアントを使用して統一関数をテスト
             let mock_client = MockFirecrawlClient::new_success(mock_content);
-            let article = fetch_article_with_client(test_url, &mock_client).await?;
+            let article = get_article_with_client(test_url, &mock_client).await?;
 
             // 基本的なアサーション
             assert_eq!(article.url, test_url);
@@ -787,7 +787,7 @@ mod tests {
             use crate::infra::api::firecrawl::MockFirecrawlClient;
 
             let error_client = MockFirecrawlClient::new_error("テストエラー");
-            let result = fetch_article_with_client("https://test.com", &error_client).await;
+            let result = get_article_with_client("https://test.com", &error_client).await;
 
             assert!(result.is_ok(), "エラークライアントでも結果を返すべき");
 
