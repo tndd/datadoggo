@@ -312,29 +312,6 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     Ok(results)
 }
 
-// TODO: rss_linkに移動
-/// 未処理のRSSリンクを取得する（articleテーブルに存在しないか、status_code != 200）
-pub async fn search_unprocessed_rss_links(
-    pool: &PgPool,
-) -> Result<Vec<crate::domain::rss::RssLink>> {
-    let links = sqlx::query_as!(
-        crate::domain::rss::RssLink,
-        r#"
-        SELECT rl.link, rl.title, rl.pub_date
-        FROM rss_links rl
-        LEFT JOIN articles a ON rl.link = a.url
-        WHERE a.url IS NULL OR a.status_code != 200
-        ORDER BY rl.pub_date DESC
-        LIMIT 100
-        "#
-    )
-    .fetch_all(pool)
-    .await
-    .context("未処理RSSリンクの取得に失敗")?;
-
-    Ok(links)
-}
-
 /// URLから記事内容を取得してArticleContent構造体に変換する（Firecrawl SDK使用）
 pub async fn get_article_content_from_url(url: &str) -> Result<ArticleContent> {
     let client =
@@ -625,6 +602,7 @@ mod tests {
     // 新機能のテスト
     mod join_functionality_tests {
         use super::*;
+        use crate::domain::rss::search_unprocessed_rss_links;
 
         #[test]
         fn test_article_status_detection() {

@@ -1,11 +1,8 @@
 use crate::{
     domain::{
-        article::{
-            get_article_content_with_client, search_unprocessed_rss_links, store_article_content,
-            ArticleContent,
-        },
+        article::{get_article_content_with_client, store_article_content, ArticleContent},
         feed::{search_feeds, Feed, FeedQuery},
-        rss::{get_rss_links_from_feed, store_rss_links},
+        rss::{get_rss_links_from_feed, search_unprocessed_rss_links, store_rss_links},
     },
     infra::api::{firecrawl::FirecrawlClient, http::HttpClient},
 };

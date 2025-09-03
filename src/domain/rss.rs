@@ -132,6 +132,26 @@ pub async fn search_rss_links(query: Option<RssLinkQuery>, pool: &PgPool) -> Res
     Ok(rss_links)
 }
 
+/// 未処理のRSSリンクを取得する（articleテーブルに存在しないか、status_code != 200）
+pub async fn search_unprocessed_rss_links(pool: &PgPool) -> Result<Vec<RssLink>> {
+    let links = sqlx::query_as!(
+        RssLink,
+        r#"
+        SELECT rl.link, rl.title, rl.pub_date
+        FROM rss_links rl
+        LEFT JOIN articles a ON rl.link = a.url
+        WHERE a.url IS NULL OR a.status_code != 200
+        ORDER BY rl.pub_date DESC
+        LIMIT 100
+        "#
+    )
+    .fetch_all(pool)
+    .await
+    .context("未処理RSSリンクの取得に失敗")?;
+
+    Ok(links)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
