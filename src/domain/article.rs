@@ -5,9 +5,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 
-// Firecrawl記事構造体（テーブル定義と一致）
+// Firecrawl記事内容構造体（テーブル定義と一致）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct Article {
+pub struct ArticleContent {
     pub url: String,
     pub timestamp: DateTime<Utc>,
     pub status_code: i32,
@@ -25,9 +25,9 @@ pub enum ArticleStatus {
     Error(i32),
 }
 
-// RSSリンクと記事の紐付き状態を表現する構造体
+// 記事エンティティ（RSSリンクと記事内容の統合表現）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct RssLinkWithArticle {
+pub struct Article {
     pub link: String,
     pub title: String,
     pub pub_date: DateTime<Utc>,
@@ -37,7 +37,7 @@ pub struct RssLinkWithArticle {
     pub article_content: Option<String>,
 }
 
-impl RssLinkWithArticle {
+impl Article {
     /// 記事の処理状態を取得
     pub fn get_article_status(&self) -> ArticleStatus {
         match self.article_status_code {
@@ -63,9 +63,9 @@ impl RssLinkWithArticle {
     }
 }
 
-// RSSリンクと記事のJOINクエリ用の条件構造体
+// 記事のJOINクエリ用の条件構造体
 #[derive(Debug, Default)]
-pub struct RssLinkArticleQuery {
+pub struct ArticleQuery {
     pub link_pattern: Option<String>,
     pub pub_date_from: Option<DateTime<Utc>>,
     pub pub_date_to: Option<DateTime<Utc>>,
@@ -73,9 +73,12 @@ pub struct RssLinkArticleQuery {
     pub limit: Option<i64>,
 }
 
-/// 記事をデータベースに保存する。
+/// 記事内容をデータベースに保存する。
 /// 重複した場合には更新を行う。
-pub async fn store_article(article: &Article, pool: &PgPool) -> Result<DatabaseInsertResult> {
+pub async fn store_article_content(
+    article: &ArticleContent,
+    pool: &PgPool,
+) -> Result<DatabaseInsertResult> {
     let mut tx = pool
         .begin()
         .await
@@ -107,17 +110,20 @@ pub async fn store_article(article: &Article, pool: &PgPool) -> Result<DatabaseI
     Ok(DatabaseInsertResult::new(inserted, 1 - inserted))
 }
 
-// Article記事のフィルター条件を表す構造体
+// ArticleContent記事のフィルター条件を表す構造体
 #[derive(Debug, Default)]
-pub struct ArticleQuery {
+pub struct ArticleContentQuery {
     pub url_pattern: Option<String>,
     pub timestamp_from: Option<DateTime<Utc>>,
     pub timestamp_to: Option<DateTime<Utc>>,
     pub status_code: Option<i32>,
 }
 
-/// 指定されたデータベースプールからArticleを取得する。
-pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
+/// 指定されたデータベースプールからArticleContentを取得する。
+pub async fn search_article_contents(
+    query: Option<ArticleContentQuery>,
+    pool: &PgPool,
+) -> Result<Vec<ArticleContent>> {
     let query = query.unwrap_or_default();
 
     // QueryBuilderベースで動的にクエリを構築
@@ -151,16 +157,16 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
 
     qb.push(" ORDER BY timestamp DESC");
 
-    let articles = qb.build_query_as::<Article>().fetch_all(pool).await?;
+    let articles = qb
+        .build_query_as::<ArticleContent>()
+        .fetch_all(pool)
+        .await?;
 
     Ok(articles)
 }
 
-/// RSSリンクと記事の紐付き状態を取得する
-pub async fn search_rss_links_with_articles(
-    query: Option<RssLinkArticleQuery>,
-    pool: &PgPool,
-) -> Result<Vec<RssLinkWithArticle>> {
+/// RSSリンクと記事の結合情報を取得する
+pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
     let query = query.unwrap_or_default();
 
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
@@ -241,10 +247,10 @@ pub async fn search_rss_links_with_articles(
     }
 
     let results = qb
-        .build_query_as::<RssLinkWithArticle>()
+        .build_query_as::<Article>()
         .fetch_all(pool)
         .await
-        .context("RSSリンクと記事の紐付き状態取得に失敗")?;
+        .context("記事情報の取得に失敗")?;
 
     Ok(results)
 }
@@ -271,18 +277,18 @@ pub async fn search_unprocessed_rss_links(
     Ok(links)
 }
 
-/// 処理が必要なRSSリンクをRssLinkWithArticle形式で取得する
-pub async fn search_rss_links_needing_processing(
+/// 処理が必要な記事を取得する
+pub async fn search_articles_needing_processing(
     pool: &PgPool,
     limit: Option<i64>,
-) -> Result<Vec<RssLinkWithArticle>> {
-    let query = RssLinkArticleQuery {
+) -> Result<Vec<Article>> {
+    let query = ArticleQuery {
         article_status: None, // 全ての状態を取得してフィルター
         limit,
         ..Default::default()
     };
 
-    let all_links = search_rss_links_with_articles(Some(query), pool).await?;
+    let all_links = search_articles(Some(query), pool).await?;
 
     // is_backlog()でフィルタリング
     let processing_links = all_links
@@ -293,20 +299,23 @@ pub async fn search_rss_links_needing_processing(
     Ok(processing_links)
 }
 
-/// URLから記事内容を取得してArticle構造体に変換する（Firecrawl SDK使用）
-pub async fn get_article_from_url(url: &str) -> Result<Article> {
+/// URLから記事内容を取得してArticleContent構造体に変換する（Firecrawl SDK使用）
+pub async fn get_article_content_from_url(url: &str) -> Result<ArticleContent> {
     let client =
         ReqwestFirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
-    get_article_with_client(url, &client).await
+    get_article_content_with_client(url, &client).await
 }
 
 /// 指定されたFirecrawlクライアントを使用して記事内容を取得
 ///
 /// この関数は依存注入をサポートし、テスト時にモッククライアントを
 /// 注入することでFirecrawl APIへの実際の通信を避けることができます。
-pub async fn get_article_with_client(url: &str, client: &dyn FirecrawlClient) -> Result<Article> {
+pub async fn get_article_content_with_client(
+    url: &str,
+    client: &dyn FirecrawlClient,
+) -> Result<ArticleContent> {
     match client.scrape_url(url).await {
-        Ok(result) => Ok(Article {
+        Ok(result) => Ok(ArticleContent {
             url: url.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 200,
@@ -314,7 +323,7 @@ pub async fn get_article_with_client(url: &str, client: &dyn FirecrawlClient) ->
                 .markdown
                 .unwrap_or_else(|| "記事内容が取得できませんでした".to_string()),
         }),
-        Err(e) => Ok(Article {
+        Err(e) => Ok(ArticleContent {
             url: url.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 500,
@@ -328,8 +337,8 @@ mod tests {
     use super::*;
     use crate::infra::storage::file::load_json_from_file;
 
-    // ファイルからFirecrawlデータを読み込み、Articleに変換する
-    fn read_article_from_file(file_path: &str) -> Result<Article> {
+    // ファイルからFirecrawlデータを読み込み、ArticleContentに変換する
+    fn read_article_content_from_file(file_path: &str) -> Result<ArticleContent> {
         let json_value = load_json_from_file(file_path)?;
 
         // JSONから必要な値を抽出
@@ -360,7 +369,7 @@ mod tests {
 
         let now = Utc::now();
 
-        Ok(Article {
+        Ok(ArticleContent {
             url,
             timestamp: now,
             status_code,
@@ -371,7 +380,7 @@ mod tests {
     #[test]
     fn test_read_article_from_file() {
         // BBCのモックファイルを読み込んでパース
-        let result = read_article_from_file("mock/fc/bbc.json");
+        let result = read_article_content_from_file("mock/fc/bbc.json");
         assert!(result.is_ok(), "Firecrawl JSONファイルの読み込みに失敗");
 
         let article = result.unwrap();
@@ -389,7 +398,7 @@ mod tests {
     #[test]
     fn test_read_non_existing_file() {
         // 存在しないファイルを読み込もうとするテスト
-        let result = read_article_from_file("non_existent_file.json");
+        let result = read_article_content_from_file("non_existent_file.json");
         assert!(result.is_err(), "存在しないファイルでエラーにならなかった");
     }
 
@@ -412,7 +421,7 @@ mod tests {
         fs::write(temp_file, json_content).expect("テストファイルの作成に失敗");
 
         // statusCodeが存在しない場合にエラーが返されることを確認
-        let result = read_article_from_file(temp_file);
+        let result = read_article_content_from_file(temp_file);
         assert!(
             result.is_err(),
             "statusCodeが存在しないのにエラーにならなかった"
@@ -434,12 +443,12 @@ mod tests {
 
     // データベース保存機能のテスト
 
-    // テスト例1: Firecrawl記事の基本的な保存機能のテスト
+    // テスト例1: Firecrawl記事内容の基本的な保存機能のテスト
     #[sqlx::test]
-    async fn test_save_article_to_db(pool: PgPool) -> Result<(), anyhow::Error> {
-        // テスト用のFirecrawl記事データを作成
+    async fn test_save_article_content_to_db(pool: PgPool) -> Result<(), anyhow::Error> {
+        // テスト用のFirecrawl記事内容データを作成
         let now = Utc::now();
-        let test_article = Article {
+        let test_article = ArticleContent {
             url: "https://test.example.com/firecrawl".to_string(),
             timestamp: now,
             status_code: 200,
@@ -447,7 +456,7 @@ mod tests {
         };
 
         // データベースに保存をテスト
-        let result = store_article(&test_article, &pool).await?;
+        let result = store_article_content(&test_article, &pool).await?;
 
         // SaveResultの検証
         assert_eq!(result.inserted, 1, "新規挿入された記事数が期待と異なります");
@@ -471,33 +480,33 @@ mod tests {
         Ok(())
     }
 
-    // テスト例2: Firecrawl記事の重複処理テスト
+    // テスト例2: Firecrawl記事内容の重複処理テスト
     #[sqlx::test]
-    async fn test_duplicate_articles(pool: PgPool) -> Result<(), anyhow::Error> {
+    async fn test_duplicate_article_contents(pool: PgPool) -> Result<(), anyhow::Error> {
         let now = Utc::now();
 
-        // 最初の記事を保存
-        let original_article = Article {
+        // 最初の記事内容を保存
+        let original_article = ArticleContent {
             url: "https://test.example.com/duplicate".to_string(),
             timestamp: now,
             status_code: 200,
             content: "Original content".to_string(),
         };
 
-        // 最初の記事を保存
-        let result1 = store_article(&original_article, &pool).await?;
+        // 最初の記事内容を保存
+        let result1 = store_article_content(&original_article, &pool).await?;
         assert_eq!(result1.inserted, 1);
 
-        // 同じURLで違う内容の記事を作成（重複）
-        let duplicate_article = Article {
+        // 同じURLで違う内容の記事内容を作成（重複）
+        let duplicate_article = ArticleContent {
             url: "https://test.example.com/duplicate".to_string(),
             timestamp: now,
             status_code: 404,
             content: "Different content".to_string(),
         };
 
-        // 重複記事を保存しようとする（新しい仕様では更新される）
-        let result2 = store_article(&duplicate_article, &pool).await?;
+        // 重複記事内容を保存しようとする（新しい仕様では更新される）
+        let result2 = store_article_content(&duplicate_article, &pool).await?;
 
         // SaveResultの検証（更新される場合、inserted=1として扱う）
         assert_eq!(result2.inserted, 1, "重複URLの記事は更新されるべきです");
@@ -526,9 +535,9 @@ mod tests {
         use super::*;
 
         #[test]
-        fn test_rss_link_with_article_status_detection() {
+        fn test_article_status_detection() {
             // 未処理リンクのテスト
-            let unprocessed = RssLinkWithArticle {
+            let unprocessed = Article {
                 link: "https://test.com/unprocessed".to_string(),
                 title: "未処理記事".to_string(),
                 pub_date: Utc::now(),
@@ -547,7 +556,7 @@ mod tests {
             assert!(unprocessed.is_backlog());
 
             // 成功記事のテスト
-            let success = RssLinkWithArticle {
+            let success = Article {
                 link: "https://test.com/success".to_string(),
                 title: "成功記事".to_string(),
                 pub_date: Utc::now(),
@@ -566,7 +575,7 @@ mod tests {
             assert!(!success.is_backlog());
 
             // エラー記事のテスト
-            let error = RssLinkWithArticle {
+            let error = Article {
                 link: "https://test.com/error".to_string(),
                 title: "エラー記事".to_string(),
                 pub_date: Utc::now(),
@@ -584,11 +593,11 @@ mod tests {
             assert!(error.is_error());
             assert!(error.is_backlog());
 
-            println!("✅ RssLinkWithArticle状態判定テスト成功");
+            println!("✅ Article状態判定テスト成功");
         }
 
         #[sqlx::test]
-        async fn test_get_rss_links_with_article_status(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_get_articles_status(pool: PgPool) -> Result<(), anyhow::Error> {
             // テスト用のRSSリンクを挿入
             sqlx::query!(
                 "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
@@ -617,7 +626,7 @@ mod tests {
             .await?;
 
             // 全件取得テスト
-            let all_links = search_rss_links_with_articles(None, &pool).await?;
+            let all_links = search_articles(None, &pool).await?;
             assert!(all_links.len() >= 2, "最低2件のリンクが取得されるべき");
 
             // link1は記事が紐づいているはず
@@ -692,7 +701,7 @@ mod tests {
         }
 
         #[sqlx::test]
-        async fn test_rss_link_article_query_filters(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_article_query_filters(pool: PgPool) -> Result<(), anyhow::Error> {
             // 複数のテストデータを挿入
             let test_data = vec![
                 (
@@ -729,19 +738,19 @@ mod tests {
             }
 
             // link_patternフィルターのテスト
-            let query = RssLinkArticleQuery {
+            let query = ArticleQuery {
                 link_pattern: Some("example.com".to_string()),
                 ..Default::default()
             };
-            let example_links = search_rss_links_with_articles(Some(query), &pool).await?;
+            let example_links = search_articles(Some(query), &pool).await?;
             assert_eq!(example_links.len(), 2, "example.comのリンクは2件のはず");
 
             // article_statusフィルターのテスト（成功のみ）
-            let query = RssLinkArticleQuery {
+            let query = ArticleQuery {
                 article_status: Some(ArticleStatus::Success),
                 ..Default::default()
             };
-            let success_links = search_rss_links_with_articles(Some(query), &pool).await?;
+            let success_links = search_articles(Some(query), &pool).await?;
 
             let success_count = success_links
                 .iter()
@@ -767,7 +776,7 @@ mod tests {
 
             // モッククライアントを使用して統一関数をテスト
             let mock_client = MockFirecrawlClient::new_success(mock_content);
-            let article = get_article_with_client(test_url, &mock_client).await?;
+            let article = get_article_content_with_client(test_url, &mock_client).await?;
 
             // 基本的なアサーション
             assert_eq!(article.url, test_url);
@@ -787,7 +796,7 @@ mod tests {
             use crate::infra::api::firecrawl::MockFirecrawlClient;
 
             let error_client = MockFirecrawlClient::new_error("テストエラー");
-            let result = get_article_with_client("https://test.com", &error_client).await;
+            let result = get_article_content_with_client("https://test.com", &error_client).await;
 
             assert!(result.is_ok(), "エラークライアントでも結果を返すべき");
 

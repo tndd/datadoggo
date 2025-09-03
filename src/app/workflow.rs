@@ -1,6 +1,9 @@
 use crate::{
     domain::{
-        article::{get_article_with_client, search_unprocessed_rss_links, store_article, Article},
+        article::{
+            get_article_content_with_client, search_unprocessed_rss_links, store_article_content,
+            ArticleContent,
+        },
         feed::{search_feeds, Feed, FeedQuery},
         rss::{get_rss_links_from_feed, store_rss_links},
     },
@@ -109,10 +112,11 @@ async fn process_collect_backlog_articles<F: FirecrawlClient>(
     for rss_link in unprocessed_links {
         println!("記事処理中: {}", rss_link.link);
 
-        let article_result = get_article_with_client(&rss_link.link, firecrawl_client).await;
+        let article_result =
+            get_article_content_with_client(&rss_link.link, firecrawl_client).await;
 
         match article_result {
-            Ok(article) => match store_article(&article, pool).await {
+            Ok(article) => match store_article_content(&article, pool).await {
                 Ok(result) => {
                     println!("  記事保存結果: {}", result);
                 }
@@ -124,14 +128,14 @@ async fn process_collect_backlog_articles<F: FirecrawlClient>(
                 eprintln!("  記事取得エラー: {}", e);
 
                 // エラーが発生した場合も、status_codeを記録してスキップ
-                let error_article = Article {
+                let error_article = ArticleContent {
                     url: rss_link.link,
                     timestamp: chrono::Utc::now(),
                     status_code: 500, // エラー用のステータスコード
                     content: format!("取得エラー: {}", e),
                 };
 
-                if let Err(store_err) = store_article(&error_article, pool).await {
+                if let Err(store_err) = store_article_content(&error_article, pool).await {
                     eprintln!("  エラー記事の保存に失敗: {}", store_err);
                 }
             }
