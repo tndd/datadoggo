@@ -379,7 +379,7 @@ pub async fn search_backlog_articles_light(
 }
 
 /// ArticleViewトレイトを使用したジェネリック処理関数
-pub fn process_articles<T: ArticleView>(articles: &[T]) -> Vec<String> {
+pub fn format_backlog_articles<T: ArticleView>(articles: &[T]) -> Vec<String> {
     articles
         .iter()
         .filter(|article| article.is_backlog())
@@ -942,8 +942,8 @@ mod tests {
                     },
                 ];
                 // ジェネリック処理関数のテスト
-                let full_backlog = process_articles(&full_articles);
-                let light_backlog = process_articles(&light_articles);
+                let full_backlog = format_backlog_articles(&full_articles);
+                let light_backlog = format_backlog_articles(&light_articles);
 
                 assert_eq!(full_backlog.len(), 1);
                 assert!(full_backlog[0].contains("エラー記事"));
@@ -1017,7 +1017,7 @@ mod tests {
                 // バックログ記事の軽量版を取得
                 let backlog_articles = search_backlog_articles_light(&pool, None).await?;
                 // トレイトを使って処理
-                let backlog_messages = process_articles(&backlog_articles);
+                let backlog_messages = format_backlog_articles(&backlog_articles);
                 let (unprocessed, success, error) = calculate_article_stats(&backlog_articles);
                 // 結果の検証
                 assert!(backlog_messages.len() >= 2); // 未処理とエラーの両方
