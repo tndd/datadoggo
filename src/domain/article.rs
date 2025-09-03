@@ -81,15 +81,12 @@ impl ArticleView for Article {
     fn get_link(&self) -> &str {
         &self.link
     }
-
     fn get_title(&self) -> &str {
         &self.title
     }
-
     fn get_pub_date(&self) -> DateTime<Utc> {
         self.pub_date
     }
-
     fn get_status_code(&self) -> Option<i32> {
         self.status_code
     }
@@ -99,15 +96,12 @@ impl ArticleView for ArticleLight {
     fn get_link(&self) -> &str {
         &self.link
     }
-
     fn get_title(&self) -> &str {
         &self.title
     }
-
     fn get_pub_date(&self) -> DateTime<Utc> {
         self.pub_date
     }
-
     fn get_status_code(&self) -> Option<i32> {
         self.status_code
     }
@@ -119,17 +113,14 @@ impl Article {
     pub fn get_article_status(&self) -> ArticleStatus {
         ArticleView::get_article_status(self)
     }
-
     /// 未処理のリンクかどうかを判定
     pub fn is_unprocessed(&self) -> bool {
         ArticleView::is_unprocessed(self)
     }
-
     /// エラー状態のリンクかどうかを判定
     pub fn is_error(&self) -> bool {
         ArticleView::is_error(self)
     }
-
     /// 処理が必要なリンクかどうかを判定（未処理またはエラー）
     pub fn is_backlog(&self) -> bool {
         ArticleView::is_backlog(self)
@@ -198,7 +189,6 @@ pub async fn search_article_contents(
     pool: &PgPool,
 ) -> Result<Vec<ArticleContent>> {
     let query = query.unwrap_or_default();
-
     // QueryBuilderベースで動的にクエリを構築
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT url, timestamp, status_code, content FROM articles",
@@ -257,7 +247,6 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     );
 
     let mut has_where = false;
-
     // link_pattern query
     if let Some(ref link_pattern) = query.link_pattern {
         if !has_where {
@@ -267,7 +256,6 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
         let pattern = format!("%{}%", link_pattern);
         qb.push("rl.link ILIKE ").push_bind(pattern);
     }
-
     // pub_date_from query
     if let Some(pub_date_from) = query.pub_date_from {
         if has_where {
@@ -278,7 +266,6 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
         }
         qb.push("rl.pub_date >= ").push_bind(pub_date_from);
     }
-
     // pub_date_to query
     if let Some(pub_date_to) = query.pub_date_to {
         if has_where {
@@ -289,7 +276,6 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
         }
         qb.push("rl.pub_date <= ").push_bind(pub_date_to);
     }
-
     // article_status query
     if let Some(ref status) = query.article_status {
         if has_where {
@@ -312,7 +298,6 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     }
 
     qb.push(" ORDER BY rl.pub_date DESC");
-
     // limit
     if let Some(limit) = query.limit {
         qb.push(" LIMIT ").push_bind(limit);
@@ -327,6 +312,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     Ok(results)
 }
 
+// TODO: rss_linkに移動
 /// 未処理のRSSリンクを取得する（articleテーブルに存在しないか、status_code != 200）
 pub async fn search_unprocessed_rss_links(
     pool: &PgPool,
@@ -401,7 +387,6 @@ pub async fn search_backlog_articles_light(
         ORDER BY rl.pub_date DESC
         "#,
     );
-
     // limit
     if let Some(limit) = limit {
         qb.push(" LIMIT ").push_bind(limit);
@@ -466,18 +451,15 @@ mod tests {
     // ファイルからFirecrawlデータを読み込み、ArticleContentに変換する
     fn read_article_content_from_file(file_path: &str) -> Result<ArticleContent> {
         let json_value = load_json_from_file(file_path)?;
-
         // JSONから必要な値を抽出
         let content = json_value
             .get("markdown")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("markdownフィールドが見つかりません"))?
             .to_string();
-
         let metadata = json_value
             .get("metadata")
             .ok_or_else(|| anyhow::anyhow!("metadataフィールドが見つかりません"))?;
-
         // URLを取得（複数の候補から）
         let url = metadata
             .get("url")
@@ -485,14 +467,12 @@ mod tests {
             .or_else(|| metadata.get("sourceURL").and_then(|v| v.as_str()))
             .ok_or_else(|| anyhow::anyhow!("URLが見つかりません"))?
             .to_string();
-
         // status_codeを取得（必須）
         let status_code = metadata
             .get("statusCode")
             .and_then(|v| v.as_i64())
             .map(|v| v as i32)
             .ok_or_else(|| anyhow::anyhow!("statusCodeフィールドが見つかりません"))?;
-
         let now = Utc::now();
 
         Ok(ArticleContent {
@@ -510,7 +490,6 @@ mod tests {
         assert!(result.is_ok(), "Firecrawl JSONファイルの読み込みに失敗");
 
         let article = result.unwrap();
-
         // 基本的なフィールドの検証
         assert!(!article.content.is_empty(), "contentが空です");
         assert!(!article.url.is_empty(), "URLが空です");
@@ -541,18 +520,15 @@ mod tests {
             }
         }
         "#;
-
         // 一時ファイル作成
         let temp_file = "temp_test_missing_status_code.json";
         fs::write(temp_file, json_content).expect("テストファイルの作成に失敗");
-
         // statusCodeが存在しない場合にエラーが返されることを確認
         let result = read_article_content_from_file(temp_file);
         assert!(
             result.is_err(),
             "statusCodeが存在しないのにエラーにならなかった"
         );
-
         // エラーメッセージの確認
         let error_message = result.unwrap_err().to_string();
         assert!(
@@ -560,7 +536,6 @@ mod tests {
             "期待されるエラーメッセージが含まれていません: {}",
             error_message
         );
-
         // テストファイル削除
         fs::remove_file(temp_file).ok();
 
@@ -580,17 +555,14 @@ mod tests {
             status_code: 200,
             content: "# Test Article\n\nThis is a test content.".to_string(),
         };
-
         // データベースに保存をテスト
         let result = store_article_content(&test_article, &pool).await?;
-
         // SaveResultの検証
         assert_eq!(result.inserted, 1, "新規挿入された記事数が期待と異なります");
         assert_eq!(
             result.skipped_duplicate, 0,
             "重複スキップ数が期待と異なります"
         );
-
         // 実際にデータベースに保存されたことを確認
         let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
             .fetch_one(&pool)
@@ -610,7 +582,6 @@ mod tests {
     #[sqlx::test]
     async fn test_duplicate_article_contents(pool: PgPool) -> Result<(), anyhow::Error> {
         let now = Utc::now();
-
         // 最初の記事内容を保存
         let original_article = ArticleContent {
             url: "https://test.example.com/duplicate".to_string(),
@@ -618,11 +589,9 @@ mod tests {
             status_code: 200,
             content: "Original content".to_string(),
         };
-
         // 最初の記事内容を保存
         let result1 = store_article_content(&original_article, &pool).await?;
         assert_eq!(result1.inserted, 1);
-
         // 同じURLで違う内容の記事内容を作成（重複）
         let duplicate_article = ArticleContent {
             url: "https://test.example.com/duplicate".to_string(),
@@ -630,17 +599,14 @@ mod tests {
             status_code: 404,
             content: "Different content".to_string(),
         };
-
         // 重複記事内容を保存しようとする（新しい仕様では更新される）
         let result2 = store_article_content(&duplicate_article, &pool).await?;
-
         // SaveResultの検証（更新される場合、inserted=1として扱う）
         assert_eq!(result2.inserted, 1, "重複URLの記事は更新されるべきです");
         assert_eq!(
             result2.skipped_duplicate, 0,
             "重複スキップ数が期待と異なります"
         );
-
         // データベースの件数は1件のまま
         let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
             .fetch_one(&pool)
@@ -671,7 +637,6 @@ mod tests {
                 status_code: None,
                 content: None,
             };
-
             assert!(matches!(
                 unprocessed.get_article_status(),
                 ArticleStatus::Unprocessed
@@ -679,7 +644,6 @@ mod tests {
             assert!(unprocessed.is_unprocessed());
             assert!(!unprocessed.is_error());
             assert!(unprocessed.is_backlog());
-
             // 成功記事のテスト
             let success = Article {
                 link: "https://test.com/success".to_string(),
@@ -689,7 +653,6 @@ mod tests {
                 status_code: Some(200),
                 content: Some("記事内容".to_string()),
             };
-
             assert!(matches!(
                 success.get_article_status(),
                 ArticleStatus::Success
@@ -697,7 +660,6 @@ mod tests {
             assert!(!success.is_unprocessed());
             assert!(!success.is_error());
             assert!(!success.is_backlog());
-
             // エラー記事のテスト
             let error = Article {
                 link: "https://test.com/error".to_string(),
@@ -707,7 +669,6 @@ mod tests {
                 status_code: Some(404),
                 content: Some("エラー内容".to_string()),
             };
-
             assert!(matches!(
                 error.get_article_status(),
                 ArticleStatus::Error(404)
@@ -737,7 +698,6 @@ mod tests {
             )
             .execute(&pool)
             .await?;
-
             // 1つのリンクに対応する記事を挿入
             sqlx::query!(
                 "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
@@ -747,11 +707,9 @@ mod tests {
             )
             .execute(&pool)
             .await?;
-
             // 全件取得テスト
             let all_links = search_articles(None, &pool).await?;
             assert!(all_links.len() >= 2, "最低2件のリンクが取得されるべき");
-
             // link1は記事が紐づいているはず
             let link1 = all_links
                 .iter()
@@ -761,7 +719,6 @@ mod tests {
             assert!(link1.status_code.is_some(), "link1に記事が紐づいているべき");
             assert_eq!(link1.status_code, Some(200));
             assert!(!link1.is_backlog());
-
             // link2は記事が紐づいていないはず
             let link2 = all_links
                 .iter()
@@ -796,7 +753,6 @@ mod tests {
             )
             .execute(&pool)
             .await?;
-
             // 1つだけ記事として処理済みにする
             sqlx::query!(
                 "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
@@ -809,7 +765,6 @@ mod tests {
 
             // 未処理リンクを取得
             let unprocessed_links = search_unprocessed_rss_links(&pool).await?;
-
             // unprocessedは含まれるべき、processedは含まれないべき
             let unprocessed_urls: Vec<&str> = unprocessed_links
                 .iter()
@@ -867,7 +822,6 @@ mod tests {
             };
             let example_links = search_articles(Some(query), &pool).await?;
             assert_eq!(example_links.len(), 2, "example.comのリンクは2件のはず");
-
             // article_statusフィルターのテスト（成功のみ）
             let query = ArticleQuery {
                 article_status: Some(ArticleStatus::Success),
@@ -896,11 +850,9 @@ mod tests {
 
             let test_url = "https://httpbin.org/html";
             let mock_content = "統合テスト記事内容\n\nこれは1つのテストコードでモック/オンライン切り替えをテストする記事です。";
-
             // モッククライアントを使用して統一関数をテスト
             let mock_client = MockFirecrawlClient::new_success(mock_content);
             let article = get_article_content_with_client(test_url, &mock_client).await?;
-
             // 基本的なアサーション
             assert_eq!(article.url, test_url);
             assert_eq!(article.status_code, 200);
@@ -952,7 +904,6 @@ mod tests {
                     status_code: Some(200),
                     content: Some("記事内容".to_string()),
                 };
-
                 // 軽量版記事のテスト
                 let light_article = ArticleLight {
                     link: "https://test.com/light".to_string(),
@@ -961,7 +912,6 @@ mod tests {
                     updated_at: Some(Utc::now()),
                     status_code: Some(404),
                 };
-
                 // ArticleViewトレイト経由でのアクセス
                 assert_eq!(full_article.get_link(), "https://test.com/full");
                 assert_eq!(full_article.get_title(), "完全版記事");
@@ -1013,7 +963,6 @@ mod tests {
                         status_code: Some(200),
                     },
                 ];
-
                 // ジェネリック処理関数のテスト
                 let full_backlog = process_articles(&full_articles);
                 let light_backlog = process_articles(&light_articles);
@@ -1022,7 +971,6 @@ mod tests {
                 assert!(full_backlog[0].contains("エラー記事"));
                 assert_eq!(light_backlog.len(), 1);
                 assert!(light_backlog[0].contains("未処理記事"));
-
                 // ステータスフィルタリングのテスト
                 let error_articles =
                     filter_articles_by_status(&full_articles, ArticleStatus::Error(404));
@@ -1033,7 +981,6 @@ mod tests {
                     filter_articles_by_status(&light_articles, ArticleStatus::Success);
                 assert_eq!(success_light.len(), 1);
                 assert_eq!(success_light[0].get_title(), "成功軽量記事");
-
                 // 統計計算のテスト
                 let (unprocessed, success, error) = calculate_article_stats(&full_articles);
                 assert_eq!((unprocessed, success, error), (0, 1, 1));
@@ -1071,7 +1018,6 @@ mod tests {
                 )
                 .execute(&pool)
                 .await?;
-
                 // エラー記事を挿入
                 sqlx::query!(
                     "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
@@ -1081,7 +1027,6 @@ mod tests {
                 )
                 .execute(&pool)
                 .await?;
-
                 // 成功記事を挿入
                 sqlx::query!(
                     "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
@@ -1091,14 +1036,11 @@ mod tests {
                 )
                 .execute(&pool)
                 .await?;
-
                 // バックログ記事の軽量版を取得
                 let backlog_articles = search_backlog_articles_light(&pool, None).await?;
-
                 // トレイトを使って処理
                 let backlog_messages = process_articles(&backlog_articles);
                 let (unprocessed, success, error) = calculate_article_stats(&backlog_articles);
-
                 // 結果の検証
                 assert!(backlog_messages.len() >= 2); // 未処理とエラーの両方
                 assert!(unprocessed >= 1); // 少なくとも1つの未処理
