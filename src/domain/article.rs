@@ -30,11 +30,11 @@ pub trait ArticleView {
     fn get_link(&self) -> &str;
     fn get_title(&self) -> &str;
     fn get_pub_date(&self) -> DateTime<Utc>;
-    fn get_article_status_code(&self) -> Option<i32>;
+    fn get_status_code(&self) -> Option<i32>;
 
     // デフォルト実装を提供するメソッド
     fn get_article_status(&self) -> ArticleStatus {
-        match self.get_article_status_code() {
+        match self.get_status_code() {
             None => ArticleStatus::Unprocessed,
             Some(200) => ArticleStatus::Success,
             Some(code) => ArticleStatus::Error(code),
@@ -60,22 +60,20 @@ pub struct Article {
     pub link: String,
     pub title: String,
     pub pub_date: DateTime<Utc>,
-    pub article_url: Option<String>,
-    pub article_timestamp: Option<DateTime<Utc>>,
-    pub article_status_code: Option<i32>,
-    pub article_content: Option<String>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub status_code: Option<i32>,
+    pub content: Option<String>,
 }
 
-// 軽量記事エンティティ（バックログ処理用、article_contentを除外）
+// 軽量記事エンティティ（バックログ処理用、contentを除外）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ArticleLight {
     pub link: String,
     pub title: String,
     pub pub_date: DateTime<Utc>,
-    pub article_url: Option<String>,
-    pub article_timestamp: Option<DateTime<Utc>>,
-    pub article_status_code: Option<i32>,
-    // article_content フィールドは意図的に除外
+    pub updated_at: Option<DateTime<Utc>>,
+    pub status_code: Option<i32>,
+    // content フィールドは意図的に除外
 }
 
 // ArticleViewトレイトの実装
@@ -92,8 +90,8 @@ impl ArticleView for Article {
         self.pub_date
     }
 
-    fn get_article_status_code(&self) -> Option<i32> {
-        self.article_status_code
+    fn get_status_code(&self) -> Option<i32> {
+        self.status_code
     }
 }
 
@@ -110,8 +108,8 @@ impl ArticleView for ArticleLight {
         self.pub_date
     }
 
-    fn get_article_status_code(&self) -> Option<i32> {
-        self.article_status_code
+    fn get_status_code(&self) -> Option<i32> {
+        self.status_code
     }
 }
 
@@ -250,10 +248,9 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
             rl.link,
             rl.title,
             rl.pub_date,
-            a.url as article_url,
-            a.timestamp as article_timestamp,
-            a.status_code as article_status_code,
-            a.content as article_content
+            a.timestamp as updated_at,
+            a.status_code,
+            a.content
         FROM rss_links rl
         LEFT JOIN articles a ON rl.link = a.url
         "#,
@@ -418,9 +415,8 @@ pub async fn search_backlog_articles_light(
             rl.link,
             rl.title,
             rl.pub_date,
-            a.url as article_url,
-            a.timestamp as article_timestamp,
-            a.status_code as article_status_code
+            a.timestamp as updated_at,
+            a.status_code
         FROM rss_links rl
         LEFT JOIN articles a ON rl.link = a.url
         WHERE a.url IS NULL OR a.status_code != 200
@@ -693,10 +689,9 @@ mod tests {
                 link: "https://test.com/unprocessed".to_string(),
                 title: "未処理記事".to_string(),
                 pub_date: Utc::now(),
-                article_url: None,
-                article_timestamp: None,
-                article_status_code: None,
-                article_content: None,
+                updated_at: None,
+                status_code: None,
+                content: None,
             };
 
             assert!(matches!(
@@ -712,10 +707,9 @@ mod tests {
                 link: "https://test.com/success".to_string(),
                 title: "成功記事".to_string(),
                 pub_date: Utc::now(),
-                article_url: Some("https://test.com/success".to_string()),
-                article_timestamp: Some(Utc::now()),
-                article_status_code: Some(200),
-                article_content: Some("記事内容".to_string()),
+                updated_at: Some(Utc::now()),
+                status_code: Some(200),
+                content: Some("記事内容".to_string()),
             };
 
             assert!(matches!(
@@ -731,10 +725,9 @@ mod tests {
                 link: "https://test.com/error".to_string(),
                 title: "エラー記事".to_string(),
                 pub_date: Utc::now(),
-                article_url: Some("https://test.com/error".to_string()),
-                article_timestamp: Some(Utc::now()),
-                article_status_code: Some(404),
-                article_content: Some("エラー内容".to_string()),
+                updated_at: Some(Utc::now()),
+                status_code: Some(404),
+                content: Some("エラー内容".to_string()),
             };
 
             assert!(matches!(
@@ -787,8 +780,8 @@ mod tests {
                 .find(|link| link.link == "https://test.com/link1")
                 .expect("link1が見つからない");
 
-            assert!(link1.article_url.is_some(), "link1に記事が紐づいているべき");
-            assert_eq!(link1.article_status_code, Some(200));
+            assert!(link1.status_code.is_some(), "link1に記事が紐づいているべき");
+            assert_eq!(link1.status_code, Some(200));
             assert!(!link1.is_backlog());
 
             // link2は記事が紐づいていないはず
@@ -798,7 +791,7 @@ mod tests {
                 .expect("link2が見つからない");
 
             assert!(
-                link2.article_url.is_none(),
+                link2.status_code.is_none(),
                 "link2に記事が紐づいていないべき"
             );
             assert!(link2.is_backlog());
@@ -906,7 +899,7 @@ mod tests {
 
             let success_count = success_links
                 .iter()
-                .filter(|link| link.article_status_code == Some(200))
+                .filter(|link| link.status_code == Some(200))
                 .count();
             assert_eq!(
                 success_count,
@@ -977,10 +970,9 @@ mod tests {
                     link: "https://test.com/full".to_string(),
                     title: "完全版記事".to_string(),
                     pub_date: Utc::now(),
-                    article_url: Some("https://test.com/full".to_string()),
-                    article_timestamp: Some(Utc::now()),
-                    article_status_code: Some(200),
-                    article_content: Some("記事内容".to_string()),
+                    updated_at: Some(Utc::now()),
+                    status_code: Some(200),
+                    content: Some("記事内容".to_string()),
                 };
 
                 // 軽量版記事のテスト
@@ -988,20 +980,19 @@ mod tests {
                     link: "https://test.com/light".to_string(),
                     title: "軽量版記事".to_string(),
                     pub_date: Utc::now(),
-                    article_url: Some("https://test.com/light".to_string()),
-                    article_timestamp: Some(Utc::now()),
-                    article_status_code: Some(404),
+                    updated_at: Some(Utc::now()),
+                    status_code: Some(404),
                 };
 
                 // ArticleViewトレイト経由でのアクセス
                 assert_eq!(full_article.get_link(), "https://test.com/full");
                 assert_eq!(full_article.get_title(), "完全版記事");
-                assert_eq!(full_article.get_article_status_code(), Some(200));
+                assert_eq!(full_article.get_status_code(), Some(200));
                 assert!(!full_article.is_backlog());
 
                 assert_eq!(light_article.get_link(), "https://test.com/light");
                 assert_eq!(light_article.get_title(), "軽量版記事");
-                assert_eq!(light_article.get_article_status_code(), Some(404));
+                assert_eq!(light_article.get_status_code(), Some(404));
                 assert!(light_article.is_backlog());
 
                 println!("✅ ArticleViewトレイト実装テスト成功");
@@ -1014,19 +1005,17 @@ mod tests {
                         link: "https://test.com/success".to_string(),
                         title: "成功記事".to_string(),
                         pub_date: Utc::now(),
-                        article_url: Some("https://test.com/success".to_string()),
-                        article_timestamp: Some(Utc::now()),
-                        article_status_code: Some(200),
-                        article_content: Some("成功内容".to_string()),
+                        updated_at: Some(Utc::now()),
+                        status_code: Some(200),
+                        content: Some("成功内容".to_string()),
                     },
                     Article {
                         link: "https://test.com/error".to_string(),
                         title: "エラー記事".to_string(),
                         pub_date: Utc::now(),
-                        article_url: Some("https://test.com/error".to_string()),
-                        article_timestamp: Some(Utc::now()),
-                        article_status_code: Some(404),
-                        article_content: Some("エラー内容".to_string()),
+                        updated_at: Some(Utc::now()),
+                        status_code: Some(404),
+                        content: Some("エラー内容".to_string()),
                     },
                 ];
 
@@ -1035,17 +1024,15 @@ mod tests {
                         link: "https://test.com/unprocessed".to_string(),
                         title: "未処理記事".to_string(),
                         pub_date: Utc::now(),
-                        article_url: None,
-                        article_timestamp: None,
-                        article_status_code: None,
+                        updated_at: None,
+                        status_code: None,
                     },
                     ArticleLight {
                         link: "https://test.com/success_light".to_string(),
                         title: "成功軽量記事".to_string(),
                         pub_date: Utc::now(),
-                        article_url: Some("https://test.com/success_light".to_string()),
-                        article_timestamp: Some(Utc::now()),
-                        article_status_code: Some(200),
+                        updated_at: Some(Utc::now()),
+                        status_code: Some(200),
                     },
                 ];
 
