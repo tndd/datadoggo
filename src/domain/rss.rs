@@ -1,4 +1,6 @@
-use crate::infra::parser::parse_date;
+use crate::domain::feed::Feed;
+use crate::infra::api::http::HttpClient;
+use crate::infra::parser::{parse_channel_from_xml_str, parse_date};
 use crate::infra::storage::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -31,6 +33,21 @@ pub fn get_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
             })
         })
         .collect()
+}
+
+/// feedからrss_linkのリストを取得する
+pub async fn get_rss_links_from_feed<H: HttpClient>(
+    client: &H,
+    feed: &Feed,
+) -> Result<Vec<RssLink>> {
+    let xml_content = client
+        .get_text(&feed.link, 30)
+        .await
+        .context(format!("RSSフィードの取得に失敗: {}", feed))?;
+    let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
+    let rss_links = get_rss_links_from_channel(&channel);
+
+    Ok(rss_links)
 }
 
 /// # 概要
@@ -338,6 +355,99 @@ mod tests {
 
             println!("✅ RSS混在データ処理検証成功: {}", result);
 
+            Ok(())
+        }
+    }
+
+    // HTTPクライアントを使用したフィード取得テスト
+    mod feed_fetch_tests {
+        use super::*;
+        use crate::infra::api::http::MockHttpClient;
+
+        #[tokio::test]
+        async fn test_get_rss_links_with_mock() -> Result<(), anyhow::Error> {
+            let rss_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+    <channel>
+        <title>テストRSSフィード</title>
+        <item>
+            <title>記事1</title>
+            <link>https://example.com/article1</link>
+            <pubDate>Wed, 01 Jan 2025 12:00:00 GMT</pubDate>
+        </item>
+        <item>
+            <title>記事2</title>
+            <link>https://example.com/article2</link>
+            <pubDate>Thu, 02 Jan 2025 12:00:00 GMT</pubDate>
+        </item>
+    </channel>
+</rss>"#;
+
+            // モッククライアントでRSSフィードを設定
+            let mock_client = MockHttpClient::new_success(rss_xml);
+
+            let test_feed = Feed {
+                group: "test".to_string(),
+                name: "テストフィード".to_string(),
+                link: "https://example.com/rss.xml".to_string(),
+            };
+
+            let result = get_rss_links_from_feed(&mock_client, &test_feed).await;
+
+            assert!(result.is_ok(), "RSSフィードの取得が失敗");
+
+            let rss_links = result.unwrap();
+            assert_eq!(rss_links.len(), 2, "2件のリンクが取得されるべき");
+
+            let first_link = &rss_links[0];
+            assert_eq!(first_link.link, "https://example.com/article1");
+            assert_eq!(first_link.title, "記事1");
+
+            println!("✅ HTTPモック使用のRSSフィード取得テスト完了");
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn test_get_rss_links_with_error_mock() -> Result<(), anyhow::Error> {
+            // エラーを返すモッククライアント
+            let error_client = MockHttpClient::new_error("接続タイムアウト");
+
+            let test_feed = Feed {
+                group: "test".to_string(),
+                name: "エラーテストフィード".to_string(),
+                link: "https://example.com/error.xml".to_string(),
+            };
+
+            let result = get_rss_links_from_feed(&error_client, &test_feed).await;
+
+            assert!(result.is_err(), "エラーが発生するべき");
+            let error_msg = result.unwrap_err().to_string();
+            println!("エラーメッセージ: {}", error_msg);
+            // エラーが正しく伝播されていることを確認
+            assert!(error_msg.contains("の取得に失敗"));
+
+            println!("✅ HTTPモック使用のエラーハンドリングテスト完了");
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn test_get_rss_links_with_invalid_xml() -> Result<(), anyhow::Error> {
+            let invalid_xml = "<invalid>xml content</broken>";
+
+            let mock_client = MockHttpClient::new_success(invalid_xml);
+
+            let test_feed = Feed {
+                group: "test".to_string(),
+                name: "無効XMLテストフィード".to_string(),
+                link: "https://example.com/invalid.xml".to_string(),
+            };
+
+            let result = get_rss_links_from_feed(&mock_client, &test_feed).await;
+
+            // XMLパースエラーが発生するべき
+            assert!(result.is_err(), "無効なXMLでエラーが発生するべき");
+
+            println!("✅ 無効XMLハンドリングテスト完了");
             Ok(())
         }
     }
