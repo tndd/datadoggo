@@ -3,12 +3,12 @@ use async_trait::async_trait;
 use reqwest::Client;
 use std::time::Duration;
 
-/// HTTP クライアントの抽象化プロトコル
+/// HTTPクライアントの抽象化トレイト
 ///
-/// このプロトコルは、実際のHTTP通信とモック実装の両方を
+/// このトレイトは、実際のHTTP通信とモック実装の両方を
 /// 統一的に扱えるようにするためのインターフェースです。
 #[async_trait]
-pub trait HttpClientProtocol {
+pub trait HttpClient {
     /// 指定されたURLからテキストを取得する
     ///
     /// # Arguments
@@ -17,7 +17,7 @@ pub trait HttpClientProtocol {
     async fn get_text(&self, url: &str, timeout_secs: u64) -> Result<String>;
 }
 
-/// 実際のHTTP通信を使用する実装
+/// `reqwest` を使用した本番用のHTTPクライアント実装
 pub struct ReqwestHttpClient {
     client: Client,
 }
@@ -38,7 +38,7 @@ impl Default for ReqwestHttpClient {
 }
 
 #[async_trait]
-impl HttpClientProtocol for ReqwestHttpClient {
+impl HttpClient for ReqwestHttpClient {
     async fn get_text(&self, url: &str, timeout_secs: u64) -> Result<String> {
         let response = self
             .client
@@ -55,8 +55,10 @@ impl HttpClientProtocol for ReqwestHttpClient {
     }
 }
 
-/// テスト用のモック実装
-#[cfg(test)]
+/// テスト用のモックHTTPクライアント
+///
+/// この実装はテスト時にDIされ、実際のHTTPリクエストを行わずに
+/// 定義済みのレスポンスやエラーを返します。
 pub struct MockHttpClient {
     /// モック時に返すレスポンス内容
     pub mock_response: String,
@@ -66,7 +68,6 @@ pub struct MockHttpClient {
     pub error_message: Option<String>,
 }
 
-#[cfg(test)]
 impl MockHttpClient {
     /// 成功レスポンスを返すモッククライアントを作成
     pub fn new_success(mock_response: &str) -> Self {
@@ -87,9 +88,8 @@ impl MockHttpClient {
     }
 }
 
-#[cfg(test)]
 #[async_trait]
-impl HttpClientProtocol for MockHttpClient {
+impl HttpClient for MockHttpClient {
     async fn get_text(&self, _url: &str, _timeout_secs: u64) -> Result<String> {
         if self.should_succeed {
             // 成功時のモックレスポンス
