@@ -4,7 +4,7 @@ use datadoggo::{app, domain, infra};
 use app::workflow::execute_rss_workflow;
 use domain::feed::{search_feeds, FeedQuery};
 use domain::rss::{extract_rss_links_from_channel, store_rss_links};
-use infra::api::firecrawl::FirecrawlClient;
+use infra::api::firecrawl::ReqwestFirecrawlClient;
 use infra::api::http::ReqwestHttpClient;
 use infra::storage::db::setup_database;
 use infra::storage::file::{load_channel_from_xml_file, load_json_from_file};
@@ -104,7 +104,8 @@ async fn main() {
     println!("\n=== RSSワークフロー（デモ実行） ===");
     // 本番用のクライアントをインスタンス化
     let http_client = ReqwestHttpClient::new();
-    let firecrawl_client = FirecrawlClient::new().expect("Firecrawlクライアントの初期化に失敗");
+    let firecrawl_client =
+        ReqwestFirecrawlClient::new().expect("Firecrawlクライアントの初期化に失敗");
 
     match execute_rss_workflow(&http_client, &firecrawl_client, &pool, Some("bbc")).await {
         Ok(()) => {

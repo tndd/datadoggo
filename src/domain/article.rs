@@ -1,4 +1,4 @@
-use crate::infra::api::firecrawl::{FirecrawlClient, FirecrawlClientProtocol};
+use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
 use crate::infra::storage::db::DatabaseInsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -295,7 +295,8 @@ pub async fn search_rss_links_needing_processing(
 
 /// URLから記事内容を取得してArticle構造体に変換する（Firecrawl SDK使用）
 pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
-    let client = FirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
+    let client =
+        ReqwestFirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
     fetch_article_with_client(url, &client).await
 }
 
@@ -303,10 +304,7 @@ pub async fn fetch_article_from_url(url: &str) -> Result<Article> {
 ///
 /// この関数は依存注入をサポートし、テスト時にモッククライアントを
 /// 注入することでFirecrawl APIへの実際の通信を避けることができます。
-pub async fn fetch_article_with_client(
-    url: &str,
-    client: &dyn FirecrawlClientProtocol,
-) -> Result<Article> {
+pub async fn fetch_article_with_client(url: &str, client: &dyn FirecrawlClient) -> Result<Article> {
     match client.scrape_url(url, None).await {
         Ok(result) => Ok(Article {
             url: url.to_string(),

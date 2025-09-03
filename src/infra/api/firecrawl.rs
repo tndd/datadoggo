@@ -7,7 +7,7 @@ use firecrawl_sdk::{document::Document, FirecrawlApp};
 /// このプロトコルは、実際のFirecrawl APIとモック実装の両方を
 /// 統一的に扱えるようにするためのインターフェースです。
 #[async_trait]
-pub trait FirecrawlClientProtocol {
+pub trait FirecrawlClient {
     /// URLをスクレイピングして結果を返す
     ///
     /// # Arguments
@@ -17,11 +17,11 @@ pub trait FirecrawlClientProtocol {
 }
 
 /// 実際のFirecrawl APIを使用する実装
-pub struct FirecrawlClient {
+pub struct ReqwestFirecrawlClient {
     firecrawl_app: FirecrawlApp,
 }
 
-impl FirecrawlClient {
+impl ReqwestFirecrawlClient {
     /// デフォルトのFirecrawl設定で新しいクライアントを作成
     pub fn new() -> Result<Self> {
         let firecrawl_app = FirecrawlApp::new_selfhosted("http://localhost:13002", Some("fc-test"))
@@ -40,7 +40,7 @@ impl FirecrawlClient {
 }
 
 #[async_trait]
-impl FirecrawlClientProtocol for FirecrawlClient {
+impl FirecrawlClient for ReqwestFirecrawlClient {
     async fn scrape_url(&self, url: &str, _options: Option<()>) -> Result<Document> {
         self.firecrawl_app
             .scrape_url(url, None)
@@ -80,7 +80,7 @@ impl MockFirecrawlClient {
 }
 
 #[async_trait]
-impl FirecrawlClientProtocol for MockFirecrawlClient {
+impl FirecrawlClient for MockFirecrawlClient {
     async fn scrape_url(&self, _url: &str, _options: Option<()>) -> Result<Document> {
         if self.should_succeed {
             // 成功時のモックレスポンス
@@ -134,7 +134,8 @@ mod tests {
     #[tokio::test]
     async fn test_firecrawl_online_basic() -> Result<(), anyhow::Error> {
         // httpbin.orgを使った軽量な接続テスト
-        let client = FirecrawlClient::new().context("Firecrawlクライアントの初期化に失敗")?;
+        let client =
+            ReqwestFirecrawlClient::new().context("Firecrawlクライアントの初期化に失敗")?;
         let result = client.scrape_url("https://httpbin.org/html", None).await;
 
         match result {

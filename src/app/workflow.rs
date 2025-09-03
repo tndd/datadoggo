@@ -7,7 +7,7 @@ use crate::{
         rss::{extract_rss_links_from_channel, store_rss_links, RssLink},
     },
     infra::{
-        api::{firecrawl::FirecrawlClientProtocol, http::HttpClient},
+        api::{firecrawl::FirecrawlClient, http::HttpClient},
         parser::parse_channel_from_xml_str,
     },
 };
@@ -19,7 +19,7 @@ use sqlx::PgPool;
 /// 1. feeds.yamlからフィード設定を読み込み
 /// 2. 各RSSフィードからリンクを取得してDBに保存
 /// 3. 未処理のリンクから記事内容を取得してDBに保存
-pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClientProtocol>(
+pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
     http_client: &H,
     firecrawl_client: &F,
     pool: &PgPool,
@@ -117,7 +117,7 @@ async fn fetch_rss_links_from_feed<H: HttpClient>(client: &H, feed: &Feed) -> Re
 }
 
 /// 未処理のリンクから処理待ちの記事を収集してDBに保存する
-async fn process_collect_backlog_articles<F: FirecrawlClientProtocol>(
+async fn process_collect_backlog_articles<F: FirecrawlClient>(
     firecrawl_client: &F,
     pool: &PgPool,
 ) -> Result<()> {
@@ -165,7 +165,7 @@ async fn process_collect_backlog_articles<F: FirecrawlClientProtocol>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::api::{firecrawl::MockFirecrawlClient};
+    use crate::infra::api::firecrawl::MockFirecrawlClient;
     use sqlx::PgPool;
 
     /// 統合テスト（モック使用）
