@@ -21,7 +21,7 @@ async fn main() {
             println!("全フィード数: {}", feeds.len());
 
             // BBCフィードの例
-            let bbc_query = FeedQuery::from_group(Some("bbc"));
+            let bbc_query = Some(FeedQuery::from_group("bbc"));
             match search_feeds(bbc_query) {
                 Ok(bbc_feeds) => {
                     println!("BBCフィード数: {}", bbc_feeds.len());
@@ -33,7 +33,7 @@ async fn main() {
             }
 
             // Yahoo Japanフィードの例
-            let yahoo_query = FeedQuery::from_group(Some("yahoo_japan"));
+            let yahoo_query = Some(FeedQuery::from_group("yahoo_japan"));
             match search_feeds(yahoo_query) {
                 Ok(yahoo_feeds) => {
                     println!("Yahoo Japanフィード数: {}", yahoo_feeds.len());

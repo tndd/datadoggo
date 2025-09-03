@@ -18,11 +18,11 @@ pub struct FeedQuery {
 }
 
 impl FeedQuery {
-    pub fn from_group(group: Option<&str>) -> Option<Self> {
-        group.map(|g| Self {
-            group: Some(g.to_string()),
+    pub fn from_group(group: &str) -> Self {
+        Self {
+            group: Some(group.to_string()),
             name: None,
-        })
+        }
     }
 }
 

@@ -305,7 +305,7 @@ pub async fn get_article_from_url(url: &str) -> Result<Article> {
 /// この関数は依存注入をサポートし、テスト時にモッククライアントを
 /// 注入することでFirecrawl APIへの実際の通信を避けることができます。
 pub async fn get_article_with_client(url: &str, client: &dyn FirecrawlClient) -> Result<Article> {
-    match client.scrape_url(url, None).await {
+    match client.scrape_url(url).await {
         Ok(result) => Ok(Article {
             url: url.to_string(),
             timestamp: chrono::Utc::now(),

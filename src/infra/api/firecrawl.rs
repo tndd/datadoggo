@@ -12,8 +12,7 @@ pub trait FirecrawlClient {
     ///
     /// # Arguments
     /// * `url` - スクレイピング対象のURL
-    /// * `options` - スクレイピングオプション（現在はNoneのみ対応）
-    async fn scrape_url(&self, url: &str, options: Option<()>) -> Result<Document>;
+    async fn scrape_url(&self, url: &str) -> Result<Document>;
 }
 
 /// 実際のFirecrawl APIを使用する実装
@@ -41,7 +40,7 @@ impl ReqwestFirecrawlClient {
 
 #[async_trait]
 impl FirecrawlClient for ReqwestFirecrawlClient {
-    async fn scrape_url(&self, url: &str, _options: Option<()>) -> Result<Document> {
+    async fn scrape_url(&self, url: &str) -> Result<Document> {
         self.firecrawl_app
             .scrape_url(url, None)
             .await
@@ -81,7 +80,7 @@ impl MockFirecrawlClient {
 
 #[async_trait]
 impl FirecrawlClient for MockFirecrawlClient {
-    async fn scrape_url(&self, _url: &str, _options: Option<()>) -> Result<Document> {
+    async fn scrape_url(&self, _url: &str) -> Result<Document> {
         if self.should_succeed {
             // 成功時のモックレスポンス
             Ok(Document {
@@ -109,7 +108,7 @@ mod tests {
     async fn test_mock_client_success() {
         let mock_client = MockFirecrawlClient::new_success("テストマークダウン内容");
 
-        let result = mock_client.scrape_url("https://example.com", None).await;
+        let result = mock_client.scrape_url("https://example.com").await;
 
         assert!(result.is_ok());
         let document = result.unwrap();
@@ -123,7 +122,7 @@ mod tests {
     async fn test_mock_client_error() {
         let mock_client = MockFirecrawlClient::new_error("テストエラー");
 
-        let result = mock_client.scrape_url("https://example.com", None).await;
+        let result = mock_client.scrape_url("https://example.com").await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("テストエラー"));
@@ -136,7 +135,7 @@ mod tests {
         // httpbin.orgを使った軽量な接続テスト
         let client =
             ReqwestFirecrawlClient::new().context("Firecrawlクライアントの初期化に失敗")?;
-        let result = client.scrape_url("https://httpbin.org/html", None).await;
+        let result = client.scrape_url("https://httpbin.org/html").await;
 
         match result {
             Ok(_content) => {
