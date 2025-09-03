@@ -58,7 +58,7 @@ impl RssLinkWithArticle {
     }
 
     /// 処理が必要なリンクかどうかを判定（未処理またはエラー）
-    pub fn needs_processing(&self) -> bool {
+    pub fn is_backlog(&self) -> bool {
         self.is_unprocessed() || self.is_error()
     }
 }
@@ -284,10 +284,10 @@ pub async fn search_rss_links_needing_processing(
 
     let all_links = search_rss_links_with_articles(Some(query), pool).await?;
 
-    // needs_processing()でフィルタリング
+    // is_backlog()でフィルタリング
     let processing_links = all_links
         .into_iter()
-        .filter(|link| link.needs_processing())
+        .filter(|link| link.is_backlog())
         .collect();
 
     Ok(processing_links)
@@ -544,7 +544,7 @@ mod tests {
             ));
             assert!(unprocessed.is_unprocessed());
             assert!(!unprocessed.is_error());
-            assert!(unprocessed.needs_processing());
+            assert!(unprocessed.is_backlog());
 
             // 成功記事のテスト
             let success = RssLinkWithArticle {
@@ -563,7 +563,7 @@ mod tests {
             ));
             assert!(!success.is_unprocessed());
             assert!(!success.is_error());
-            assert!(!success.needs_processing());
+            assert!(!success.is_backlog());
 
             // エラー記事のテスト
             let error = RssLinkWithArticle {
@@ -582,7 +582,7 @@ mod tests {
             ));
             assert!(!error.is_unprocessed());
             assert!(error.is_error());
-            assert!(error.needs_processing());
+            assert!(error.is_backlog());
 
             println!("✅ RssLinkWithArticle状態判定テスト成功");
         }
@@ -628,7 +628,7 @@ mod tests {
 
             assert!(link1.article_url.is_some(), "link1に記事が紐づいているべき");
             assert_eq!(link1.article_status_code, Some(200));
-            assert!(!link1.needs_processing());
+            assert!(!link1.is_backlog());
 
             // link2は記事が紐づいていないはず
             let link2 = all_links
@@ -640,7 +640,7 @@ mod tests {
                 link2.article_url.is_none(),
                 "link2に記事が紐づいていないべき"
             );
-            assert!(link2.needs_processing());
+            assert!(link2.is_backlog());
 
             println!("✅ JOINクエリテスト成功");
             Ok(())
