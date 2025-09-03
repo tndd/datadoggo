@@ -7,3 +7,6 @@
 
 # 自動cargo fmt
 - コミット時に自動で`cargo fmt`を実行する
+
+# article再編
+- 実装が嵩張ってきたので、articleディレクトリを切りファイル分割
