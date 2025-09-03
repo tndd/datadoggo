@@ -1,37 +1,30 @@
 use crate::{
     domain::{
-        article::{search_unprocessed_rss_links, store_article, Article},
+        article::{
+            fetch_article_with_client, search_unprocessed_rss_links, store_article, Article,
+        },
         feed::{search_feeds, Feed, FeedQuery},
         rss::{extract_rss_links_from_channel, store_rss_links, RssLink},
     },
-    infra::{api::http::HttpClientProtocol, parser::parse_channel_from_xml_str},
+    infra::{
+        api::{firecrawl::FirecrawlClientProtocol, http::HttpClient},
+        parser::parse_channel_from_xml_str,
+    },
 };
 use anyhow::{Context, Result};
 use sqlx::PgPool;
 
-// --- Production/Online Test Imports ---
-#[cfg(any(not(test), feature = "online"))]
-use crate::{
-    domain::article::fetch_article_from_url, infra::api::http::ReqwestHttpClient as HttpClient,
-};
-
-// --- Offline Test Imports ---
-#[cfg(all(test, not(feature = "online")))]
-use crate::{
-    domain::article::fetch_article_with_client,
-    infra::api::{firecrawl::MockFirecrawlClient, http::MockHttpClient as HttpClient},
-};
-
-/// RSSワークフローのメイン実行関数
+/// RSSワークフローのメイン実行関数（依存性を注入）
 ///
 /// 1. feeds.yamlからフィード設定を読み込み
 /// 2. 各RSSフィードからリンクを取得してDBに保存
 /// 3. 未処理のリンクから記事内容を取得してDBに保存
-///
-/// # 引数
-/// * `pool` - データベース接続プール
-/// * `group` - 処理対象のグループ（Noneの場合は全フィードを処理）
-pub async fn execute_rss_workflow(pool: &PgPool, group: Option<&str>) -> Result<()> {
+pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClientProtocol>(
+    http_client: &H,
+    firecrawl_client: &F,
+    pool: &PgPool,
+    group: Option<&str>,
+) -> Result<()> {
     match group {
         Some(group_name) => {
             println!("=== RSSワークフロー開始（グループ: {}）===", group_name);
@@ -61,17 +54,10 @@ pub async fn execute_rss_workflow(pool: &PgPool, group: Option<&str>) -> Result<
         println!("フィード設定読み込み完了: {}件", feeds.len());
     }
 
-    // HTTPクライアントを作成
-    #[cfg(any(not(test), feature = "online"))]
-    let http_client = HttpClient::new();
-
-    #[cfg(all(test, not(feature = "online")))]
-    let http_client = HttpClient::new_success("<rss><channel><item><title>テスト</title><link>https://test.com</link></item></channel></rss>");
-
     // 段階1: RSSフィードからリンクを取得
-    process_collect_rss_links(&http_client, &feeds, pool).await?;
+    process_collect_rss_links(http_client, &feeds, pool).await?;
     // 段階2: 未処理のリンクから記事内容を取得
-    process_collect_backlog_articles(pool).await?;
+    process_collect_backlog_articles(firecrawl_client, pool).await?;
 
     match group {
         Some(group_name) => {
@@ -85,8 +71,8 @@ pub async fn execute_rss_workflow(pool: &PgPool, group: Option<&str>) -> Result<
 }
 
 /// RSSフィードからリンクを収集してDBに保存する
-async fn process_collect_rss_links(
-    client: &dyn HttpClientProtocol,
+async fn process_collect_rss_links<H: HttpClient>(
+    client: &H,
     feeds: &[Feed],
     pool: &PgPool,
 ) -> Result<()> {
@@ -119,10 +105,7 @@ async fn process_collect_rss_links(
 }
 
 /// feedからrss_linkのリストを取得する
-async fn fetch_rss_links_from_feed(
-    client: &dyn HttpClientProtocol,
-    feed: &Feed,
-) -> Result<Vec<RssLink>> {
+async fn fetch_rss_links_from_feed<H: HttpClient>(client: &H, feed: &Feed) -> Result<Vec<RssLink>> {
     let xml_content = client
         .get_text(&feed.link, 30)
         .await
@@ -134,7 +117,10 @@ async fn fetch_rss_links_from_feed(
 }
 
 /// 未処理のリンクから処理待ちの記事を収集してDBに保存する
-async fn process_collect_backlog_articles(pool: &PgPool) -> Result<()> {
+async fn process_collect_backlog_articles<F: FirecrawlClientProtocol>(
+    firecrawl_client: &F,
+    pool: &PgPool,
+) -> Result<()> {
     println!("--- 記事内容取得開始 ---");
     // 未処理のリンクを取得（articleテーブルに存在しないrss_linkを取得）
     let unprocessed_links = search_unprocessed_rss_links(pool).await?;
@@ -143,19 +129,7 @@ async fn process_collect_backlog_articles(pool: &PgPool) -> Result<()> {
     for rss_link in unprocessed_links {
         println!("記事処理中: {}", rss_link.link);
 
-        let article_result = {
-            #[cfg(all(test, not(feature = "online")))]
-            {
-                // 通常テスト時はモッククライアントを使用
-                let mock_client = MockFirecrawlClient::new_success("テスト記事内容");
-                fetch_article_with_client(&rss_link.link, &mock_client).await
-            }
-            #[cfg(any(not(test), feature = "online"))]
-            {
-                // 本番実行時またはオンラインテスト時は実際のクライアントを使用
-                fetch_article_from_url(&rss_link.link).await
-            }
-        };
+        let article_result = fetch_article_with_client(&rss_link.link, firecrawl_client).await;
 
         match article_result {
             Ok(article) => match store_article(&article, pool).await {
@@ -191,6 +165,7 @@ async fn process_collect_backlog_articles(pool: &PgPool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::api::{firecrawl::MockFirecrawlClient};
     use sqlx::PgPool;
 
     /// 統合テスト（モック使用）
@@ -208,8 +183,11 @@ mod tests {
             .execute(&pool)
             .await?;
 
+            // モッククライアントを作成して注入
+            let mock_firecrawl_client = MockFirecrawlClient::new_success("テスト記事内容");
+
             // 記事取得を実行（モック使用）
-            let result = process_collect_backlog_articles(&pool).await;
+            let result = process_collect_backlog_articles(&mock_firecrawl_client, &pool).await;
 
             assert!(result.is_ok(), "記事取得処理が失敗");
 
