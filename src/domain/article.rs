@@ -37,7 +37,45 @@ pub struct Article {
     pub article_content: Option<String>,
 }
 
+// 軽量記事エンティティ（バックログ処理用、article_contentを除外）
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ArticleLight {
+    pub link: String,
+    pub title: String,
+    pub pub_date: DateTime<Utc>,
+    pub article_url: Option<String>,
+    pub article_timestamp: Option<DateTime<Utc>>,
+    pub article_status_code: Option<i32>,
+    // article_content フィールドは意図的に除外
+}
+
 impl Article {
+    /// 記事の処理状態を取得
+    pub fn get_article_status(&self) -> ArticleStatus {
+        match self.article_status_code {
+            None => ArticleStatus::Unprocessed,
+            Some(200) => ArticleStatus::Success,
+            Some(code) => ArticleStatus::Error(code),
+        }
+    }
+
+    /// 未処理のリンクかどうかを判定
+    pub fn is_unprocessed(&self) -> bool {
+        matches!(self.get_article_status(), ArticleStatus::Unprocessed)
+    }
+
+    /// エラー状態のリンクかどうかを判定
+    pub fn is_error(&self) -> bool {
+        matches!(self.get_article_status(), ArticleStatus::Error(_))
+    }
+
+    /// 処理が必要なリンクかどうかを判定（未処理またはエラー）
+    pub fn is_backlog(&self) -> bool {
+        self.is_unprocessed() || self.is_error()
+    }
+}
+
+impl ArticleLight {
     /// 記事の処理状態を取得
     pub fn get_article_status(&self) -> ArticleStatus {
         match self.article_status_code {
@@ -297,6 +335,41 @@ pub async fn search_articles_needing_processing(
         .collect();
 
     Ok(processing_links)
+}
+
+/// バックログ記事の軽量版を取得する（article_contentを除外し、パフォーマンスを向上）
+pub async fn search_backlog_articles_light(
+    pool: &PgPool,
+    limit: Option<i64>,
+) -> Result<Vec<ArticleLight>> {
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        r#"
+        SELECT 
+            rl.link,
+            rl.title,
+            rl.pub_date,
+            a.url as article_url,
+            a.timestamp as article_timestamp,
+            a.status_code as article_status_code
+        FROM rss_links rl
+        LEFT JOIN articles a ON rl.link = a.url
+        WHERE a.url IS NULL OR a.status_code != 200
+        ORDER BY rl.pub_date DESC
+        "#,
+    );
+
+    // limit
+    if let Some(limit) = limit {
+        qb.push(" LIMIT ").push_bind(limit);
+    }
+
+    let results = qb
+        .build_query_as::<ArticleLight>()
+        .fetch_all(pool)
+        .await
+        .context("バックログ記事の軽量版取得に失敗")?;
+
+    Ok(results)
 }
 
 /// URLから記事内容を取得してArticleContent構造体に変換する（Firecrawl SDK使用）
@@ -812,6 +885,146 @@ mod tests {
 
             println!("✅ エラークライアント処理テスト完了");
             Ok(())
+        }
+
+        /// ArticleLight関連のテスト
+        mod article_light_tests {
+            use super::*;
+
+            #[test]
+            fn test_article_light_status_detection() {
+                // 未処理リンクのテスト
+                let unprocessed = ArticleLight {
+                    link: "https://test.com/unprocessed".to_string(),
+                    title: "未処理記事".to_string(),
+                    pub_date: Utc::now(),
+                    article_url: None,
+                    article_timestamp: None,
+                    article_status_code: None,
+                };
+
+                assert!(matches!(
+                    unprocessed.get_article_status(),
+                    ArticleStatus::Unprocessed
+                ));
+                assert!(unprocessed.is_unprocessed());
+                assert!(!unprocessed.is_error());
+                assert!(unprocessed.is_backlog());
+
+                // 成功記事のテスト
+                let success = ArticleLight {
+                    link: "https://test.com/success".to_string(),
+                    title: "成功記事".to_string(),
+                    pub_date: Utc::now(),
+                    article_url: Some("https://test.com/success".to_string()),
+                    article_timestamp: Some(Utc::now()),
+                    article_status_code: Some(200),
+                };
+
+                assert!(matches!(
+                    success.get_article_status(),
+                    ArticleStatus::Success
+                ));
+                assert!(!success.is_unprocessed());
+                assert!(!success.is_error());
+                assert!(!success.is_backlog());
+
+                // エラー記事のテスト
+                let error = ArticleLight {
+                    link: "https://test.com/error".to_string(),
+                    title: "エラー記事".to_string(),
+                    pub_date: Utc::now(),
+                    article_url: Some("https://test.com/error".to_string()),
+                    article_timestamp: Some(Utc::now()),
+                    article_status_code: Some(404),
+                };
+
+                assert!(matches!(
+                    error.get_article_status(),
+                    ArticleStatus::Error(404)
+                ));
+                assert!(!error.is_unprocessed());
+                assert!(error.is_error());
+                assert!(error.is_backlog());
+
+                println!("✅ ArticleLight状態判定テスト成功");
+            }
+
+            #[sqlx::test]
+            async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
+                // テスト用のRSSリンクを挿入
+                sqlx::query!(
+                    "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                    "https://test.com/unprocessed_light",
+                    "未処理軽量リンク"
+                )
+                .execute(&pool)
+                .await?;
+
+                sqlx::query!(
+                    "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                    "https://test.com/error_light",
+                    "エラー軽量リンク"
+                )
+                .execute(&pool)
+                .await?;
+
+                sqlx::query!(
+                    "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                    "https://test.com/success_light",
+                    "成功軽量リンク"
+                )
+                .execute(&pool)
+                .await?;
+
+                // エラー記事を挿入
+                sqlx::query!(
+                    "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
+                    "https://test.com/error_light",
+                    404,
+                    "エラー記事内容"
+                )
+                .execute(&pool)
+                .await?;
+
+                // 成功記事を挿入
+                sqlx::query!(
+                    "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
+                    "https://test.com/success_light",
+                    200,
+                    "成功記事内容"
+                )
+                .execute(&pool)
+                .await?;
+
+                // バックログ記事の軽量版を取得
+                let backlog_articles = search_backlog_articles_light(&pool, None).await?;
+
+                // バックログには未処理とエラーのみが含まれるべき
+                let backlog_urls: Vec<&str> = backlog_articles
+                    .iter()
+                    .map(|article| article.link.as_str())
+                    .collect();
+
+                assert!(backlog_urls.contains(&"https://test.com/unprocessed_light"));
+                assert!(backlog_urls.contains(&"https://test.com/error_light"));
+                assert!(!backlog_urls.contains(&"https://test.com/success_light"));
+
+                // すべての記事がis_backlog() == trueであることを確認
+                for article in &backlog_articles {
+                    assert!(
+                        article.is_backlog(),
+                        "バックログでない記事が含まれています: {}",
+                        article.link
+                    );
+                }
+
+                println!(
+                    "✅ バックログ軽量版取得テスト成功: {}件",
+                    backlog_articles.len()
+                );
+                Ok(())
+            }
         }
     }
 }
