@@ -313,7 +313,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
 }
 
 /// URLから記事内容を取得してArticleContent構造体に変換する（Firecrawl SDK使用）
-pub async fn get_article_content_from_url(url: &str) -> Result<ArticleContent> {
+pub async fn get_article_content(url: &str) -> Result<ArticleContent> {
     let client =
         ReqwestFirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
     get_article_content_with_client(url, &client).await
