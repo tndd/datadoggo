@@ -599,10 +599,9 @@ mod tests {
         Ok(())
     }
 
-    // 新機能のテスト
-    mod join_functionality_tests {
+    // 記事ステータス判定機能のテスト
+    mod article_status_tests {
         use super::*;
-        use crate::domain::rss::search_unprocessed_rss_links;
 
         #[test]
         fn test_article_status_detection() {
@@ -657,6 +656,12 @@ mod tests {
 
             println!("✅ Article状態判定テスト成功");
         }
+    }
+
+    // データベースJOIN機能の統合テスト
+    mod database_integration_tests {
+        use super::*;
+        use crate::domain::rss::search_unprocessed_rss_links;
 
         #[sqlx::test]
         async fn test_get_articles_status(pool: PgPool) -> Result<(), anyhow::Error> {
@@ -755,6 +760,11 @@ mod tests {
             println!("✅ 未処理リンク取得テスト成功");
             Ok(())
         }
+    }
+
+    // ArticleQueryによるフィルター機能テスト
+    mod query_filter_tests {
+        use super::*;
 
         #[sqlx::test]
         async fn test_article_query_filters(pool: PgPool) -> Result<(), anyhow::Error> {
@@ -820,6 +830,11 @@ mod tests {
             println!("✅ クエリフィルターテスト成功");
             Ok(())
         }
+    }
+
+    // Firecrawl記事取得機能の統合テスト
+    mod firecrawl_integration_tests {
+        use super::*;
 
         /// 統一されたFirecrawlテスト - 1つのコードでモック/オンライン切り替え
         #[tokio::test]
@@ -866,13 +881,14 @@ mod tests {
             println!("✅ エラークライアント処理テスト完了");
             Ok(())
         }
+    }
 
-        /// ArticleViewトレイト関連のテスト
-        mod article_view_tests {
-            use super::*;
+    // ArticleViewトレイトとジェネリック処理のテスト
+    mod article_view_trait_tests {
+        use super::*;
 
-            #[test]
-            fn test_article_view_trait_implementation() {
+        #[test]
+        fn test_article_view_trait_implementation() {
                 // 完全版記事のテスト
                 let full_article = Article {
                     link: "https://test.com/full".to_string(),
@@ -902,10 +918,10 @@ mod tests {
                 assert!(light_article.is_backlog());
 
                 println!("✅ ArticleViewトレイト実装テスト成功");
-            }
+        }
 
-            #[test]
-            fn test_generic_functions() {
+        #[test]
+        fn test_generic_functions() {
                 let full_articles = vec![
                     Article {
                         link: "https://test.com/success".to_string(),
@@ -968,10 +984,10 @@ mod tests {
                 assert_eq!((light_unprocessed, light_success, light_error), (1, 1, 0));
 
                 println!("✅ ジェネリック関数テスト成功");
-            }
+        }
 
-            #[sqlx::test]
-            async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
+        #[sqlx::test]
+        async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
                 // テスト用のRSSリンクを挿入
                 sqlx::query!(
                     "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
@@ -1030,7 +1046,6 @@ mod tests {
                     backlog_articles.len()
                 );
                 Ok(())
-            }
         }
     }
 }
