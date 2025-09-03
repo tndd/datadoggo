@@ -404,7 +404,7 @@ pub fn filter_articles_by_status<T: ArticleView>(articles: &[T], status: Article
 }
 
 /// 記事統計情報を計算するジェネリック関数
-pub fn calculate_article_stats<T: ArticleView>(articles: &[T]) -> (usize, usize, usize) {
+pub fn count_articles_by_status<T: ArticleView>(articles: &[T]) -> (usize, usize, usize) {
     let mut unprocessed = 0;
     let mut success = 0;
     let mut error = 0;
@@ -960,11 +960,11 @@ mod tests {
                 assert_eq!(success_light.len(), 1);
                 assert_eq!(success_light[0].get_title(), "成功軽量記事");
                 // 統計計算のテスト
-                let (unprocessed, success, error) = calculate_article_stats(&full_articles);
+                let (unprocessed, success, error) = count_articles_by_status(&full_articles);
                 assert_eq!((unprocessed, success, error), (0, 1, 1));
 
                 let (light_unprocessed, light_success, light_error) =
-                    calculate_article_stats(&light_articles);
+                    count_articles_by_status(&light_articles);
                 assert_eq!((light_unprocessed, light_success, light_error), (1, 1, 0));
 
                 println!("✅ ジェネリック関数テスト成功");
@@ -1018,7 +1018,7 @@ mod tests {
                 let backlog_articles = search_backlog_articles_light(&pool, None).await?;
                 // トレイトを使って処理
                 let backlog_messages = format_backlog_articles(&backlog_articles);
-                let (unprocessed, success, error) = calculate_article_stats(&backlog_articles);
+                let (unprocessed, success, error) = count_articles_by_status(&backlog_articles);
                 // 結果の検証
                 assert!(backlog_messages.len() >= 2); // 未処理とエラーの両方
                 assert!(unprocessed >= 1); // 少なくとも1つの未処理
