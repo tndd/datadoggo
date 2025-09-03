@@ -20,21 +20,15 @@ pub fn get_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
         .items()
         .iter()
         .filter_map(|item| {
-            if let (Some(link), Some(pub_date_str)) = (item.link(), item.pub_date()) {
-                // infra::parserを利用して日付文字列を解析
-                if let Ok(parsed_date) = parse_date(pub_date_str) {
-                    let rss_link = RssLink {
-                        link: link.to_string(),
-                        title: item.title().unwrap_or("タイトルなし").to_string(),
-                        pub_date: parsed_date, // 既にUTC
-                    };
-                    Some(rss_link)
-                } else {
-                    None // 日付の解析に失敗した場合はスキップ
-                }
-            } else {
-                None // リンクまたはpub_dateがない場合はスキップ
-            }
+            let link = item.link()?;
+            let pub_date_str = item.pub_date()?;
+            let parsed_date = parse_date(pub_date_str).ok()?;
+
+            Some(RssLink {
+                link: link.to_string(),
+                title: item.title().unwrap_or("タイトルなし").to_string(),
+                pub_date: parsed_date,
+            })
         })
         .collect()
 }
