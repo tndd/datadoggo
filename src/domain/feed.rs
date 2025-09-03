@@ -17,6 +17,15 @@ pub struct FeedQuery {
     pub name: Option<String>,
 }
 
+impl FeedQuery {
+    pub fn from_group(group: Option<&str>) -> Option<Self> {
+        group.map(|g| Self {
+            group: Some(g.to_string()),
+            name: None,
+        })
+    }
+}
+
 // YAMLファイルの構造に対応する型
 type FeedMap = HashMap<String, HashMap<String, String>>;
 

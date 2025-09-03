@@ -33,10 +33,7 @@ pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
     }
 
     // feeds.yamlからフィード設定を読み込み
-    let query = group.map(|g| FeedQuery {
-        group: Some(g.to_string()),
-        name: None,
-    });
+    let query = FeedQuery::from_group(group);
     let feeds = search_feeds(query).context("フィード設定の読み込みに失敗")?;
 
     if let Some(group_name) = group {
