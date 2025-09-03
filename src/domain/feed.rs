@@ -95,27 +95,6 @@ pub fn search_feeds(query: Option<FeedQuery>) -> Result<Vec<Feed>> {
 mod tests {
     use super::*;
 
-    // テスト用のサンプルフィードデータ
-    fn create_test_feeds() -> Vec<Feed> {
-        vec![
-            Feed {
-                group: "bbc".to_string(),
-                name: "top".to_string(),
-                link: "https://feeds.bbci.co.uk/news/rss.xml".to_string(),
-            },
-            Feed {
-                group: "bbc".to_string(),
-                name: "world".to_string(),
-                link: "https://feeds.bbci.co.uk/news/world/rss.xml".to_string(),
-            },
-            Feed {
-                group: "cbs".to_string(),
-                name: "top".to_string(),
-                link: "https://www.cbsnews.com/latest/rss/main".to_string(),
-            },
-        ]
-    }
-
     #[test]
     fn test_search_feeds_no_filter() {
         // 絞り込みなし（全件取得）
