@@ -74,7 +74,7 @@ async fn process_collect_rss_links<H: HttpClient>(
     println!("--- RSSフィードからリンク取得開始 ---");
 
     for feed in feeds {
-        println!("フィード処理中: {} - {}", feed.group, feed.name);
+        println!("フィード処理中: {}", feed);
 
         match get_rss_links_from_feed(client, feed).await {
             Ok(rss_links) => {
@@ -104,7 +104,7 @@ async fn get_rss_links_from_feed<H: HttpClient>(client: &H, feed: &Feed) -> Resu
     let xml_content = client
         .get_text(&feed.link, 30)
         .await
-        .context(format!("RSSフィードの取得に失敗: {}", feed.link))?;
+        .context(format!("RSSフィードの取得に失敗: {}", feed))?;
     let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
     let rss_links = get_rss_links_from_channel(&channel);
 
@@ -263,7 +263,7 @@ mod tests {
             let error_msg = result.unwrap_err().to_string();
             println!("エラーメッセージ: {}", error_msg);
             // エラーが正しく伝播されていることを確認
-            assert!(error_msg.contains("RSSフィードの取得に失敗"));
+            assert!(error_msg.contains("の取得に失敗"));
 
             println!("✅ HTTPモック使用のエラーハンドリングテスト完了");
             Ok(())

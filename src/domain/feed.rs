@@ -2,12 +2,19 @@ use crate::infra::storage::file::load_yaml_from_file;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Feed {
     pub group: String,
     pub name: String,
     pub link: String,
+}
+
+impl fmt::Display for Feed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{} ({})", self.group, self.name, self.link)
+    }
 }
 
 // Feed検索のフィルター条件を表す構造体

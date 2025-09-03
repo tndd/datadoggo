@@ -26,7 +26,7 @@ async fn main() {
                 Ok(bbc_feeds) => {
                     println!("BBCフィード数: {}", bbc_feeds.len());
                     for feed in bbc_feeds.iter().take(3) {
-                        println!("  - {}: {}", feed.name, feed.link);
+                        println!("  - {}", feed);
                     }
                 }
                 Err(e) => eprintln!("BBCフィード検索エラー: {}", e),
@@ -38,7 +38,7 @@ async fn main() {
                 Ok(yahoo_feeds) => {
                     println!("Yahoo Japanフィード数: {}", yahoo_feeds.len());
                     for feed in yahoo_feeds.iter().take(3) {
-                        println!("  - {}: {}", feed.name, feed.link);
+                        println!("  - {}", feed);
                     }
                 }
                 Err(e) => eprintln!("Yahoo Japanフィード検索エラー: {}", e),
