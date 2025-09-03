@@ -25,6 +25,35 @@ pub enum ArticleStatus {
     Error(i32),
 }
 
+// 記事の共通操作を定義するトレイト
+pub trait ArticleView {
+    fn get_link(&self) -> &str;
+    fn get_title(&self) -> &str;
+    fn get_pub_date(&self) -> DateTime<Utc>;
+    fn get_article_status_code(&self) -> Option<i32>;
+
+    // デフォルト実装を提供するメソッド
+    fn get_article_status(&self) -> ArticleStatus {
+        match self.get_article_status_code() {
+            None => ArticleStatus::Unprocessed,
+            Some(200) => ArticleStatus::Success,
+            Some(code) => ArticleStatus::Error(code),
+        }
+    }
+
+    fn is_unprocessed(&self) -> bool {
+        matches!(self.get_article_status(), ArticleStatus::Unprocessed)
+    }
+
+    fn is_error(&self) -> bool {
+        matches!(self.get_article_status(), ArticleStatus::Error(_))
+    }
+
+    fn is_backlog(&self) -> bool {
+        self.is_unprocessed() || self.is_error()
+    }
+}
+
 // 記事エンティティ（RSSリンクと記事内容の統合表現）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Article {
@@ -37,29 +66,75 @@ pub struct Article {
     pub article_content: Option<String>,
 }
 
+// 軽量記事エンティティ（バックログ処理用、article_contentを除外）
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ArticleLight {
+    pub link: String,
+    pub title: String,
+    pub pub_date: DateTime<Utc>,
+    pub article_url: Option<String>,
+    pub article_timestamp: Option<DateTime<Utc>>,
+    pub article_status_code: Option<i32>,
+    // article_content フィールドは意図的に除外
+}
+
+// ArticleViewトレイトの実装
+impl ArticleView for Article {
+    fn get_link(&self) -> &str {
+        &self.link
+    }
+
+    fn get_title(&self) -> &str {
+        &self.title
+    }
+
+    fn get_pub_date(&self) -> DateTime<Utc> {
+        self.pub_date
+    }
+
+    fn get_article_status_code(&self) -> Option<i32> {
+        self.article_status_code
+    }
+}
+
+impl ArticleView for ArticleLight {
+    fn get_link(&self) -> &str {
+        &self.link
+    }
+
+    fn get_title(&self) -> &str {
+        &self.title
+    }
+
+    fn get_pub_date(&self) -> DateTime<Utc> {
+        self.pub_date
+    }
+
+    fn get_article_status_code(&self) -> Option<i32> {
+        self.article_status_code
+    }
+}
+
+// 既存のAPIとの互換性のため、Articleに直接メソッドも追加
 impl Article {
     /// 記事の処理状態を取得
     pub fn get_article_status(&self) -> ArticleStatus {
-        match self.article_status_code {
-            None => ArticleStatus::Unprocessed,
-            Some(200) => ArticleStatus::Success,
-            Some(code) => ArticleStatus::Error(code),
-        }
+        ArticleView::get_article_status(self)
     }
 
     /// 未処理のリンクかどうかを判定
     pub fn is_unprocessed(&self) -> bool {
-        matches!(self.get_article_status(), ArticleStatus::Unprocessed)
+        ArticleView::is_unprocessed(self)
     }
 
     /// エラー状態のリンクかどうかを判定
     pub fn is_error(&self) -> bool {
-        matches!(self.get_article_status(), ArticleStatus::Error(_))
+        ArticleView::is_error(self)
     }
 
     /// 処理が必要なリンクかどうかを判定（未処理またはエラー）
     pub fn is_backlog(&self) -> bool {
-        self.is_unprocessed() || self.is_error()
+        ArticleView::is_backlog(self)
     }
 }
 
@@ -330,6 +405,83 @@ pub async fn get_article_content_with_client(
             content: format!("Firecrawl API エラー: {}", e),
         }),
     }
+}
+
+/// バックログ記事の軽量版を取得する（article_contentを除外し、パフォーマンスを向上）
+pub async fn search_backlog_articles_light(
+    pool: &PgPool,
+    limit: Option<i64>,
+) -> Result<Vec<ArticleLight>> {
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        r#"
+        SELECT 
+            rl.link,
+            rl.title,
+            rl.pub_date,
+            a.url as article_url,
+            a.timestamp as article_timestamp,
+            a.status_code as article_status_code
+        FROM rss_links rl
+        LEFT JOIN articles a ON rl.link = a.url
+        WHERE a.url IS NULL OR a.status_code != 200
+        ORDER BY rl.pub_date DESC
+        "#,
+    );
+
+    // limit
+    if let Some(limit) = limit {
+        qb.push(" LIMIT ").push_bind(limit);
+    }
+
+    let results = qb
+        .build_query_as::<ArticleLight>()
+        .fetch_all(pool)
+        .await
+        .context("バックログ記事の軽量版取得に失敗")?;
+
+    Ok(results)
+}
+
+/// ArticleViewトレイトを使用したジェネリック処理関数
+pub fn process_articles<T: ArticleView>(articles: &[T]) -> Vec<String> {
+    articles
+        .iter()
+        .filter(|article| article.is_backlog())
+        .map(|article| format!("処理待ち: {} - {}", article.get_title(), article.get_link()))
+        .collect()
+}
+
+/// 記事ステータスでフィルタリングするジェネリック関数
+pub fn filter_articles_by_status<T: ArticleView>(articles: &[T], status: ArticleStatus) -> Vec<&T> {
+    articles
+        .iter()
+        .filter(|article| match status {
+            ArticleStatus::Unprocessed => article.is_unprocessed(),
+            ArticleStatus::Success => {
+                matches!(article.get_article_status(), ArticleStatus::Success)
+            }
+            ArticleStatus::Error(code) => {
+                matches!(article.get_article_status(), ArticleStatus::Error(c) if c == code)
+            }
+        })
+        .collect()
+}
+
+/// 記事統計情報を計算するジェネリック関数
+pub fn calculate_article_stats<T: ArticleView>(articles: &[T]) -> (usize, usize, usize) {
+    let mut unprocessed = 0;
+    let mut success = 0;
+    let mut error = 0;
+
+    for article in articles {
+        match article.get_article_status() {
+            ArticleStatus::Unprocessed => unprocessed += 1,
+            ArticleStatus::Success => success += 1,
+            ArticleStatus::Error(_) => error += 1,
+        }
+    }
+
+    (unprocessed, success, error)
 }
 
 #[cfg(test)]
@@ -812,6 +964,188 @@ mod tests {
 
             println!("✅ エラークライアント処理テスト完了");
             Ok(())
+        }
+
+        /// ArticleViewトレイト関連のテスト
+        mod article_view_tests {
+            use super::*;
+
+            #[test]
+            fn test_article_view_trait_implementation() {
+                // 完全版記事のテスト
+                let full_article = Article {
+                    link: "https://test.com/full".to_string(),
+                    title: "完全版記事".to_string(),
+                    pub_date: Utc::now(),
+                    article_url: Some("https://test.com/full".to_string()),
+                    article_timestamp: Some(Utc::now()),
+                    article_status_code: Some(200),
+                    article_content: Some("記事内容".to_string()),
+                };
+
+                // 軽量版記事のテスト
+                let light_article = ArticleLight {
+                    link: "https://test.com/light".to_string(),
+                    title: "軽量版記事".to_string(),
+                    pub_date: Utc::now(),
+                    article_url: Some("https://test.com/light".to_string()),
+                    article_timestamp: Some(Utc::now()),
+                    article_status_code: Some(404),
+                };
+
+                // ArticleViewトレイト経由でのアクセス
+                assert_eq!(full_article.get_link(), "https://test.com/full");
+                assert_eq!(full_article.get_title(), "完全版記事");
+                assert_eq!(full_article.get_article_status_code(), Some(200));
+                assert!(!full_article.is_backlog());
+
+                assert_eq!(light_article.get_link(), "https://test.com/light");
+                assert_eq!(light_article.get_title(), "軽量版記事");
+                assert_eq!(light_article.get_article_status_code(), Some(404));
+                assert!(light_article.is_backlog());
+
+                println!("✅ ArticleViewトレイト実装テスト成功");
+            }
+
+            #[test]
+            fn test_generic_functions() {
+                let full_articles = vec![
+                    Article {
+                        link: "https://test.com/success".to_string(),
+                        title: "成功記事".to_string(),
+                        pub_date: Utc::now(),
+                        article_url: Some("https://test.com/success".to_string()),
+                        article_timestamp: Some(Utc::now()),
+                        article_status_code: Some(200),
+                        article_content: Some("成功内容".to_string()),
+                    },
+                    Article {
+                        link: "https://test.com/error".to_string(),
+                        title: "エラー記事".to_string(),
+                        pub_date: Utc::now(),
+                        article_url: Some("https://test.com/error".to_string()),
+                        article_timestamp: Some(Utc::now()),
+                        article_status_code: Some(404),
+                        article_content: Some("エラー内容".to_string()),
+                    },
+                ];
+
+                let light_articles = vec![
+                    ArticleLight {
+                        link: "https://test.com/unprocessed".to_string(),
+                        title: "未処理記事".to_string(),
+                        pub_date: Utc::now(),
+                        article_url: None,
+                        article_timestamp: None,
+                        article_status_code: None,
+                    },
+                    ArticleLight {
+                        link: "https://test.com/success_light".to_string(),
+                        title: "成功軽量記事".to_string(),
+                        pub_date: Utc::now(),
+                        article_url: Some("https://test.com/success_light".to_string()),
+                        article_timestamp: Some(Utc::now()),
+                        article_status_code: Some(200),
+                    },
+                ];
+
+                // ジェネリック処理関数のテスト
+                let full_backlog = process_articles(&full_articles);
+                let light_backlog = process_articles(&light_articles);
+
+                assert_eq!(full_backlog.len(), 1);
+                assert!(full_backlog[0].contains("エラー記事"));
+                assert_eq!(light_backlog.len(), 1);
+                assert!(light_backlog[0].contains("未処理記事"));
+
+                // ステータスフィルタリングのテスト
+                let error_articles =
+                    filter_articles_by_status(&full_articles, ArticleStatus::Error(404));
+                assert_eq!(error_articles.len(), 1);
+                assert_eq!(error_articles[0].get_title(), "エラー記事");
+
+                let success_light =
+                    filter_articles_by_status(&light_articles, ArticleStatus::Success);
+                assert_eq!(success_light.len(), 1);
+                assert_eq!(success_light[0].get_title(), "成功軽量記事");
+
+                // 統計計算のテスト
+                let (unprocessed, success, error) = calculate_article_stats(&full_articles);
+                assert_eq!((unprocessed, success, error), (0, 1, 1));
+
+                let (light_unprocessed, light_success, light_error) =
+                    calculate_article_stats(&light_articles);
+                assert_eq!((light_unprocessed, light_success, light_error), (1, 1, 0));
+
+                println!("✅ ジェネリック関数テスト成功");
+            }
+
+            #[sqlx::test]
+            async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
+                // テスト用のRSSリンクを挿入
+                sqlx::query!(
+                    "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                    "https://test.com/trait_unprocessed",
+                    "トレイト未処理リンク"
+                )
+                .execute(&pool)
+                .await?;
+
+                sqlx::query!(
+                    "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                    "https://test.com/trait_error",
+                    "トレイトエラーリンク"
+                )
+                .execute(&pool)
+                .await?;
+
+                sqlx::query!(
+                    "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                    "https://test.com/trait_success",
+                    "トレイト成功リンク"
+                )
+                .execute(&pool)
+                .await?;
+
+                // エラー記事を挿入
+                sqlx::query!(
+                    "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
+                    "https://test.com/trait_error",
+                    500,
+                    "トレイトエラー記事内容"
+                )
+                .execute(&pool)
+                .await?;
+
+                // 成功記事を挿入
+                sqlx::query!(
+                    "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
+                    "https://test.com/trait_success",
+                    200,
+                    "トレイト成功記事内容"
+                )
+                .execute(&pool)
+                .await?;
+
+                // バックログ記事の軽量版を取得
+                let backlog_articles = search_backlog_articles_light(&pool, None).await?;
+
+                // トレイトを使って処理
+                let backlog_messages = process_articles(&backlog_articles);
+                let (unprocessed, success, error) = calculate_article_stats(&backlog_articles);
+
+                // 結果の検証
+                assert!(backlog_messages.len() >= 2); // 未処理とエラーの両方
+                assert!(unprocessed >= 1); // 少なくとも1つの未処理
+                assert!(error >= 1); // 少なくとも1つのエラー
+                assert_eq!(success, 0); // バックログには成功記事は含まれない
+
+                println!(
+                    "✅ トレイトベース バックログ軽量版テスト成功: {}件",
+                    backlog_articles.len()
+                );
+                Ok(())
+            }
         }
     }
 }
