@@ -349,28 +349,6 @@ pub async fn search_unprocessed_rss_links(
     Ok(links)
 }
 
-/// 処理が必要な記事を取得する
-pub async fn search_articles_needing_processing(
-    pool: &PgPool,
-    limit: Option<i64>,
-) -> Result<Vec<Article>> {
-    let query = ArticleQuery {
-        article_status: None, // 全ての状態を取得してフィルター
-        limit,
-        ..Default::default()
-    };
-
-    let all_links = search_articles(Some(query), pool).await?;
-
-    // is_backlog()でフィルタリング
-    let processing_links = all_links
-        .into_iter()
-        .filter(|link| link.is_backlog())
-        .collect();
-
-    Ok(processing_links)
-}
-
 /// URLから記事内容を取得してArticleContent構造体に変換する（Firecrawl SDK使用）
 pub async fn get_article_content_from_url(url: &str) -> Result<ArticleContent> {
     let client =
