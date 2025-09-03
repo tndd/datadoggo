@@ -1,3 +1,4 @@
+/// NOTE: main.rsは単なる最小限の動作確認に過ぎないので凝った実装をしないように
 use datadoggo::{app, domain, infra};
 
 use app::workflow::execute_rss_workflow;
