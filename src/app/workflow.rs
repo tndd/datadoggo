@@ -149,6 +149,10 @@ mod tests {
     use crate::infra::api::firecrawl::MockFirecrawlClient;
     use sqlx::PgPool;
 
+    /// WARN: これってワークフローのテストになってないのではないか?
+    /// 本来であればfeedからrss_link, rss_link->articleの両方の流れを検証しないといけないはず
+    /// だがモックテストではこれらは検証する余地はないか気がするぞ
+
     #[sqlx::test(fixtures("../../fixtures/workflow.sql"))]
     async fn test_article_fetch_with_mock(pool: PgPool) -> Result<(), anyhow::Error> {
         // fixtureから6件の未処理RSSリンクと3件の処理済み記事が読み込まれる（archiveも再処理される）
