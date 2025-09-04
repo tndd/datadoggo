@@ -211,7 +211,7 @@ mod tests {
         );
         assert_eq!(result.updated, expected_updated, "更新数が期待と異なります");
         assert_eq!(
-            result.skipped_duplicate, expected_skipped,
+            result.skipped, expected_skipped,
             "重複スキップ数が期待と異なります"
         );
     }

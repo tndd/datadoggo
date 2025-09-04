@@ -11,7 +11,7 @@ pub struct DatabaseInsertResult {
     /// 重複時に更新された件数
     pub updated: usize,
     /// 重複によりスキップされた件数（DO NOTHINGの場合）
-    pub skipped_duplicate: usize,
+    pub skipped: usize,
 }
 
 impl DatabaseInsertResult {
@@ -20,7 +20,7 @@ impl DatabaseInsertResult {
         Self {
             inserted,
             updated: 0,
-            skipped_duplicate: skipped,
+            skipped,
         }
     }
 
@@ -29,7 +29,7 @@ impl DatabaseInsertResult {
         Self {
             inserted,
             updated,
-            skipped_duplicate: skipped,
+            skipped,
         }
     }
 
@@ -43,12 +43,12 @@ impl DatabaseInsertResult {
         if self.updated > 0 {
             format!(
                 "{}処理完了: 新規{}件、更新{}件、重複スキップ{}件",
-                domain_name, self.inserted, self.updated, self.skipped_duplicate
+                domain_name, self.inserted, self.updated, self.skipped
             )
         } else {
             format!(
                 "{}処理完了: 新規{}件、重複スキップ{}件",
-                domain_name, self.inserted, self.skipped_duplicate
+                domain_name, self.inserted, self.skipped
             )
         }
     }

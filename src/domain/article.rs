@@ -535,10 +535,7 @@ mod tests {
             let result = store_article_content(&test_article, &pool).await?;
             // SaveResultの検証
             assert_eq!(result.inserted, 1, "新規挿入された記事数が期待と異なります");
-            assert_eq!(
-                result.skipped_duplicate, 0,
-                "重複スキップ数が期待と異なります"
-            );
+            assert_eq!(result.skipped, 0, "重複スキップ数が期待と異なります");
             // 実際にデータベースに保存されたことを確認
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
                 .fetch_one(&pool)
@@ -578,10 +575,7 @@ mod tests {
             let result2 = store_article_content(&duplicate_article, &pool).await?;
             // SaveResultの検証（更新される場合、inserted=1として扱う）
             assert_eq!(result2.inserted, 1, "重複URLの記事は更新されるべきです");
-            assert_eq!(
-                result2.skipped_duplicate, 0,
-                "重複スキップ数が期待と異なります"
-            );
+            assert_eq!(result2.skipped, 0, "重複スキップ数が期待と異なります");
             // データベースの件数は1件のまま
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
                 .fetch_one(&pool)
