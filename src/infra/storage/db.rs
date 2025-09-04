@@ -2,47 +2,6 @@ use anyhow::{Context, Result};
 use sqlx::PgPool;
 use std::env;
 
-/// データベースインサート操作の結果を表す構造体
-/// 処理件数とスキップ件数を記録
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InsertResult {
-    /// データ投入数
-    pub input: usize,
-    /// スキップされた件数
-    pub skipped: usize,
-}
-
-impl InsertResult {
-    /// 新しい操作結果を作成
-    pub fn new(input: usize, skipped: usize) -> Self {
-        Self { input, skipped }
-    }
-
-    /// 空の結果（0件）を作成
-    pub fn empty() -> Self {
-        Self::new(0, 0)
-    }
-
-    /// ドメイン名を指定して表示用の文字列を生成
-    pub fn display_with_domain(&self, domain_name: &str) -> String {
-        if self.skipped > 0 {
-            format!(
-                "{}処理完了: 投入{}件、スキップ{}件",
-                domain_name, self.input, self.skipped
-            )
-        } else {
-            format!("{}処理完了: {}件", domain_name, self.input)
-        }
-    }
-}
-
-// 汎用的なDisplay実装（デフォルトでは「データ」という名称を使用）
-impl std::fmt::Display for InsertResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.display_with_domain("データ"))
-    }
-}
-
 /// データベース接続プールを作成
 /// .envファイルからDATABASE_URLを読み込みます
 pub async fn create_pool() -> Result<PgPool> {

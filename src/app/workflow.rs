@@ -78,8 +78,8 @@ async fn process_collect_rss_links<H: HttpClient>(
                 println!("  {}件のリンクを抽出", rss_links.len());
 
                 match store_rss_links(&rss_links, pool).await {
-                    Ok(result) => {
-                        println!("  DB保存結果: {}", result);
+                    Ok(_) => {
+                        println!("  DB保存完了: {}件処理", rss_links.len());
                     }
                     Err(e) => {
                         eprintln!("  DB保存エラー: {}", e);
@@ -114,8 +114,8 @@ async fn process_collect_backlog_articles<F: FirecrawlClient>(
 
         match article_result {
             Ok(article) => match store_article_content(&article, pool).await {
-                Ok(result) => {
-                    println!("  記事保存結果: {}", result);
+                Ok(_) => {
+                    println!("  記事保存完了");
                 }
                 Err(e) => {
                     eprintln!("  記事保存エラー: {}", e);

@@ -1,5 +1,4 @@
 use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
-use crate::infra::storage::db::InsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -139,16 +138,8 @@ pub struct ArticleQuery {
 
 /// 記事内容をデータベースに保存する。
 /// 重複した場合には更新を行う。
-pub async fn store_article_content(
-    article: &ArticleContent,
-    pool: &PgPool,
-) -> Result<InsertResult> {
-    let mut tx = pool
-        .begin()
-        .await
-        .context("トランザクションの開始に失敗しました")?;
-
-    let result = sqlx::query!(
+pub async fn store_article_content(article: &ArticleContent, pool: &PgPool) -> Result<()> {
+    sqlx::query!(
         r#"
         INSERT INTO articles (url, status_code, content)
         VALUES ($1, $2, $3)
@@ -163,18 +154,11 @@ pub async fn store_article_content(
         article.status_code,
         article.content
     )
-    .execute(&mut *tx)
+    .execute(pool)
     .await
     .context("Firecrawl記事のデータベースへの挿入に失敗しました")?;
 
-    let input = if result.rows_affected() > 0 { 1 } else { 0 };
-
-    tx.commit()
-        .await
-        .context("トランザクションのコミットに失敗しました")?;
-
-    let skipped = 1 - input;
-    Ok(InsertResult::new(input, skipped))
+    Ok(())
 }
 
 // ArticleContent記事のフィルター条件を表す構造体
@@ -535,21 +519,14 @@ mod tests {
                 content: "# Test Article\n\nThis is a test content.".to_string(),
             };
             // データベースに保存をテスト
-            let result = store_article_content(&test_article, &pool).await?;
-            // SaveResultの検証
-            assert_eq!(result.input, 1, "新規挿入された記事数が期待と異なります");
-            assert_eq!(result.skipped, 0, "重複スキップ数が期待と異なります");
+            store_article_content(&test_article, &pool).await?;
             // 実際にデータベースに保存されたことを確認
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(count, Some(1), "期待する件数(1件)が保存されませんでした");
 
-            println!("✅ Firecrawl記事保存件数検証成功: {}件", result.input);
-            println!(
-                "✅ Firecrawl SaveResult検証成功: {}",
-                result.display_with_domain("Firecrawlドキュメント")
-            );
+            println!("✅ Firecrawl記事保存テスト成功: 1件");
 
             Ok(())
         }
@@ -565,8 +542,7 @@ mod tests {
                 content: "Original content".to_string(),
             };
             // 最初の記事内容を保存
-            let result1 = store_article_content(&original_article, &pool).await?;
-            assert_eq!(result1.input, 1);
+            store_article_content(&original_article, &pool).await?;
             // 同じURLで違う内容の記事内容を作成（重複）
             let duplicate_article = ArticleContent {
                 url: "https://test.example.com/duplicate".to_string(),
@@ -575,10 +551,7 @@ mod tests {
                 content: "Different content".to_string(),
             };
             // 重複記事内容を保存しようとする（新しい仕様では更新される）
-            let result2 = store_article_content(&duplicate_article, &pool).await?;
-            // SaveResultの検証（更新される場合、inserted=1として扱う）
-            assert_eq!(result2.input, 1, "重複URLの記事は更新されるべきです");
-            assert_eq!(result2.skipped, 0, "重複スキップ数が期待と異なります");
+            store_article_content(&duplicate_article, &pool).await?;
             // データベースの件数は1件のまま
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
                 .fetch_one(&pool)
@@ -589,7 +562,7 @@ mod tests {
                 "重複記事が挿入され、件数が変わってしまいました"
             );
 
-            println!("✅ Firecrawl重複スキップ検証成功: {}", result2);
+            println!("✅ Firecrawl重複更新検証成功");
 
             Ok(())
         }
