@@ -568,7 +568,7 @@ mod tests {
         }
 
         // ArticleQueryによるフィルター機能テスト
-        #[sqlx::test(fixtures("../../fixtures/article_query_filter.sql"))]
+        #[sqlx::test(fixtures("../../sql/fixtures/article/query_filter.sql"))]
         async fn test_article_query_filters(pool: PgPool) -> Result<(), anyhow::Error> {
             // link_patternフィルターのテスト
             let query = ArticleQuery {
@@ -758,7 +758,7 @@ mod tests {
             println!("✅ ジェネリック関数テスト成功");
         }
 
-        #[sqlx::test(fixtures("../../fixtures/article_backlog.sql"))]
+        #[sqlx::test(fixtures("../../sql/fixtures/article/backlog.sql"))]
         async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
             // バックログ記事の軽量版を取得
             let backlog_articles = search_backlog_articles_light(&pool, None).await?;
@@ -786,7 +786,7 @@ mod tests {
 
         // データベースJOIN機能の統合テスト
 
-        #[sqlx::test(fixtures("../../fixtures/article_basic.sql"))]
+        #[sqlx::test(fixtures("../../sql/fixtures/article/basic.sql"))]
         async fn test_get_articles_status(pool: PgPool) -> Result<(), anyhow::Error> {
             // 全件取得テスト
             let all_links = search_articles(None, &pool).await?;
@@ -816,7 +816,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("../../fixtures/article_unprocessed.sql"))]
+        #[sqlx::test(fixtures("../../sql/fixtures/article/unprocessed.sql"))]
         async fn test_search_backlog_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // 未処理リンクを取得
             let unprocessed_links = search_backlog_article_links(&pool).await?;

@@ -15,7 +15,7 @@ pub async fn create_pool() -> Result<PgPool> {
 
 /// データベースの初期化（マイグレーション実行）
 pub async fn initialize_database(pool: &PgPool) -> Result<()> {
-    sqlx::migrate!("./migrations")
+    sqlx::migrate!("./sql/migrations")
         .run(pool)
         .await
         .context("データベースマイグレーションの実行に失敗しました")

@@ -152,7 +152,7 @@ mod tests {
         use super::*;
         use crate::infra::api::firecrawl::MockFirecrawlClient;
 
-        #[sqlx::test(fixtures("../../fixtures/workflow.sql"))]
+        #[sqlx::test(fixtures("../../sql/fixtures/workflow/basic.sql"))]
         async fn test_process_collect_articles(pool: PgPool) -> Result<(), anyhow::Error> {
             // fixtureから6件の未処理RSSリンクと3件の処理済み記事が読み込まれる（archiveも再処理される）
 
@@ -210,7 +210,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("../../fixtures/workflow_mixed.sql"))]
+        #[sqlx::test(fixtures("../../sql/fixtures/workflow/mixed.sql"))]
         async fn test_process_collect_articles_mixed(pool: PgPool) -> Result<(), anyhow::Error> {
             // fixtureから11件の未処理RSSリンクと2件の処理済み記事が読み込まれる（エラー記事も再処理）
 
