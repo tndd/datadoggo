@@ -889,163 +889,162 @@ mod tests {
 
         #[test]
         fn test_article_view_trait_implementation() {
-                // 完全版記事のテスト
-                let full_article = Article {
-                    link: "https://test.com/full".to_string(),
-                    title: "完全版記事".to_string(),
-                    pub_date: Utc::now(),
-                    updated_at: Some(Utc::now()),
-                    status_code: Some(200),
-                    content: Some("記事内容".to_string()),
-                };
-                // 軽量版記事のテスト
-                let light_article = ArticleLight {
-                    link: "https://test.com/light".to_string(),
-                    title: "軽量版記事".to_string(),
-                    pub_date: Utc::now(),
-                    updated_at: Some(Utc::now()),
-                    status_code: Some(404),
-                };
-                // ArticleViewトレイト経由でのアクセス
-                assert_eq!(full_article.get_link(), "https://test.com/full");
-                assert_eq!(full_article.get_title(), "完全版記事");
-                assert_eq!(full_article.get_status_code(), Some(200));
-                assert!(!full_article.is_backlog());
+            // 完全版記事のテスト
+            let full_article = Article {
+                link: "https://test.com/full".to_string(),
+                title: "完全版記事".to_string(),
+                pub_date: Utc::now(),
+                updated_at: Some(Utc::now()),
+                status_code: Some(200),
+                content: Some("記事内容".to_string()),
+            };
+            // 軽量版記事のテスト
+            let light_article = ArticleLight {
+                link: "https://test.com/light".to_string(),
+                title: "軽量版記事".to_string(),
+                pub_date: Utc::now(),
+                updated_at: Some(Utc::now()),
+                status_code: Some(404),
+            };
+            // ArticleViewトレイト経由でのアクセス
+            assert_eq!(full_article.get_link(), "https://test.com/full");
+            assert_eq!(full_article.get_title(), "完全版記事");
+            assert_eq!(full_article.get_status_code(), Some(200));
+            assert!(!full_article.is_backlog());
 
-                assert_eq!(light_article.get_link(), "https://test.com/light");
-                assert_eq!(light_article.get_title(), "軽量版記事");
-                assert_eq!(light_article.get_status_code(), Some(404));
-                assert!(light_article.is_backlog());
+            assert_eq!(light_article.get_link(), "https://test.com/light");
+            assert_eq!(light_article.get_title(), "軽量版記事");
+            assert_eq!(light_article.get_status_code(), Some(404));
+            assert!(light_article.is_backlog());
 
-                println!("✅ ArticleViewトレイト実装テスト成功");
+            println!("✅ ArticleViewトレイト実装テスト成功");
         }
 
         #[test]
         fn test_generic_functions() {
-                let full_articles = vec![
-                    Article {
-                        link: "https://test.com/success".to_string(),
-                        title: "成功記事".to_string(),
-                        pub_date: Utc::now(),
-                        updated_at: Some(Utc::now()),
-                        status_code: Some(200),
-                        content: Some("成功内容".to_string()),
-                    },
-                    Article {
-                        link: "https://test.com/error".to_string(),
-                        title: "エラー記事".to_string(),
-                        pub_date: Utc::now(),
-                        updated_at: Some(Utc::now()),
-                        status_code: Some(404),
-                        content: Some("エラー内容".to_string()),
-                    },
-                ];
+            let full_articles = vec![
+                Article {
+                    link: "https://test.com/success".to_string(),
+                    title: "成功記事".to_string(),
+                    pub_date: Utc::now(),
+                    updated_at: Some(Utc::now()),
+                    status_code: Some(200),
+                    content: Some("成功内容".to_string()),
+                },
+                Article {
+                    link: "https://test.com/error".to_string(),
+                    title: "エラー記事".to_string(),
+                    pub_date: Utc::now(),
+                    updated_at: Some(Utc::now()),
+                    status_code: Some(404),
+                    content: Some("エラー内容".to_string()),
+                },
+            ];
 
-                let light_articles = vec![
-                    ArticleLight {
-                        link: "https://test.com/unprocessed".to_string(),
-                        title: "未処理記事".to_string(),
-                        pub_date: Utc::now(),
-                        updated_at: None,
-                        status_code: None,
-                    },
-                    ArticleLight {
-                        link: "https://test.com/success_light".to_string(),
-                        title: "成功軽量記事".to_string(),
-                        pub_date: Utc::now(),
-                        updated_at: Some(Utc::now()),
-                        status_code: Some(200),
-                    },
-                ];
-                // ジェネリック処理関数のテスト
-                let full_backlog = format_backlog_articles(&full_articles);
-                let light_backlog = format_backlog_articles(&light_articles);
+            let light_articles = vec![
+                ArticleLight {
+                    link: "https://test.com/unprocessed".to_string(),
+                    title: "未処理記事".to_string(),
+                    pub_date: Utc::now(),
+                    updated_at: None,
+                    status_code: None,
+                },
+                ArticleLight {
+                    link: "https://test.com/success_light".to_string(),
+                    title: "成功軽量記事".to_string(),
+                    pub_date: Utc::now(),
+                    updated_at: Some(Utc::now()),
+                    status_code: Some(200),
+                },
+            ];
+            // ジェネリック処理関数のテスト
+            let full_backlog = format_backlog_articles(&full_articles);
+            let light_backlog = format_backlog_articles(&light_articles);
 
-                assert_eq!(full_backlog.len(), 1);
-                assert!(full_backlog[0].contains("エラー記事"));
-                assert_eq!(light_backlog.len(), 1);
-                assert!(light_backlog[0].contains("未処理記事"));
-                // ステータスフィルタリングのテスト
-                let error_articles =
-                    filter_articles_by_status(&full_articles, ArticleStatus::Error(404));
-                assert_eq!(error_articles.len(), 1);
-                assert_eq!(error_articles[0].get_title(), "エラー記事");
+            assert_eq!(full_backlog.len(), 1);
+            assert!(full_backlog[0].contains("エラー記事"));
+            assert_eq!(light_backlog.len(), 1);
+            assert!(light_backlog[0].contains("未処理記事"));
+            // ステータスフィルタリングのテスト
+            let error_articles =
+                filter_articles_by_status(&full_articles, ArticleStatus::Error(404));
+            assert_eq!(error_articles.len(), 1);
+            assert_eq!(error_articles[0].get_title(), "エラー記事");
 
-                let success_light =
-                    filter_articles_by_status(&light_articles, ArticleStatus::Success);
-                assert_eq!(success_light.len(), 1);
-                assert_eq!(success_light[0].get_title(), "成功軽量記事");
-                // 統計計算のテスト
-                let (unprocessed, success, error) = count_articles_by_status(&full_articles);
-                assert_eq!((unprocessed, success, error), (0, 1, 1));
+            let success_light = filter_articles_by_status(&light_articles, ArticleStatus::Success);
+            assert_eq!(success_light.len(), 1);
+            assert_eq!(success_light[0].get_title(), "成功軽量記事");
+            // 統計計算のテスト
+            let (unprocessed, success, error) = count_articles_by_status(&full_articles);
+            assert_eq!((unprocessed, success, error), (0, 1, 1));
 
-                let (light_unprocessed, light_success, light_error) =
-                    count_articles_by_status(&light_articles);
-                assert_eq!((light_unprocessed, light_success, light_error), (1, 1, 0));
+            let (light_unprocessed, light_success, light_error) =
+                count_articles_by_status(&light_articles);
+            assert_eq!((light_unprocessed, light_success, light_error), (1, 1, 0));
 
-                println!("✅ ジェネリック関数テスト成功");
+            println!("✅ ジェネリック関数テスト成功");
         }
 
         #[sqlx::test]
         async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
-                // テスト用のRSSリンクを挿入
-                sqlx::query!(
-                    "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                    "https://test.com/trait_unprocessed",
-                    "トレイト未処理リンク"
-                )
-                .execute(&pool)
-                .await?;
+            // テスト用のRSSリンクを挿入
+            sqlx::query!(
+                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                "https://test.com/trait_unprocessed",
+                "トレイト未処理リンク"
+            )
+            .execute(&pool)
+            .await?;
 
-                sqlx::query!(
-                    "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                    "https://test.com/trait_error",
-                    "トレイトエラーリンク"
-                )
-                .execute(&pool)
-                .await?;
+            sqlx::query!(
+                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                "https://test.com/trait_error",
+                "トレイトエラーリンク"
+            )
+            .execute(&pool)
+            .await?;
 
-                sqlx::query!(
-                    "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                    "https://test.com/trait_success",
-                    "トレイト成功リンク"
-                )
-                .execute(&pool)
-                .await?;
-                // エラー記事を挿入
-                sqlx::query!(
-                    "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
-                    "https://test.com/trait_error",
-                    500,
-                    "トレイトエラー記事内容"
-                )
-                .execute(&pool)
-                .await?;
-                // 成功記事を挿入
-                sqlx::query!(
-                    "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
-                    "https://test.com/trait_success",
-                    200,
-                    "トレイト成功記事内容"
-                )
-                .execute(&pool)
-                .await?;
-                // バックログ記事の軽量版を取得
-                let backlog_articles = search_backlog_articles_light(&pool, None).await?;
-                // トレイトを使って処理
-                let backlog_messages = format_backlog_articles(&backlog_articles);
-                let (unprocessed, success, error) = count_articles_by_status(&backlog_articles);
-                // 結果の検証
-                assert!(backlog_messages.len() >= 2); // 未処理とエラーの両方
-                assert!(unprocessed >= 1); // 少なくとも1つの未処理
-                assert!(error >= 1); // 少なくとも1つのエラー
-                assert_eq!(success, 0); // バックログには成功記事は含まれない
+            sqlx::query!(
+                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
+                "https://test.com/trait_success",
+                "トレイト成功リンク"
+            )
+            .execute(&pool)
+            .await?;
+            // エラー記事を挿入
+            sqlx::query!(
+                "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
+                "https://test.com/trait_error",
+                500,
+                "トレイトエラー記事内容"
+            )
+            .execute(&pool)
+            .await?;
+            // 成功記事を挿入
+            sqlx::query!(
+                "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
+                "https://test.com/trait_success",
+                200,
+                "トレイト成功記事内容"
+            )
+            .execute(&pool)
+            .await?;
+            // バックログ記事の軽量版を取得
+            let backlog_articles = search_backlog_articles_light(&pool, None).await?;
+            // トレイトを使って処理
+            let backlog_messages = format_backlog_articles(&backlog_articles);
+            let (unprocessed, success, error) = count_articles_by_status(&backlog_articles);
+            // 結果の検証
+            assert!(backlog_messages.len() >= 2); // 未処理とエラーの両方
+            assert!(unprocessed >= 1); // 少なくとも1つの未処理
+            assert!(error >= 1); // 少なくとも1つのエラー
+            assert_eq!(success, 0); // バックログには成功記事は含まれない
 
-                println!(
-                    "✅ トレイトベース バックログ軽量版テスト成功: {}件",
-                    backlog_articles.len()
-                );
-                Ok(())
+            println!(
+                "✅ トレイトベース バックログ軽量版テスト成功: {}件",
+                backlog_articles.len()
+            );
+            Ok(())
         }
     }
 }
