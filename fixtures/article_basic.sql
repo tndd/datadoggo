@@ -2,17 +2,19 @@
 -- test_get_articles_status 用
 
 -- RSSリンクデータ
-INSERT INTO article_links (link, title, pub_date)
+INSERT INTO article_links (link, title, pub_date, source)
 VALUES 
     (
         'https://test.com/link1',
         'テストリンク1', 
-        CURRENT_TIMESTAMP
+        CURRENT_TIMESTAMP,
+        'test'
     ),
     (
         'https://test.com/link2',
         'テストリンク2',
-        CURRENT_TIMESTAMP
+        CURRENT_TIMESTAMP,
+        'test'
     );
 
 -- 記事データ（link1に対応する記事のみ）
