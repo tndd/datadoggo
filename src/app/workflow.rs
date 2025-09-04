@@ -368,11 +368,11 @@ mod tests {
             }
         }
 
-        // 日付が適切な範囲に設定されていることを確認
+        // 動的生成された日付が適切な範囲に設定されていることを確認（3日前～今日）
         let date_count = sqlx::query_scalar!(
             "SELECT COUNT(*) FROM rss_links WHERE pub_date BETWEEN $1 AND $2",
-            chrono::Utc::now() - chrono::Duration::days(365),
-            chrono::Utc::now() + chrono::Duration::days(365)
+            chrono::Utc::now() - chrono::Duration::days(3),
+            chrono::Utc::now() + chrono::Duration::hours(1)
         )
         .fetch_one(&pool)
         .await?;
@@ -380,7 +380,7 @@ mod tests {
         assert_eq!(
             date_count.unwrap_or(0),
             9,
-            "すべてのリンクの日付が適切な範囲にありません"
+            "すべてのリンクの日付が動的生成範囲（3日以内）にありません"
         );
 
         println!("✅ RSS収集基本テスト完了");
@@ -538,6 +538,20 @@ mod tests {
             "1回目実行後に3件のリンクが保存されるべきです"
         );
 
+        // 1回目実行後の日付を記録（更新確認のため）
+        let first_pub_dates: Vec<chrono::DateTime<chrono::Utc>> =
+            sqlx::query_scalar!("SELECT pub_date FROM rss_links ORDER BY link")
+                .fetch_all(&pool)
+                .await?;
+        assert_eq!(
+            first_pub_dates.len(),
+            3,
+            "1回目実行後に3件の日付が記録されるべきです"
+        );
+
+        // 少し待機して、動的日付生成で異なる時刻になることを確保
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
         // 2回目の実行：同一URLのフィードを再度処理（重複発生）
         let second_feed = vec![duplicate_feeds[1].clone()];
         let result2 = process_collect_rss_links(&mock_client, &second_feed, &pool).await;
@@ -552,6 +566,33 @@ mod tests {
             3,
             "2回目実行後も3件のまま（重複スキップ）であるべきです"
         );
+
+        // 2回目実行後の日付を取得して更新状況を確認
+        let second_pub_dates: Vec<chrono::DateTime<chrono::Utc>> =
+            sqlx::query_scalar!("SELECT pub_date FROM rss_links ORDER BY link")
+                .fetch_all(&pool)
+                .await?;
+        assert_eq!(
+            second_pub_dates.len(),
+            3,
+            "2回目実行後も3件の日付が記録されているべきです"
+        );
+
+        // 重複リンクの場合、日付は更新されない（ON CONFLICT DO NOTHING）
+        for (i, (first_date, second_date)) in first_pub_dates
+            .iter()
+            .zip(second_pub_dates.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                first_date,
+                second_date,
+                "記事{}の日付が更新されました（重複スキップで日付は変更されないべき）: {} != {}",
+                i + 1,
+                first_date,
+                second_date
+            );
+        }
 
         // 3回目の実行：全ての重複フィードを一度に処理
         let all_result = process_collect_rss_links(&mock_client, &duplicate_feeds, &pool).await;
@@ -615,8 +656,8 @@ mod tests {
         );
 
         println!("✅ RSS重複処理テスト完了");
-        println!("  重複リンクは正しくスキップされました");
-        println!("  新規リンクは正しく追加されました");
+        println!("  重複リンクは正しくスキップされました（日付更新なし）");
+        println!("  新規リンクは正しく追加されました（動的日付生成）");
         println!("  最終リンク数: {}", final_unique_count.unwrap_or(0));
 
         Ok(())

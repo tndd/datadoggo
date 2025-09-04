@@ -101,6 +101,12 @@ impl HttpClient for MockHttpClient {
         // URL依存の動的XML生成
         let hash = generate_mock_rss_id(url);
 
+        // 動的な日付生成（今日、1日前、2日前）
+        let now = chrono::Utc::now();
+        let today = now.format("%a, %d %b %Y %H:%M:%S GMT");
+        let yesterday = (now - chrono::Duration::days(1)).format("%a, %d %b %Y %H:%M:%S GMT");
+        let day_before = (now - chrono::Duration::days(2)).format("%a, %d %b %Y %H:%M:%S GMT");
+
         Ok(format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
                 <rss version="2.0">
@@ -109,21 +115,21 @@ impl HttpClient for MockHttpClient {
                         <item>
                             <title>{}:title:1</title>
                             <link>https://{}.example.com/1</link>
-                            <pubDate>Wed, 01 Jan 2025 12:00:00 GMT</pubDate>
+                            <pubDate>{}</pubDate>
                         </item>
                         <item>
                             <title>{}:title:2</title>
                             <link>https://{}.example.com/2</link>
-                            <pubDate>Thu, 02 Jan 2025 12:00:00 GMT</pubDate>
+                            <pubDate>{}</pubDate>
                         </item>
                         <item>
                             <title>{}:title:3</title>
                             <link>https://{}.example.com/3</link>
-                            <pubDate>Fri, 03 Jan 2025 12:00:00 GMT</pubDate>
+                            <pubDate>{}</pubDate>
                         </item>
                     </channel>
                 </rss>"#,
-            hash, hash, hash, hash, hash, hash, hash
+            hash, hash, hash, today, hash, hash, yesterday, hash, hash, day_before
         ))
     }
 }
