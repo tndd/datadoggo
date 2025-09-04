@@ -121,8 +121,8 @@ pub async fn search_rss_links(query: Option<RssLinkQuery>, pool: &PgPool) -> Res
     Ok(rss_links)
 }
 
-/// 未処理のRSSリンクを取得する（articleテーブルに存在しないか、status_code != 200）
-pub async fn search_unprocessed_rss_links(pool: &PgPool) -> Result<Vec<RssLink>> {
+/// 未処理かエラーのRSSリンクを取得する
+pub async fn search_backlog_rss_links(pool: &PgPool) -> Result<Vec<RssLink>> {
     let links = sqlx::query_as!(
         RssLink,
         r#"

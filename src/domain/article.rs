@@ -782,7 +782,7 @@ mod tests {
     // 複合処理・複数モジュール連携系テスト
     mod composition {
         use super::*;
-        use crate::domain::rss::search_unprocessed_rss_links;
+        use crate::domain::rss::search_backlog_rss_links;
 
         // データベースJOIN機能の統合テスト
 
@@ -817,9 +817,9 @@ mod tests {
         }
 
         #[sqlx::test(fixtures("../../fixtures/article_unprocessed.sql"))]
-        async fn test_search_unprocessed_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_search_backlog_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // 未処理リンクを取得
-            let unprocessed_links = search_unprocessed_rss_links(&pool).await?;
+            let unprocessed_links = search_backlog_rss_links(&pool).await?;
             // unprocessedは含まれるべき、processedは含まれないべき
             let unprocessed_urls: Vec<&str> = unprocessed_links
                 .iter()
