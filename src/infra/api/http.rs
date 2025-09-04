@@ -103,26 +103,26 @@ impl HttpClient for MockHttpClient {
 
         Ok(format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
-                            <rss version="2.0">
-                                <channel>
-                                    <title>{}:channel_title</title>
-                                    <item>
-                                        <title>{}:title:1</title>
-                                        <link>https://{}.example.com/1</link>
-                                        <pubDate>Wed, 01 Jan 2025 12:00:00 GMT</pubDate>
-                                    </item>
-                                    <item>
-                                        <title>{}:title:2</title>
-                                        <link>https://{}.example.com/2</link>
-                                        <pubDate>Thu, 02 Jan 2025 12:00:00 GMT</pubDate>
-                                    </item>
-                                    <item>
-                                        <title>{}:title:3</title>
-                                        <link>https://{}.example.com/3</link>
-                                        <pubDate>Fri, 03 Jan 2025 12:00:00 GMT</pubDate>
-                                    </item>
-                                </channel>
-                            </rss>"#,
+                <rss version="2.0">
+                    <channel>
+                        <title>{}:channel_title</title>
+                        <item>
+                            <title>{}:title:1</title>
+                            <link>https://{}.example.com/1</link>
+                            <pubDate>Wed, 01 Jan 2025 12:00:00 GMT</pubDate>
+                        </item>
+                        <item>
+                            <title>{}:title:2</title>
+                            <link>https://{}.example.com/2</link>
+                            <pubDate>Thu, 02 Jan 2025 12:00:00 GMT</pubDate>
+                        </item>
+                        <item>
+                            <title>{}:title:3</title>
+                            <link>https://{}.example.com/3</link>
+                            <pubDate>Fri, 03 Jan 2025 12:00:00 GMT</pubDate>
+                        </item>
+                    </channel>
+                </rss>"#,
             hash, hash, hash, hash, hash, hash, hash
         ))
     }
