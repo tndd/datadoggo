@@ -19,6 +19,27 @@ pub fn calc_hash(input: &str, length: usize) -> String {
     hash_hex[..max_length].to_string()
 }
 
+/// RSSモック用の識別子をURLから生成する
+///
+/// この関数はテスト環境でRSSフィードのモックXMLを生成する際に、
+/// URLごとにユニークな識別子を作成するために使用されます。
+///
+/// # Arguments
+/// * `url` - RSS フィードのURL
+///
+/// # Returns
+/// 6文字のSHA256ベース16進数識別子
+///
+/// # Example
+/// ```
+/// use datadoggo::infra::compute::generate_mock_rss_id;
+/// let id = generate_mock_rss_id("https://example.com/rss.xml");
+/// assert_eq!(id.len(), 6);
+/// ```
+pub fn generate_mock_rss_id(url: &str) -> String {
+    calc_hash(url, 6)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,5 +101,34 @@ mod tests {
         for _ in 0..10 {
             assert_eq!(hash, calc_hash(input, 6));
         }
+    }
+
+    #[test]
+    fn test_generate_mock_rss_id() {
+        let rss_url1 = "https://example.com/rss.xml";
+        let rss_url2 = "https://different.com/feed.xml";
+
+        // 基本的な動作確認
+        let id1 = generate_mock_rss_id(rss_url1);
+        let id2 = generate_mock_rss_id(rss_url2);
+
+        // 長さが6文字であることを確認
+        assert_eq!(id1.len(), 6, "RSS ID1の長さが6文字ではありません");
+        assert_eq!(id2.len(), 6, "RSS ID2の長さが6文字ではありません");
+
+        // 異なるURLは異なるIDを生成
+        assert_ne!(id1, id2, "異なるURLから同じIDが生成されました");
+
+        // 同じURLは常に同じIDを生成
+        assert_eq!(id1, generate_mock_rss_id(rss_url1));
+        assert_eq!(id2, generate_mock_rss_id(rss_url2));
+
+        // 16進数文字のみで構成されていることを確認
+        assert!(id1.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(id2.chars().all(|c| c.is_ascii_hexdigit()));
+
+        println!("✅ RSS ID生成テスト完了");
+        println!("  URL1: {} -> ID: {}", rss_url1, id1);
+        println!("  URL2: {} -> ID: {}", rss_url2, id2);
     }
 }

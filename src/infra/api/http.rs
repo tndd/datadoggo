@@ -1,4 +1,4 @@
-use crate::infra::compute::calc_hash;
+use crate::infra::compute::generate_mock_rss_id;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest::Client;
@@ -99,7 +99,7 @@ impl HttpClient for MockHttpClient {
         }
 
         // URL依存の動的XML生成
-        let hash = calc_hash(url, 6);
+        let hash = generate_mock_rss_id(url);
 
         Ok(format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -152,7 +152,7 @@ mod tests {
         assert!(response.contains("<pubDate>"));
 
         // URLハッシュが含まれていることを確認
-        let hash = calc_hash(test_url, 6);
+        let hash = generate_mock_rss_id(test_url);
         assert!(response.contains(&format!("{}:channel_title", hash)));
         assert!(response.contains(&format!("{}:title:1", hash)));
     }
@@ -184,8 +184,8 @@ mod tests {
         let xml2 = result2.unwrap();
 
         // 各URLのハッシュを計算して期待値を生成
-        let hash1 = calc_hash(url1, 6);
-        let hash2 = calc_hash(url2, 6);
+        let hash1 = generate_mock_rss_id(url1);
+        let hash2 = generate_mock_rss_id(url2);
 
         // ハッシュが確実に異なることを確認
         assert_ne!(hash1, hash2, "異なるURLから同じハッシュが生成されました");

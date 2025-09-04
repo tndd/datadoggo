@@ -403,8 +403,8 @@ mod tests {
             assert_eq!(rss_links.len(), 3, "3件のリンクが取得されるべき"); // 動的XMLは3件の記事を生成
 
             // URLハッシュを計算
-            use crate::infra::compute::calc_hash;
-            let hash = calc_hash(&test_feed.rss_link, 6);
+            use crate::infra::compute::generate_mock_rss_id;
+            let hash = generate_mock_rss_id(&test_feed.rss_link);
 
             // 各記事の詳細検証
             for (index, link) in rss_links.iter().enumerate() {
