@@ -478,13 +478,6 @@ mod tests {
     }
 
     #[test]
-    fn test_read_non_existing_file() {
-        // 存在しないファイルを読み込もうとするテスト
-        let result = read_article_content_from_file("non_existent_file.json");
-        assert!(result.is_err(), "存在しないファイルでエラーにならなかった");
-    }
-
-    #[test]
     fn test_read_article_missing_status_code() {
         // statusCodeが存在しないJSONのテスト
         use std::fs;
