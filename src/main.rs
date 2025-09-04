@@ -66,8 +66,8 @@ async fn main() {
             println!("BBCのRSSから{}件のリンクを抽出しました。", links.len());
 
             match store_rss_links(&links, &pool).await {
-                Ok(result) => {
-                    println!("{}", result);
+                Ok(_) => {
+                    println!("データベースへの保存が完了しました: {}件", links.len());
                 }
                 Err(e) => eprintln!("データベースへの保存中にエラーが発生しました: {}", e),
             }
