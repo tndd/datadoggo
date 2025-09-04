@@ -316,7 +316,7 @@ pub async fn get_article_content_with_client(
 ) -> Result<ArticleContent> {
     match client.scrape_url(url).await {
         Ok(result) => Ok(ArticleContent {
-            url: ual.to_string(),
+            url: url.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 200,
             content: result
@@ -324,7 +324,7 @@ pub async fn get_article_content_with_client(
                 .unwrap_or_else(|| "記事内容が取得できませんでした".to_string()),
         }),
         Err(e) => Ok(ArticleContent {
-            url: ual.to_string(),
+            url: url.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 500,
             content: format!("Firecrawl API エラー: {}", e),
@@ -460,7 +460,7 @@ mod tests {
             let article = result.unwrap();
             // 基本的なフィールドの検証
             assert!(!article.content.is_empty(), "contentが空です");
-            assert!(!article.ual.is_empty(), "URLが空です");
+            assert!(!article.url.is_empty(), "URLが空です");
 
             println!("✅ Firecrawlデータの読み込みテスト成功");
             println!("URL: {}", article.url);

@@ -269,7 +269,9 @@ mod tests {
         }
 
         #[sqlx::test]
-        async fn test_process_collect_article_links_success(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_process_collect_article_links_success(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
             use crate::domain::feed::Feed;
             use crate::infra::api::http::MockHttpClient;
 
@@ -278,17 +280,17 @@ mod tests {
                 Feed {
                     group: "news".to_string(),
                     name: "tech_news".to_string(),
-                    rss_link: "https://technews.example.com/rss.xml".to_string(),
+                    article_link: "https://technews.example.com/rss.xml".to_string(),
                 },
                 Feed {
                     group: "blog".to_string(),
                     name: "dev_blog".to_string(),
-                    rss_link: "https://devblog.example.com/feed.xml".to_string(),
+                    article_link: "https://devblog.example.com/feed.xml".to_string(),
                 },
                 Feed {
                     group: "updates".to_string(),
                     name: "product_updates".to_string(),
-                    rss_link: "https://updates.example.com/rss".to_string(),
+                    article_link: "https://updates.example.com/rss".to_string(),
                 },
             ];
 
@@ -327,7 +329,7 @@ mod tests {
             use crate::infra::compute::generate_mock_rss_id;
 
             for feed in &test_feeds {
-                let hash = generate_mock_rss_id(&feed.rss_link);
+                let hash = generate_mock_rss_id(&feed.article_link);
 
                 // 各フィードから3件のリンクが生成されていることを確認
                 let feed_link_count = sqlx::query_scalar!(
@@ -401,17 +403,17 @@ mod tests {
                 Feed {
                     group: "success".to_string(),
                     name: "working_feed".to_string(),
-                    rss_link: "https://working.example.com/rss.xml".to_string(),
+                    article_link: "https://working.example.com/rss.xml".to_string(),
                 },
                 Feed {
                     group: "error1".to_string(),
                     name: "timeout_feed".to_string(),
-                    rss_link: "https://timeout.example.com/rss.xml".to_string(),
+                    article_link: "https://timeout.example.com/rss.xml".to_string(),
                 },
                 Feed {
                     group: "error2".to_string(),
                     name: "server_error_feed".to_string(),
-                    rss_link: "https://servererror.example.com/rss.xml".to_string(),
+                    article_link: "https://servererror.example.com/rss.xml".to_string(),
                 },
             ];
 
@@ -423,7 +425,8 @@ mod tests {
 
             // 1. 成功フィードのテスト
             let success_feeds = vec![test_feeds[0].clone()];
-            let result = process_collect_article_links(&success_client, &success_feeds, &pool).await;
+            let result =
+                process_collect_article_links(&success_client, &success_feeds, &pool).await;
             assert!(result.is_ok(), "成功フィードの処理が失敗しました");
 
             // 成功フィードからの3件のリンクが保存されることを確認
@@ -458,7 +461,9 @@ mod tests {
 
             // 3. 成功・エラー混在での処理確認
             // 新しいテーブル状態でテスト
-            sqlx::query!("DELETE FROM article_links").execute(&pool).await?;
+            sqlx::query!("DELETE FROM article_links")
+                .execute(&pool)
+                .await?;
 
             // 混在処理では各フィードが個別に処理される
             // この関数は現在の実装ではクライアント固定なので、実際の混在テストは困難
@@ -498,17 +503,17 @@ mod tests {
                 Feed {
                     group: "group1".to_string(),
                     name: "shared_feed_1".to_string(),
-                    rss_link: same_rss_url.to_string(),
+                    article_link: same_rss_url.to_string(),
                 },
                 Feed {
                     group: "group2".to_string(),
                     name: "shared_feed_2".to_string(),
-                    rss_link: same_rss_url.to_string(),
+                    article_link: same_rss_url.to_string(),
                 },
                 Feed {
                     group: "group3".to_string(),
                     name: "shared_feed_3".to_string(),
-                    rss_link: same_rss_url.to_string(),
+                    article_link: same_rss_url.to_string(),
                 },
             ];
 
@@ -604,7 +609,8 @@ mod tests {
             }
 
             // 3回目の実行：全ての重複フィードを一度に処理
-            let all_result = process_collect_article_links(&mock_client, &duplicate_feeds, &pool).await;
+            let all_result =
+                process_collect_article_links(&mock_client, &duplicate_feeds, &pool).await;
             assert!(all_result.is_ok(), "全重複フィードの処理が失敗しました");
 
             // 最終的な件数確認（依然として3件のまま）
@@ -646,10 +652,11 @@ mod tests {
             let unique_feed = vec![Feed {
                 group: "unique".to_string(),
                 name: "unique_feed".to_string(),
-                rss_link: "https://unique.example.com/different.xml".to_string(),
+                article_link: "https://unique.example.com/different.xml".to_string(),
             }];
 
-            let unique_result = process_collect_article_links(&mock_client, &unique_feed, &pool).await;
+            let unique_result =
+                process_collect_article_links(&mock_client, &unique_feed, &pool).await;
             assert!(
                 unique_result.is_ok(),
                 "ユニークフィードの処理が失敗しました"
@@ -811,9 +818,10 @@ mod tests {
             );
 
             // RSS取得エラーのため、article_linksテーブルにデータなし
-            let rss_count_after_http_error = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
-                .fetch_one(&pool)
-                .await?;
+            let rss_count_after_http_error =
+                sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                    .fetch_one(&pool)
+                    .await?;
             assert_eq!(
                 rss_count_after_http_error.unwrap_or(0),
                 0,

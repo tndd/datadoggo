@@ -101,7 +101,10 @@ pub struct ArticleLinkQuery {
 
 /// # 概要
 /// 指定されたデータベースプールから記事リンクを取得する。
-pub async fn search_article_links(query: Option<ArticleLinkQuery>, pool: &PgPool) -> Result<Vec<ArticleLink>> {
+pub async fn search_article_links(
+    query: Option<ArticleLinkQuery>,
+    pool: &PgPool,
+) -> Result<Vec<ArticleLink>> {
     let query = query.unwrap_or_default();
 
     // 単一の静的SQL + オプション引数方式
@@ -234,7 +237,11 @@ mod tests {
                 assert!(!article_links.is_empty(), "{}の記事が0件", feed_name);
 
                 validate_article_links(&article_links);
-                println!("{}テスト結果: {}件の記事を抽出", feed_name, article_links.len());
+                println!(
+                    "{}テスト結果: {}件の記事を抽出",
+                    feed_name,
+                    article_links.len()
+                );
             }
         }
     }
@@ -251,16 +258,19 @@ mod tests {
                     title: "Test Article 1".to_string(),
                     link: "https://test.example.com/article1".to_string(),
                     pub_date: "2025-08-26T10:00:00Z".parse().unwrap(),
+                    source: "test".to_string(),
                 },
                 ArticleLink {
                     title: "Test Article 2".to_string(),
                     link: "https://test.example.com/article2".to_string(),
                     pub_date: "2025-08-26T11:00:00Z".parse().unwrap(),
+                    source: "test".to_string(),
                 },
                 ArticleLink {
                     title: "異なるドメイン記事".to_string(),
                     link: "https://different.domain.com/post".to_string(),
                     pub_date: "2025-08-26T12:00:00Z".parse().unwrap(),
+                    source: "test".to_string(),
                 },
             ];
 
@@ -287,6 +297,7 @@ mod tests {
                 title: "異なるタイトル".to_string(),
                 link: "https://test.example.com/article1".to_string(), // fixtureと同じリンク
                 pub_date: "2025-08-26T13:00:00Z".parse().unwrap(),
+                source: "test".to_string(),
             };
 
             // 重複記事を保存しようとする
@@ -317,16 +328,19 @@ mod tests {
                     title: "既存記事".to_string(),
                     link: "https://test.example.com/article1".to_string(), // fixtureと同じリンク
                     pub_date: "2025-08-26T14:00:00Z".parse().unwrap(),
+                    source: "test".to_string(),
                 },
                 ArticleLink {
                     title: "新規記事1".to_string(),
                     link: "https://test.example.com/new-article1".to_string(), // 新しいリンク
                     pub_date: "2025-08-26T15:00:00Z".parse().unwrap(),
+                    source: "test".to_string(),
                 },
                 ArticleLink {
                     title: "新規記事2".to_string(),
                     link: "https://another.domain.com/article".to_string(), // 異なるドメイン
                     pub_date: "2025-08-26T16:00:00Z".parse().unwrap(),
+                    source: "test".to_string(),
                 },
             ];
 
@@ -393,9 +407,18 @@ mod tests {
             }
 
             println!("✅ 動的XMLパターン検証完了 - ハッシュ: {}", hash);
-            println!("  記事1: {} -> {}", article_links[0].title, article_links[0].link);
-            println!("  記事2: {} -> {}", article_links[1].title, article_links[1].link);
-            println!("  記事3: {} -> {}", article_links[2].title, article_links[2].link);
+            println!(
+                "  記事1: {} -> {}",
+                article_links[0].title, article_links[0].link
+            );
+            println!(
+                "  記事2: {} -> {}",
+                article_links[1].title, article_links[1].link
+            );
+            println!(
+                "  記事3: {} -> {}",
+                article_links[2].title, article_links[2].link
+            );
 
             println!("✅ HTTPモック使用のRSSフィード取得テスト完了");
             Ok(())
@@ -438,7 +461,10 @@ mod tests {
             let article_links = search_article_links(None, &pool).await?;
 
             // 全件取得されることを確認
-            assert!(article_links.len() >= 17, "全件取得で最低17件が期待されます");
+            assert!(
+                article_links.len() >= 17,
+                "全件取得で最低17件が期待されます"
+            );
 
             // 基本的な検証（ソート順、フィールド存在）
             validate_date_sort_desc(&article_links);
@@ -457,7 +483,8 @@ mod tests {
                 pub_date_from: Some(parse_date("2025-01-15T00:00:00Z")?),
                 pub_date_to: Some(parse_date("2025-01-15T00:00:01Z")?),
             };
-            let article_links_start = search_article_links(Some(filter_start_boundary), &pool).await?;
+            let article_links_start =
+                search_article_links(Some(filter_start_boundary), &pool).await?;
             assert_eq!(article_links_start.len(), 1);
             assert_eq!(
                 article_links_start[0].link,
@@ -498,7 +525,7 @@ mod tests {
         #[sqlx::test(fixtures("../../fixtures/rss_backlog.sql"))]
         async fn test_search_backlog_article_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // バックログのRSSリンクを取得
-            let backlog_links = search_backlog_article_links(&pool).await?;
+            let backlog_links = search_unprocessed_article_links(&pool).await?;
 
             // 未処理リンク2件 + エラーリンク4件 = 6件が返されることを確認
             assert_eq!(
@@ -536,9 +563,11 @@ mod tests {
         }
 
         #[sqlx::test]
-        async fn test_search_backlog_article_links_empty(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_search_backlog_article_links_empty(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
             // 空のデータベースでテスト
-            let backlog_links = search_backlog_article_links(&pool).await?;
+            let backlog_links = search_unprocessed_article_links(&pool).await?;
 
             assert_eq!(
                 backlog_links.len(),
