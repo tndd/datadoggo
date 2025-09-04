@@ -20,7 +20,7 @@
 | link | TEXT | PRIMARY KEY | 記事 URL（ユニーク） |
 | title | TEXT | NOT NULL | 記事タイトル |
 | pub_date | TIMESTAMPTZ | NOT NULL | 公開日時（TZ 付き） |
-| source | TEXT | NOT NULL DEFAULT 'rss' | 由来（例: rss, sitemap, curation, manual） |
+| source | TEXT | NOT NULL | 由来（例: rss, sitemap, curation, manual） |
 
 補足: 追加の CHECK/ENUM/インデックスは現時点では導入しない。
 
