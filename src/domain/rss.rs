@@ -130,7 +130,7 @@ pub async fn search_article_links(
 }
 
 /// 未処理かエラーの記事リンクを取得する
-pub async fn search_unprocessed_article_links(pool: &PgPool) -> Result<Vec<ArticleLink>> {
+pub async fn search_backlog_article_links(pool: &PgPool) -> Result<Vec<ArticleLink>> {
     let links = sqlx::query_as!(
         ArticleLink,
         r#"
@@ -525,7 +525,7 @@ mod tests {
         #[sqlx::test(fixtures("../../fixtures/rss_backlog.sql"))]
         async fn test_search_backlog_article_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // バックログのRSSリンクを取得
-            let backlog_links = search_unprocessed_article_links(&pool).await?;
+            let backlog_links = search_backlog_article_links(&pool).await?;
 
             // 未処理リンク2件 + エラーリンク4件 = 6件が返されることを確認
             assert_eq!(
@@ -567,7 +567,7 @@ mod tests {
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
             // 空のデータベースでテスト
-            let backlog_links = search_unprocessed_article_links(&pool).await?;
+            let backlog_links = search_backlog_article_links(&pool).await?;
 
             assert_eq!(
                 backlog_links.len(),

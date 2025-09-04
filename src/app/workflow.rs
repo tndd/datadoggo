@@ -2,7 +2,7 @@ use crate::{
     domain::{
         article::{get_article_content_with_client, store_article_content, ArticleContent},
         feed::{search_feeds, Feed, FeedQuery},
-        rss::{get_article_links_from_feed, search_unprocessed_article_links, store_article_links},
+        rss::{get_article_links_from_feed, search_backlog_article_links, store_article_links},
     },
     infra::api::{firecrawl::FirecrawlClient, http::HttpClient},
 };
@@ -103,7 +103,7 @@ async fn process_collect_articles<F: FirecrawlClient>(
 ) -> Result<()> {
     println!("--- 記事内容取得開始 ---");
     // 未処理のリンクを取得（articleテーブルに存在しないarticle_linkを取得）
-    let unprocessed_links = search_unprocessed_article_links(pool).await?;
+    let unprocessed_links = search_backlog_article_links(pool).await?;
     println!("未処理リンク数: {}件", unprocessed_links.len());
 
     for article_link in unprocessed_links {

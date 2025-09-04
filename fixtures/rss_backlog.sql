@@ -1,4 +1,4 @@
--- search_unprocessed_article_links テスト用のフィクスチャ
+-- search_backlog_article_links テスト用のフィクスチャ
 -- 未処理またはエラーの記事リンクを取得するテスト用データ
 
 -- 記事リンクデータ
