@@ -75,8 +75,8 @@ pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<Ins
             ON CONFLICT (link) DO UPDATE SET
                 title = EXCLUDED.title,
                 pub_date = EXCLUDED.pub_date
-            WHERE rss_links.title IS DISTINCT FROM EXCLUDED.title
-               OR rss_links.pub_date IS DISTINCT FROM EXCLUDED.pub_date
+            WHERE (rss_links.title, rss_links.pub_date)
+                IS DISTINCT FROM (EXCLUDED.title, EXCLUDED.pub_date)
             "#,
             rss_link.link,
             rss_link.title,

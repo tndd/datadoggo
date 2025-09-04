@@ -156,6 +156,8 @@ pub async fn store_article_content(
             status_code = EXCLUDED.status_code,
             content = EXCLUDED.content,
             timestamp = CURRENT_TIMESTAMP
+        WHERE (articles.status_code, articles.content)
+            IS DISTINCT FROM (EXCLUDED.status_code, EXCLUDED.content)
         "#,
         article.url,
         article.status_code,
@@ -171,7 +173,8 @@ pub async fn store_article_content(
         .await
         .context("トランザクションのコミットに失敗しました")?;
 
-    Ok(InsertResult::new(input, 0))
+    let skipped = 1 - input;
+    Ok(InsertResult::new(input, skipped))
 }
 
 // ArticleContent記事のフィルター条件を表す構造体
