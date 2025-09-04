@@ -3,65 +3,43 @@ use sqlx::PgPool;
 use std::env;
 
 /// データベースインサート操作の結果を表す構造体
-/// 新規挿入、重複時更新、スキップの件数を記録
+/// 処理件数とスキップ件数を記録
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DatabaseInsertResult {
-    /// 新規挿入された件数
-    pub inserted: usize,
-    /// 重複時に更新された件数
-    pub updated: usize,
-    /// 重複によりスキップされた件数（DO NOTHINGの場合）
+pub struct InsertResult {
+    /// データ投入数（試行数）
+    pub attempted: usize,
+    /// スキップされた件数
     pub skipped: usize,
 }
 
-impl DatabaseInsertResult {
-    /// 新しい操作結果を作成（旧互換性維持用）
-    pub fn new(inserted: usize, skipped: usize) -> Self {
-        Self {
-            inserted,
-            updated: 0,
-            skipped,
-        }
+impl InsertResult {
+    /// 新しい操作結果を作成
+    pub fn new(attempted: usize, skipped: usize) -> Self {
+        Self { attempted, skipped }
     }
 
-    /// 完全な操作結果を作成
-    pub fn new_complete(inserted: usize, updated: usize, skipped: usize) -> Self {
-        Self {
-            inserted,
-            updated,
-            skipped,
-        }
-    }
-
-    /// 空の結果（全て0）を作成
+    /// 空の結果（0件）を作成
     pub fn empty() -> Self {
-        Self::new_complete(0, 0, 0)
+        Self::new(0, 0)
     }
 
     /// ドメイン名を指定して表示用の文字列を生成
     pub fn display_with_domain(&self, domain_name: &str) -> String {
-        if self.updated > 0 {
+        if self.skipped > 0 {
             format!(
-                "{}処理完了: 新規{}件、更新{}件、重複スキップ{}件",
-                domain_name, self.inserted, self.updated, self.skipped
+                "{}処理完了: 処理{}件、スキップ{}件",
+                domain_name, self.attempted, self.skipped
             )
         } else {
-            format!(
-                "{}処理完了: 新規{}件、重複スキップ{}件",
-                domain_name, self.inserted, self.skipped
-            )
+            format!("{}処理完了: {}件", domain_name, self.attempted)
         }
     }
 }
 
-impl Default for DatabaseInsertResult {
-    fn default() -> Self {
-        Self::empty()
-    }
-}
+
 
 // 汎用的なDisplay実装（デフォルトでは「データ」という名称を使用）
-impl std::fmt::Display for DatabaseInsertResult {
+impl std::fmt::Display for InsertResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.display_with_domain("データ"))
     }

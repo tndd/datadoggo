@@ -1,7 +1,7 @@
 use crate::domain::feed::Feed;
 use crate::infra::api::http::HttpClient;
 use crate::infra::parser::{parse_channel_from_xml_str, parse_date};
-use crate::infra::storage::db::DatabaseInsertResult;
+use crate::infra::storage::db::InsertResult;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rss::Channel;
@@ -55,19 +55,18 @@ pub async fn get_rss_links_from_feed<H: HttpClient>(
 ///
 /// # Note
 /// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
-pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<DatabaseInsertResult> {
+pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<InsertResult> {
     if rss_links.is_empty() {
-        return Ok(DatabaseInsertResult::empty());
+        return Ok(InsertResult::empty());
     }
 
     let mut tx = pool
         .begin()
         .await
         .context("トランザクションの開始に失敗しました")?;
-    let mut total_inserted = 0;
-    let mut total_updated = 0;
+    let mut total_attempted = 0;
 
-    // RETURNING句を使ってUPSERTの結果を効率的に判定
+    // シンプルなUPSERT処理
     for rss_link in rss_links {
         let result = sqlx::query!(
             r#"
@@ -78,37 +77,25 @@ pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<Dat
                 pub_date = EXCLUDED.pub_date
             WHERE rss_links.title IS DISTINCT FROM EXCLUDED.title
                OR rss_links.pub_date IS DISTINCT FROM EXCLUDED.pub_date
-            RETURNING (xmax = 0) AS was_inserted
             "#,
             rss_link.link,
             rss_link.title,
             rss_link.pub_date
         )
-        .fetch_optional(&mut *tx)
+        .execute(&mut *tx)
         .await
         .context("リンクのデータベースへの挿入・更新に失敗しました")?;
 
-        if let Some(record) = result {
-            if record.was_inserted.unwrap_or(false) {
-                // xmax = 0 は新規挿入を意味する
-                total_inserted += 1;
-            } else {
-                // xmax > 0 は更新を意味する
-                total_updated += 1;
-            }
+        if result.rows_affected() > 0 {
+            total_attempted += 1;
         }
-        // result が None の場合は、データが同一でWHERE句の条件に合わず更新もスキップされた
     }
 
     tx.commit()
         .await
         .context("トランザクションのコミットに失敗しました")?;
 
-    Ok(DatabaseInsertResult::new_complete(
-        total_inserted,
-        total_updated,
-        rss_links.len() - total_inserted - total_updated,
-    ))
+    Ok(InsertResult::new(total_attempted, 0))
 }
 
 // RSS記事のフィルター条件を表す構造体
@@ -200,19 +187,17 @@ mod tests {
 
     // SaveResultの基本検証ヘルパー関数
     fn validate_save_result(
-        result: &DatabaseInsertResult,
-        expected_inserted: usize,
-        expected_updated: usize,
+        result: &InsertResult,
+        expected_attempted: usize,
         expected_skipped: usize,
     ) {
         assert_eq!(
-            result.inserted, expected_inserted,
-            "新規挿入数が期待と異なります"
+            result.attempted, expected_attempted,
+            "試行数が期待と異なります"
         );
-        assert_eq!(result.updated, expected_updated, "更新数が期待と異なります");
         assert_eq!(
             result.skipped, expected_skipped,
-            "重複スキップ数が期待と異なります"
+            "スキップ数が期待と異なります"
         );
     }
 
@@ -306,7 +291,7 @@ mod tests {
             let result = store_rss_links(&rss_basic, &pool).await?;
 
             // SaveResultの検証
-            validate_save_result(&result, 3, 0, 0);
+            validate_save_result(&result, 3, 0);
 
             // 実際にデータベースに保存されたことを確認
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
@@ -314,7 +299,7 @@ mod tests {
                 .await?;
             assert_eq!(count, Some(3), "期待する件数(3件)が保存されませんでした");
 
-            println!("✅ RSSリンク保存件数検証成功: {}件", result.inserted);
+            println!("✅ RSSリンク保存件数検証成功: {}件", result.attempted);
             println!(
                 "✅ RSS SaveResult検証成功: {}",
                 result.display_with_domain("RSSリンク")
@@ -338,7 +323,7 @@ mod tests {
             let result = store_rss_links(&[duplicate_rss_link], &pool).await?;
 
             // SaveResultの検証
-            validate_save_result(&result, 0, 1, 0);
+            validate_save_result(&result, 1, 0);
 
             // データベースの件数は変わらない（19件のまま）
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
@@ -381,7 +366,7 @@ mod tests {
             let result = store_rss_links(&mixed_articles, &pool).await?;
 
             // SaveResultの検証
-            validate_save_result(&result, 2, 1, 0);
+            validate_save_result(&result, 3, 0);
 
             // 最終的にデータベースには19件（fixture 17件 + 新規 2件）
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
