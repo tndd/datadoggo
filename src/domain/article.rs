@@ -425,8 +425,8 @@ mod tests {
     use super::*;
     use crate::infra::storage::file::load_json_from_file;
 
-    // テスト用ヘルパー関数とその検証
-    mod test_helpers {
+    // テスト用ヘルパー関数
+    mod test_helper {
         use super::*;
 
         // ファイルからFirecrawlデータを読み込み、ArticleContentに変換する
@@ -517,8 +517,8 @@ mod tests {
         }
     }
 
-    // データベース保存・更新系テスト
-    mod storage_tests {
+    // データ永続化・DB操作系テスト
+    mod storage {
         use super::*;
 
         #[sqlx::test]
@@ -596,11 +596,44 @@ mod tests {
 
             Ok(())
         }
+
+        // ArticleQueryによるフィルター機能テスト
+        #[sqlx::test(fixtures("../../fixtures/article_query_filter.sql"))]
+        async fn test_article_query_filters(pool: PgPool) -> Result<(), anyhow::Error> {
+            // link_patternフィルターのテスト
+            let query = ArticleQuery {
+                link_pattern: Some("example.com".to_string()),
+                ..Default::default()
+            };
+            let example_links = search_articles(Some(query), &pool).await?;
+            assert_eq!(example_links.len(), 2, "example.comのリンクは2件のはず");
+            // article_statusフィルターのテスト（成功のみ）
+            let query = ArticleQuery {
+                article_status: Some(ArticleStatus::Success),
+                ..Default::default()
+            };
+            let success_links = search_articles(Some(query), &pool).await?;
+
+            let success_count = success_links
+                .iter()
+                .filter(|link| link.status_code == Some(200))
+                .count();
+            assert_eq!(
+                success_count,
+                success_links.len(),
+                "成功記事のみが取得されるべき"
+            );
+
+            println!("✅ クエリフィルターテスト成功");
+            Ok(())
+        }
     }
 
-    // 記事ステータス判定機能のテスト
-    mod article_status_tests {
+    // ドメインロジック・振る舞い系テスト
+    mod domain {
         use super::*;
+
+        // 記事ステータス判定機能
 
         #[test]
         fn test_article_status_detection() {
@@ -655,151 +688,8 @@ mod tests {
 
             println!("✅ Article状態判定テスト成功");
         }
-    }
 
-    // データベースJOIN機能の統合テスト
-    mod database_integration_tests {
-        use super::*;
-        use crate::domain::rss::search_unprocessed_rss_links;
-
-        #[sqlx::test(fixtures("../../fixtures/article_basic.sql"))]
-        async fn test_get_articles_status(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 全件取得テスト
-            let all_links = search_articles(None, &pool).await?;
-            assert!(all_links.len() >= 2, "最低2件のリンクが取得されるべき");
-            // link1は記事が紐づいているはず
-            let link1 = all_links
-                .iter()
-                .find(|link| link.link == "https://test.com/link1")
-                .expect("link1が見つからない");
-
-            assert!(link1.status_code.is_some(), "link1に記事が紐づいているべき");
-            assert_eq!(link1.status_code, Some(200));
-            assert!(!link1.is_backlog());
-            // link2は記事が紐づいていないはず
-            let link2 = all_links
-                .iter()
-                .find(|link| link.link == "https://test.com/link2")
-                .expect("link2が見つからない");
-
-            assert!(
-                link2.status_code.is_none(),
-                "link2に記事が紐づいていないべき"
-            );
-            assert!(link2.is_backlog());
-
-            println!("✅ JOINクエリテスト成功");
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("../../fixtures/article_unprocessed.sql"))]
-        async fn test_search_unprocessed_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 未処理リンクを取得
-            let unprocessed_links = search_unprocessed_rss_links(&pool).await?;
-            // unprocessedは含まれるべき、processedは含まれないべき
-            let unprocessed_urls: Vec<&str> = unprocessed_links
-                .iter()
-                .map(|link| link.link.as_str())
-                .collect();
-
-            assert!(unprocessed_urls.contains(&"https://test.com/unprocessed"));
-            assert!(!unprocessed_urls.contains(&"https://test.com/processed"));
-
-            println!("✅ 未処理リンク取得テスト成功");
-            Ok(())
-        }
-    }
-
-    // ArticleQueryによるフィルター機能テスト
-    mod query_filter_tests {
-        use super::*;
-
-        #[sqlx::test(fixtures("../../fixtures/article_query_filter.sql"))]
-        async fn test_article_query_filters(pool: PgPool) -> Result<(), anyhow::Error> {
-            // link_patternフィルターのテスト
-            let query = ArticleQuery {
-                link_pattern: Some("example.com".to_string()),
-                ..Default::default()
-            };
-            let example_links = search_articles(Some(query), &pool).await?;
-            assert_eq!(example_links.len(), 2, "example.comのリンクは2件のはず");
-            // article_statusフィルターのテスト（成功のみ）
-            let query = ArticleQuery {
-                article_status: Some(ArticleStatus::Success),
-                ..Default::default()
-            };
-            let success_links = search_articles(Some(query), &pool).await?;
-
-            let success_count = success_links
-                .iter()
-                .filter(|link| link.status_code == Some(200))
-                .count();
-            assert_eq!(
-                success_count,
-                success_links.len(),
-                "成功記事のみが取得されるべき"
-            );
-
-            println!("✅ クエリフィルターテスト成功");
-            Ok(())
-        }
-    }
-
-    // Firecrawl記事取得機能の統合テスト
-    mod firecrawl_integration_tests {
-        use super::*;
-
-        /// 統一されたFirecrawlテスト - 1つのコードでモック/オンライン切り替え
-        #[tokio::test]
-        async fn test_fetch_article_unified() -> Result<(), anyhow::Error> {
-            use crate::infra::api::firecrawl::MockFirecrawlClient;
-
-            let test_url = "https://httpbin.org/html";
-            let mock_content = "統合テスト記事内容\n\nこれは1つのテストコードでモック/オンライン切り替えをテストする記事です。";
-            // モッククライアントを使用して統一関数をテスト
-            let mock_client = MockFirecrawlClient::new_success(mock_content);
-            let article = get_article_content_with_client(test_url, &mock_client).await?;
-            // 基本的なアサーション
-            assert_eq!(article.url, test_url);
-            assert_eq!(article.status_code, 200);
-            assert!(article.content.contains(mock_content));
-
-            println!("✅ 統一記事取得テスト成功");
-            println!("URL: {}", article.url);
-            println!("内容長: {}文字", article.content.len());
-
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn test_error_client_handling() -> Result<(), anyhow::Error> {
-            // エラークライアントを使用したテスト
-            use crate::infra::api::firecrawl::MockFirecrawlClient;
-
-            let error_client = MockFirecrawlClient::new_error("テストエラー");
-            let result = get_article_content_with_client("https://test.com", &error_client).await;
-
-            assert!(result.is_ok(), "エラークライアントでも結果を返すべき");
-
-            let article = result.unwrap();
-            assert_eq!(
-                article.status_code, 500,
-                "エラー時はstatus_code=500になるべき"
-            );
-            assert!(
-                article.content.contains("エラー"),
-                "エラー内容が記録されるべき"
-            );
-
-            println!("✅ エラークライアント処理テスト完了");
-            Ok(())
-        }
-    }
-
-    // ArticleViewトレイトとジェネリック処理のテスト
-    mod article_view_trait_tests {
-        use super::*;
-
+        // ArticleViewトレイトとジェネリック処理のテスト
         #[test]
         fn test_article_view_trait_implementation() {
             // 完全版記事のテスト
@@ -915,6 +805,114 @@ mod tests {
                 "✅ トレイトベース バックログ軽量版テスト成功: {}件",
                 backlog_articles.len()
             );
+            Ok(())
+        }
+    }
+
+    // 複合処理・複数モジュール連携系テスト
+    mod composition {
+        use super::*;
+        use crate::domain::rss::search_unprocessed_rss_links;
+
+        // データベースJOIN機能の統合テスト
+
+        #[sqlx::test(fixtures("../../fixtures/article_basic.sql"))]
+        async fn test_get_articles_status(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 全件取得テスト
+            let all_links = search_articles(None, &pool).await?;
+            assert!(all_links.len() >= 2, "最低2件のリンクが取得されるべき");
+            // link1は記事が紐づいているはず
+            let link1 = all_links
+                .iter()
+                .find(|link| link.link == "https://test.com/link1")
+                .expect("link1が見つからない");
+
+            assert!(link1.status_code.is_some(), "link1に記事が紐づいているべき");
+            assert_eq!(link1.status_code, Some(200));
+            assert!(!link1.is_backlog());
+            // link2は記事が紐づいていないはず
+            let link2 = all_links
+                .iter()
+                .find(|link| link.link == "https://test.com/link2")
+                .expect("link2が見つからない");
+
+            assert!(
+                link2.status_code.is_none(),
+                "link2に記事が紐づいていないべき"
+            );
+            assert!(link2.is_backlog());
+
+            println!("✅ JOINクエリテスト成功");
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("../../fixtures/article_unprocessed.sql"))]
+        async fn test_search_unprocessed_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 未処理リンクを取得
+            let unprocessed_links = search_unprocessed_rss_links(&pool).await?;
+            // unprocessedは含まれるべき、processedは含まれないべき
+            let unprocessed_urls: Vec<&str> = unprocessed_links
+                .iter()
+                .map(|link| link.link.as_str())
+                .collect();
+
+            assert!(unprocessed_urls.contains(&"https://test.com/unprocessed"));
+            assert!(!unprocessed_urls.contains(&"https://test.com/processed"));
+
+            println!("✅ 未処理リンク取得テスト成功");
+            Ok(())
+        }
+    }
+
+    // 外部API連携系テスト
+    mod external {
+        use super::*;
+
+        // Firecrawl記事取得機能の統合テスト
+
+        /// 統一されたFirecrawlテスト - 1つのコードでモック/オンライン切り替え
+        #[tokio::test]
+        async fn test_fetch_article_unified() -> Result<(), anyhow::Error> {
+            use crate::infra::api::firecrawl::MockFirecrawlClient;
+
+            let test_url = "https://httpbin.org/html";
+            let mock_content = "統合テスト記事内容\n\nこれは1つのテストコードでモック/オンライン切り替えをテストする記事です。";
+            // モッククライアントを使用して統一関数をテスト
+            let mock_client = MockFirecrawlClient::new_success(mock_content);
+            let article = get_article_content_with_client(test_url, &mock_client).await?;
+            // 基本的なアサーション
+            assert_eq!(article.url, test_url);
+            assert_eq!(article.status_code, 200);
+            assert!(article.content.contains(mock_content));
+
+            println!("✅ 統一記事取得テスト成功");
+            println!("URL: {}", article.url);
+            println!("内容長: {}文字", article.content.len());
+
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn test_error_client_handling() -> Result<(), anyhow::Error> {
+            // エラークライアントを使用したテスト
+            use crate::infra::api::firecrawl::MockFirecrawlClient;
+
+            let error_client = MockFirecrawlClient::new_error("テストエラー");
+            let result = get_article_content_with_client("https://test.com", &error_client).await;
+
+            assert!(result.is_ok(), "エラークライアントでも結果を返すべき");
+
+            let article = result.unwrap();
+            assert_eq!(
+                article.status_code, 500,
+                "エラー時はstatus_code=500になるべき"
+            );
+            assert!(
+                article.content.contains("エラー"),
+                "エラー内容が記録されるべき"
+            );
+
+            println!("✅ エラークライアント処理テスト完了");
             Ok(())
         }
     }
