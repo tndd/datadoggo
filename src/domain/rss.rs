@@ -41,7 +41,7 @@ pub async fn get_rss_links_from_feed<H: HttpClient>(
     feed: &Feed,
 ) -> Result<Vec<RssLink>> {
     let xml_content = client
-        .get_text(&feed.link, 30)
+        .get_text(&feed.rss_link, 30)
         .await
         .context(format!("RSSフィードの取得に失敗: {}", feed))?;
     let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
@@ -409,7 +409,7 @@ mod tests {
             let test_feed = Feed {
                 group: "test".to_string(),
                 name: "テストフィード".to_string(),
-                link: "https://example.com/rss.xml".to_string(),
+                rss_link: "https://example.com/rss.xml".to_string(),
             };
 
             let result = get_rss_links_from_feed(&mock_client, &test_feed).await;
@@ -435,7 +435,7 @@ mod tests {
             let test_feed = Feed {
                 group: "test".to_string(),
                 name: "エラーテストフィード".to_string(),
-                link: "https://example.com/error.xml".to_string(),
+                rss_link: "https://example.com/error.xml".to_string(),
             };
 
             let result = get_rss_links_from_feed(&error_client, &test_feed).await;
@@ -459,7 +459,7 @@ mod tests {
             let test_feed = Feed {
                 group: "test".to_string(),
                 name: "無効XMLテストフィード".to_string(),
-                link: "https://example.com/invalid.xml".to_string(),
+                rss_link: "https://example.com/invalid.xml".to_string(),
             };
 
             let result = get_rss_links_from_feed(&mock_client, &test_feed).await;
