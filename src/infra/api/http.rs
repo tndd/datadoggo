@@ -14,7 +14,7 @@ pub trait HttpClient {
     /// # Arguments
     /// * `url` - 取得対象のURL
     /// * `timeout_secs` - タイムアウト時間（秒）
-    async fn get_text(&self, url: &str, timeout_secs: u64) -> Result<String>;
+    async fn fetch_text(&self, url: &str, timeout_secs: u64) -> Result<String>;
 }
 
 /// `reqwest` を使用した本番用のHTTPクライアント実装
@@ -39,7 +39,7 @@ impl Default for ReqwestHttpClient {
 
 #[async_trait]
 impl HttpClient for ReqwestHttpClient {
-    async fn get_text(&self, url: &str, timeout_secs: u64) -> Result<String> {
+    async fn fetch_text(&self, url: &str, timeout_secs: u64) -> Result<String> {
         let response = self
             .client
             .get(url)
@@ -90,7 +90,7 @@ impl MockHttpClient {
 
 #[async_trait]
 impl HttpClient for MockHttpClient {
-    async fn get_text(&self, _url: &str, _timeout_secs: u64) -> Result<String> {
+    async fn fetch_text(&self, _url: &str, _timeout_secs: u64) -> Result<String> {
         if self.should_succeed {
             // 成功時のモックレスポンス
             Ok(self.mock_response.clone())
@@ -115,7 +115,7 @@ mod tests {
         let mock_client = MockHttpClient::new_success("<rss>テストXML内容</rss>");
 
         let result = mock_client
-            .get_text("https://example.com/rss.xml", 30)
+            .fetch_text("https://example.com/rss.xml", 30)
             .await;
 
         assert!(result.is_ok());
@@ -128,7 +128,7 @@ mod tests {
         let mock_client = MockHttpClient::new_error("接続失敗");
 
         let result = mock_client
-            .get_text("https://example.com/rss.xml", 30)
+            .fetch_text("https://example.com/rss.xml", 30)
             .await;
 
         assert!(result.is_err());
@@ -141,7 +141,7 @@ mod tests {
     async fn test_http_online_basic() -> Result<(), anyhow::Error> {
         // httpbin.orgを使った軽量なHTTP接続テスト
         let client = ReqwestHttpClient::new();
-        let result = client.get_text("https://httpbin.org/xml", 10).await;
+        let result = client.fetch_text("https://httpbin.org/xml", 10).await;
 
         match result {
             Ok(content) => {
