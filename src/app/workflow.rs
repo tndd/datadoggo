@@ -280,17 +280,17 @@ mod tests {
                 Feed {
                     group: "news".to_string(),
                     name: "tech_news".to_string(),
-                    article_link: "https://technews.example.com/rss.xml".to_string(),
+                    rss_link: "https://technews.example.com/rss.xml".to_string(),
                 },
                 Feed {
                     group: "blog".to_string(),
                     name: "dev_blog".to_string(),
-                    article_link: "https://devblog.example.com/feed.xml".to_string(),
+                    rss_link: "https://devblog.example.com/feed.xml".to_string(),
                 },
                 Feed {
                     group: "updates".to_string(),
                     name: "product_updates".to_string(),
-                    article_link: "https://updates.example.com/rss".to_string(),
+                    rss_link: "https://updates.example.com/rss".to_string(),
                 },
             ];
 
@@ -329,7 +329,7 @@ mod tests {
             use crate::infra::compute::generate_mock_rss_id;
 
             for feed in &test_feeds {
-                let hash = generate_mock_rss_id(&feed.article_link);
+                let hash = generate_mock_rss_id(&feed.rss_link);
 
                 // 各フィードから3件のリンクが生成されていることを確認
                 let feed_link_count = sqlx::query_scalar!(
@@ -403,17 +403,17 @@ mod tests {
                 Feed {
                     group: "success".to_string(),
                     name: "working_feed".to_string(),
-                    article_link: "https://working.example.com/rss.xml".to_string(),
+                    rss_link: "https://working.example.com/rss.xml".to_string(),
                 },
                 Feed {
                     group: "error1".to_string(),
                     name: "timeout_feed".to_string(),
-                    article_link: "https://timeout.example.com/rss.xml".to_string(),
+                    rss_link: "https://timeout.example.com/rss.xml".to_string(),
                 },
                 Feed {
                     group: "error2".to_string(),
                     name: "server_error_feed".to_string(),
-                    article_link: "https://servererror.example.com/rss.xml".to_string(),
+                    rss_link: "https://servererror.example.com/rss.xml".to_string(),
                 },
             ];
 
@@ -503,17 +503,17 @@ mod tests {
                 Feed {
                     group: "group1".to_string(),
                     name: "shared_feed_1".to_string(),
-                    article_link: same_rss_url.to_string(),
+                    rss_link: same_rss_url.to_string(),
                 },
                 Feed {
                     group: "group2".to_string(),
                     name: "shared_feed_2".to_string(),
-                    article_link: same_rss_url.to_string(),
+                    rss_link: same_rss_url.to_string(),
                 },
                 Feed {
                     group: "group3".to_string(),
                     name: "shared_feed_3".to_string(),
-                    article_link: same_rss_url.to_string(),
+                    rss_link: same_rss_url.to_string(),
                 },
             ];
 
@@ -652,7 +652,7 @@ mod tests {
             let unique_feed = vec![Feed {
                 group: "unique".to_string(),
                 name: "unique_feed".to_string(),
-                article_link: "https://unique.example.com/different.xml".to_string(),
+                rss_link: "https://unique.example.com/different.xml".to_string(),
             }];
 
             let unique_result =

@@ -8,12 +8,12 @@ use std::fmt;
 pub struct Feed {
     pub group: String,
     pub name: String,
-    pub article_link: String,
+    pub rss_link: String,
 }
 
 impl fmt::Display for Feed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}/{} ({})", self.group, self.name, self.article_link)
+        write!(f, "{}/{} ({})", self.group, self.name, self.rss_link)
     }
 }
 
@@ -48,7 +48,7 @@ fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<Feed>> {
             feeds.push(Feed {
                 group: group.clone(),
                 name,
-                article_link: link,
+                rss_link: link,
             });
         }
     }
