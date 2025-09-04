@@ -31,7 +31,7 @@
     - `get_rss_links_from_channel/feed` → `get_article_links_from_channel/feed`
     - `store_rss_links` → `store_article_links`
     - `search_rss_links` → `search_article_links`
-    - `search_backlog_rss_links` → `search_unprocessed_article_links`
+    - `search_backlog_rss_links` → `search_backlog_article_links`
   - 参照テーブルを `article_links` に変更
 - `src/app/workflow.rs`, `src/domain/article.rs`
   - JOIN/参照先を `article_links` に更新（例: `ON al.link = a.url`）

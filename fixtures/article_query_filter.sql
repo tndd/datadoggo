@@ -2,24 +2,27 @@
 -- test_article_query_filters 用
 
 -- RSSリンクデータ（複数のドメインとステータス）
-INSERT INTO rss_links (link, title, pub_date)
+INSERT INTO article_links (url, title, pub_date, source)
 VALUES 
     -- example.comドメインの記事
     (
         'https://example.com/news1',
         'ニュース1',
-        CURRENT_TIMESTAMP
+        CURRENT_TIMESTAMP,
+        'test'
     ),
     (
         'https://example.com/news2', 
         'ニュース2',
-        CURRENT_TIMESTAMP
+        CURRENT_TIMESTAMP,
+        'test'
     ),
     -- different.comドメインの記事  
     (
         'https://different.com/news3',
         'ニュース3',
-        CURRENT_TIMESTAMP
+        CURRENT_TIMESTAMP,
+        'test'
     );
 
 -- 記事データ（異なるステータスコード）

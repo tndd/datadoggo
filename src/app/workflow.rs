@@ -2,7 +2,7 @@ use crate::{
     domain::{
         article::{get_article_content_with_client, store_article_content, ArticleContent},
         feed::{search_feeds, Feed, FeedQuery},
-        rss::{get_rss_links_from_feed, search_backlog_rss_links, store_rss_links},
+        rss::{get_article_links_from_feed, search_backlog_article_links, store_article_links},
     },
     infra::api::{firecrawl::FirecrawlClient, http::HttpClient},
 };
@@ -47,7 +47,7 @@ pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
     }
 
     // 段階1: RSSフィードからリンクを取得
-    process_collect_rss_links(http_client, &feeds, pool).await?;
+    process_collect_article_links(http_client, &feeds, pool).await?;
     // 段階2: 未処理のリンクから記事内容を取得
     process_collect_articles(firecrawl_client, pool).await?;
 
@@ -63,7 +63,7 @@ pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
 }
 
 /// RSSフィードからリンクを収集してDBに保存する
-async fn process_collect_rss_links<H: HttpClient>(
+async fn process_collect_article_links<H: HttpClient>(
     client: &H,
     feeds: &[Feed],
     pool: &PgPool,
@@ -73,13 +73,13 @@ async fn process_collect_rss_links<H: HttpClient>(
     for feed in feeds {
         println!("フィード処理中: {}", feed);
 
-        match get_rss_links_from_feed(client, feed).await {
-            Ok(rss_links) => {
-                println!("  {}件のリンクを抽出", rss_links.len());
+        match get_article_links_from_feed(client, feed).await {
+            Ok(article_links) => {
+                println!("  {}件のリンクを抽出", article_links.len());
 
-                match store_rss_links(&rss_links, pool).await {
+                match store_article_links(&article_links, pool).await {
                     Ok(_) => {
-                        println!("  DB保存完了: {}件処理", rss_links.len());
+                        println!("  DB保存完了: {}件処理", article_links.len());
                     }
                     Err(e) => {
                         eprintln!("  DB保存エラー: {}", e);
@@ -102,15 +102,15 @@ async fn process_collect_articles<F: FirecrawlClient>(
     pool: &PgPool,
 ) -> Result<()> {
     println!("--- 記事内容取得開始 ---");
-    // 未処理のリンクを取得（articleテーブルに存在しないrss_linkを取得）
-    let unprocessed_links = search_backlog_rss_links(pool).await?;
+    // 未処理のリンクを取得（articleテーブルに存在しないarticle_linkを取得）
+    let unprocessed_links = search_backlog_article_links(pool).await?;
     println!("未処理リンク数: {}件", unprocessed_links.len());
 
-    for rss_link in unprocessed_links {
-        println!("記事処理中: {}", rss_link.link);
+    for article_link in unprocessed_links {
+        println!("記事処理中: {}", article_link.url);
 
         let article_result =
-            get_article_content_with_client(&rss_link.link, firecrawl_client).await;
+            get_article_content_with_client(&article_link.url, firecrawl_client).await;
 
         match article_result {
             Ok(article) => match store_article_content(&article, pool).await {
@@ -126,7 +126,7 @@ async fn process_collect_articles<F: FirecrawlClient>(
 
                 // エラーが発生した場合も、status_codeを記録してスキップ
                 let error_article = ArticleContent {
-                    url: rss_link.link,
+                    url: article_link.url,
                     timestamp: chrono::Utc::now(),
                     status_code: 500, // エラー用のステータスコード
                     content: format!("取得エラー: {}", e),
@@ -269,7 +269,9 @@ mod tests {
         }
 
         #[sqlx::test]
-        async fn test_process_collect_rss_links_success(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_process_collect_article_links_success(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
             use crate::domain::feed::Feed;
             use crate::infra::api::http::MockHttpClient;
 
@@ -295,32 +297,32 @@ mod tests {
             // MockHttpClientで成功レスポンスを設定
             let mock_client = MockHttpClient::new_success();
 
-            // 処理前のrss_links件数を確認
-            let initial_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            // 処理前のarticle_links件数を確認
+            let initial_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(
                 initial_count.unwrap_or(0),
                 0,
-                "初期状態でrss_linksが空ではありません"
+                "初期状態でarticle_linksが空ではありません"
             );
 
-            // process_collect_rss_linksを実行
-            let result = process_collect_rss_links(&mock_client, &test_feeds, &pool).await;
+            // process_collect_article_linksを実行
+            let result = process_collect_article_links(&mock_client, &test_feeds, &pool).await;
             assert!(
                 result.is_ok(),
                 "RSS収集処理が失敗しました: {:?}",
                 result.err()
             );
 
-            // 処理後のrss_links件数を確認（3フィード × 3記事 = 9件）
-            let final_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            // 処理後のarticle_links件数を確認（3フィード × 3記事 = 9件）
+            let final_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(
                 final_count.unwrap_or(0),
                 9,
-                "期待されるrss_links件数と異なります"
+                "期待されるarticle_links件数と異なります"
             );
 
             // 各フィードから生成されたリンクの形式を検証
@@ -331,7 +333,7 @@ mod tests {
 
                 // 各フィードから3件のリンクが生成されていることを確認
                 let feed_link_count = sqlx::query_scalar!(
-                    "SELECT COUNT(*) FROM rss_links WHERE link LIKE $1",
+                    "SELECT COUNT(*) FROM article_links WHERE url LIKE $1",
                     format!("https://{}.example.com/%", hash)
                 )
                 .fetch_one(&pool)
@@ -350,7 +352,7 @@ mod tests {
                     let expected_link = format!("https://{}.example.com/{}", hash, article_num);
 
                     let title_exists = sqlx::query_scalar!(
-                        "SELECT COUNT(*) FROM rss_links WHERE title = $1 AND link = $2",
+                        "SELECT COUNT(*) FROM article_links WHERE title = $1 AND url = $2",
                         expected_title,
                         expected_link
                     )
@@ -369,7 +371,7 @@ mod tests {
 
             // 動的生成された日付が適切な範囲に設定されていることを確認（3日前～今日）
             let date_count = sqlx::query_scalar!(
-                "SELECT COUNT(*) FROM rss_links WHERE pub_date BETWEEN $1 AND $2",
+                "SELECT COUNT(*) FROM article_links WHERE pub_date BETWEEN $1 AND $2",
                 chrono::Utc::now() - chrono::Duration::days(3),
                 chrono::Utc::now() + chrono::Duration::hours(1)
             )
@@ -390,7 +392,7 @@ mod tests {
         }
 
         #[sqlx::test]
-        async fn test_process_collect_rss_links_with_errors(
+        async fn test_process_collect_article_links_with_errors(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
             use crate::domain::feed::Feed;
@@ -418,16 +420,17 @@ mod tests {
             // 成功クライアントで正常フィードを処理
             let success_client = MockHttpClient::new_success();
 
-            // process_collect_rss_linksは内部的にはエラーを握り潰して継続処理するため、
+            // process_collect_article_linksは内部的にはエラーを握り潰して継続処理するため、
             // 個別にテストする必要がある
 
             // 1. 成功フィードのテスト
             let success_feeds = vec![test_feeds[0].clone()];
-            let result = process_collect_rss_links(&success_client, &success_feeds, &pool).await;
+            let result =
+                process_collect_article_links(&success_client, &success_feeds, &pool).await;
             assert!(result.is_ok(), "成功フィードの処理が失敗しました");
 
             // 成功フィードからの3件のリンクが保存されることを確認
-            let success_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            let success_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(
@@ -440,14 +443,14 @@ mod tests {
             let error_client = MockHttpClient::new_error("接続タイムアウト");
 
             // エラークライアントでも処理自体は成功する（内部でエラーハンドリング）
-            let all_result = process_collect_rss_links(&error_client, &test_feeds, &pool).await;
+            let all_result = process_collect_article_links(&error_client, &test_feeds, &pool).await;
             assert!(
                 all_result.is_ok(),
                 "エラーハンドリングが正しく動作していません"
             );
 
             // エラーフィードからは新たなリンクが追加されないことを確認
-            let final_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            let final_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(
@@ -458,19 +461,21 @@ mod tests {
 
             // 3. 成功・エラー混在での処理確認
             // 新しいテーブル状態でテスト
-            sqlx::query!("DELETE FROM rss_links").execute(&pool).await?;
+            sqlx::query!("DELETE FROM article_links")
+                .execute(&pool)
+                .await?;
 
             // 混在処理では各フィードが個別に処理される
             // この関数は現在の実装ではクライアント固定なので、実際の混在テストは困難
             // その代わりに、成功ケースが正しく処理されることを再確認
             let final_result =
-                process_collect_rss_links(&success_client, &success_feeds, &pool).await;
+                process_collect_article_links(&success_client, &success_feeds, &pool).await;
             assert!(
                 final_result.is_ok(),
                 "最終的な成功フィード処理が失敗しました"
             );
 
-            let final_success_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            let final_success_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(
@@ -486,7 +491,7 @@ mod tests {
         }
 
         #[sqlx::test]
-        async fn test_process_collect_rss_links_duplicate_handling(
+        async fn test_process_collect_article_links_duplicate_handling(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
             use crate::domain::feed::Feed;
@@ -516,22 +521,22 @@ mod tests {
             let mock_client = MockHttpClient::new_success();
 
             // 初期状態の確認
-            let initial_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            let initial_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(
                 initial_count.unwrap_or(0),
                 0,
-                "初期状態でrss_linksが空ではありません"
+                "初期状態でarticle_linksが空ではありません"
             );
 
             // 1回目の実行：最初のフィードを処理
             let first_feed = vec![duplicate_feeds[0].clone()];
-            let result1 = process_collect_rss_links(&mock_client, &first_feed, &pool).await;
+            let result1 = process_collect_article_links(&mock_client, &first_feed, &pool).await;
             assert!(result1.is_ok(), "1回目のRSS収集処理が失敗しました");
 
             // 1回目実行後の件数確認（3件のリンクが挿入されるはず）
-            let after_first_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            let after_first_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(
@@ -542,7 +547,7 @@ mod tests {
 
             // 1回目実行後の日付を記録（更新確認のため）
             let first_pub_dates: Vec<chrono::DateTime<chrono::Utc>> =
-                sqlx::query_scalar!("SELECT pub_date FROM rss_links ORDER BY link")
+                sqlx::query_scalar!("SELECT pub_date FROM article_links ORDER BY url")
                     .fetch_all(&pool)
                     .await?;
             assert_eq!(
@@ -556,11 +561,11 @@ mod tests {
 
             // 2回目の実行：同一URLのフィードを再度処理（重複発生）
             let second_feed = vec![duplicate_feeds[1].clone()];
-            let result2 = process_collect_rss_links(&mock_client, &second_feed, &pool).await;
+            let result2 = process_collect_article_links(&mock_client, &second_feed, &pool).await;
             assert!(result2.is_ok(), "2回目のRSS収集処理が失敗しました");
 
             // 2回目実行後の件数確認（重複により件数は変わらず3件のまま）
-            let after_second_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            let after_second_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(
@@ -571,7 +576,7 @@ mod tests {
 
             // 2回目実行後の日付を取得して更新状況を確認
             let second_pub_dates: Vec<chrono::DateTime<chrono::Utc>> =
-                sqlx::query_scalar!("SELECT pub_date FROM rss_links ORDER BY link")
+                sqlx::query_scalar!("SELECT pub_date FROM article_links ORDER BY url")
                     .fetch_all(&pool)
                     .await?;
             assert_eq!(
@@ -604,11 +609,12 @@ mod tests {
             }
 
             // 3回目の実行：全ての重複フィードを一度に処理
-            let all_result = process_collect_rss_links(&mock_client, &duplicate_feeds, &pool).await;
+            let all_result =
+                process_collect_article_links(&mock_client, &duplicate_feeds, &pool).await;
             assert!(all_result.is_ok(), "全重複フィードの処理が失敗しました");
 
             // 最終的な件数確認（依然として3件のまま）
-            let final_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            let final_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(
@@ -627,7 +633,7 @@ mod tests {
                     format!("https://{}.example.com/{}", expected_hash, article_num);
 
                 let link_exists = sqlx::query_scalar!(
-                    "SELECT COUNT(*) FROM rss_links WHERE title = $1 AND link = $2",
+                    "SELECT COUNT(*) FROM article_links WHERE title = $1 AND url = $2",
                     expected_title,
                     expected_link
                 )
@@ -649,14 +655,15 @@ mod tests {
                 rss_link: "https://unique.example.com/different.xml".to_string(),
             }];
 
-            let unique_result = process_collect_rss_links(&mock_client, &unique_feed, &pool).await;
+            let unique_result =
+                process_collect_article_links(&mock_client, &unique_feed, &pool).await;
             assert!(
                 unique_result.is_ok(),
                 "ユニークフィードの処理が失敗しました"
             );
 
             // 新規フィードからの3件が追加されて、合計6件になることを確認
-            let final_unique_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            let final_unique_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(
@@ -702,7 +709,7 @@ mod tests {
                 MockFirecrawlClient::new_success("BBC統合テスト記事の内容です");
 
             // 初期状態の確認
-            let initial_rss_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            let initial_rss_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             let initial_article_count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
@@ -712,7 +719,7 @@ mod tests {
             assert_eq!(
                 initial_rss_count.unwrap_or(0),
                 0,
-                "初期状態でrss_linksが空ではありません"
+                "初期状態でarticle_linksが空ではありません"
             );
             assert_eq!(
                 initial_article_count.unwrap_or(0),
@@ -736,7 +743,7 @@ mod tests {
             );
 
             // 結果確認: RSS収集段階
-            let final_rss_count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+            let final_rss_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
             let expected_rss_count = expected_bbc_feed_count * 3; // 各フィードから3記事生成
@@ -810,10 +817,11 @@ mod tests {
                 "HTTP取得エラー時もワークフローは成功するべきです"
             );
 
-            // RSS取得エラーのため、rss_linksテーブルにデータなし
-            let rss_count_after_http_error = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
-                .fetch_one(&pool)
-                .await?;
+            // RSS取得エラーのため、article_linksテーブルにデータなし
+            let rss_count_after_http_error =
+                sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                    .fetch_one(&pool)
+                    .await?;
             assert_eq!(
                 rss_count_after_http_error.unwrap_or(0),
                 0,
@@ -865,9 +873,9 @@ mod tests {
                 "Firecrawl取得エラー時もワークフローは成功するべきです"
             );
 
-            // RSS収集は成功するため、rss_linksにデータあり
+            // RSS収集は成功するため、article_linksにデータあり
             let rss_count_after_firecrawl_error =
-                sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
+                sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                     .fetch_one(&pool)
                     .await?;
             let expected_rss_count = expected_bbc_feed_count * 3; // 各フィードから3記事生成
