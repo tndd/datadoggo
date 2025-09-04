@@ -1,19 +1,22 @@
-/// 文字列からハッシュ値を計算する
+use sha2::{Digest, Sha256};
+
+/// 文字列からSHA256ベースのハッシュ値を計算する
 ///
 /// # Arguments
 /// * `input` - ハッシュ計算対象の文字列
-/// * `length` - 出力するハッシュの長さ（最大値、デフォルト: 6）
+/// * `length` - 出力するハッシュの長さ（最大64文字）
 ///
 /// # Returns
-/// 指定された長さに制限されたハッシュ文字列
+/// 指定された長さに制限されたSHA256ハッシュ文字列（16進数）
 pub fn calc_hash(input: &str, length: usize) -> String {
-    let hash = format!(
-        "{:x}",
-        input
-            .chars()
-            .fold(0u64, |acc, c| acc.wrapping_add(c as u64))
-    );
-    hash[..length.min(hash.len())].to_string()
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    let hash_bytes = hasher.finalize();
+    let hash_hex = format!("{:x}", hash_bytes);
+
+    // SHA256は64文字の16進数文字列を生成するため、指定された長さでトリミング
+    let max_length = length.min(hash_hex.len());
+    hash_hex[..max_length].to_string()
 }
 
 #[cfg(test)]
@@ -24,6 +27,7 @@ mod tests {
     fn test_calc_hash() {
         let input1 = "test string 1";
         let input2 = "test string 2";
+        let rss_url = "https://example.com/rss.xml";
 
         // デフォルト長さ（6）でのテスト
         let hash_default = calc_hash(input1, 6);
@@ -32,6 +36,16 @@ mod tests {
         let hash_3 = calc_hash(input1, 3);
         let hash_6 = calc_hash(input1, 6);
         let hash_10 = calc_hash(input1, 10);
+
+        // RSS URLのテスト
+        let rss_hash = calc_hash(rss_url, 6);
+
+        println!("input1のハッシュ (6): {} (長さ: {})", hash_6, hash_6.len());
+        println!(
+            "RSS URLのハッシュ (6): {} (長さ: {})",
+            rss_hash,
+            rss_hash.len()
+        );
 
         // 指定した長さ以下であることを確認
         assert!(hash_default.len() <= 6);
