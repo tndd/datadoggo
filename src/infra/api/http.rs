@@ -1,3 +1,4 @@
+use crate::infra::compute::calc_hash;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest::Client;
@@ -117,11 +118,7 @@ impl HttpClient for MockHttpClient {
             }
             None => {
                 // URL依存の動的XML生成
-                let hash = format!(
-                    "{:x}",
-                    url.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64))
-                );
-                let hash = &hash[..6.min(hash.len())]; // 6文字に制限
+                let hash = calc_hash(url, 6);
 
                 Ok(format!(
                     r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -194,20 +191,8 @@ mod tests {
         let xml2 = result2.unwrap();
 
         // 各URLのハッシュを計算して期待値を生成
-        let hash1 = {
-            let full_hash = format!(
-                "{:x}",
-                url1.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64))
-            );
-            full_hash[..6.min(full_hash.len())].to_string()
-        };
-        let hash2 = {
-            let full_hash = format!(
-                "{:x}",
-                url2.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64))
-            );
-            full_hash[..6.min(full_hash.len())].to_string()
-        };
+        let hash1 = calc_hash(url1, 6);
+        let hash2 = calc_hash(url2, 6);
 
         // ハッシュが確実に異なることを確認
         assert_ne!(hash1, hash2, "異なるURLから同じハッシュが生成されました");
