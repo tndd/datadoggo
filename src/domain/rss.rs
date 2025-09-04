@@ -489,5 +489,61 @@ mod tests {
             println!("✅ RSS日付境界総合テスト成功");
             Ok(())
         }
+
+        #[sqlx::test(fixtures("../../fixtures/rss_backlog.sql"))]
+        async fn test_search_backlog_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
+            // バックログのRSSリンクを取得
+            let backlog_links = search_backlog_rss_links(&pool).await?;
+
+            // 未処理リンク2件 + エラーリンク4件 = 6件が返されることを確認
+            assert_eq!(
+                backlog_links.len(),
+                6,
+                "バックログRSSリンクの件数が期待値と異なります"
+            );
+
+            // 日付の降順ソートを確認
+            validate_date_sort_desc(&backlog_links);
+
+            // 各リンクの詳細確認
+            let links: Vec<&str> = backlog_links.iter().map(|l| l.link.as_str()).collect();
+
+            // 未処理リンクが含まれることを確認
+            assert!(links.contains(&"https://example.com/unprocessed-article-1"));
+            assert!(links.contains(&"https://example.com/unprocessed-article-2"));
+
+            // エラーリンクが含まれることを確認
+            assert!(links.contains(&"https://example.com/error-article-1"));
+            assert!(links.contains(&"https://example.com/error-article-2"));
+            assert!(links.contains(&"https://example.com/timeout-article"));
+            assert!(links.contains(&"https://example.com/notfound-article"));
+
+            // 正常処理済みリンクが含まれないことを確認
+            assert!(!links.contains(&"https://example.com/success-article-1"));
+            assert!(!links.contains(&"https://example.com/success-article-2"));
+
+            println!(
+                "✅ バックログRSSリンク取得テスト成功: {}件",
+                backlog_links.len()
+            );
+
+            Ok(())
+        }
+
+        #[sqlx::test]
+        async fn test_search_backlog_rss_links_empty(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 空のデータベースでテスト
+            let backlog_links = search_backlog_rss_links(&pool).await?;
+
+            assert_eq!(
+                backlog_links.len(),
+                0,
+                "空のデータベースでは0件が返されることを期待"
+            );
+
+            println!("✅ バックログRSSリンク空データベーステスト成功");
+
+            Ok(())
+        }
     }
 }
