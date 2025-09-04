@@ -1,5 +1,5 @@
--- RSS記事のテストデータ（RssLink構造対応：link, title, pub_dateのみ）
-INSERT INTO rss_links (link, title, pub_date)
+-- 記事のテストデータ（ArticleLink構造対応：link, title, pub_date, sourceフィールド）
+INSERT INTO article_links (link, title, pub_date)
 VALUES -- 基本テストデータ（save_testsで重複テスト用として使用）
     (
         'https://test.example.com/article1',

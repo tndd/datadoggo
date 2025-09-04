@@ -222,14 +222,14 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"
         SELECT 
-            rl.link,
-            rl.title,
-            rl.pub_date,
+            al.link,
+            al.title,
+            al.pub_date,
             a.timestamp as updated_at,
             a.status_code,
             a.content
-        FROM rss_links rl
-        LEFT JOIN articles a ON rl.link = a.url
+        FROM article_links al
+        LEFT JOIN articles a ON al.link = a.url
         "#,
     );
 
@@ -241,7 +241,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
             has_where = true;
         }
         let pattern = format!("%{}%", link_pattern);
-        qb.push("rl.link ILIKE ").push_bind(pattern);
+        qb.push("al.link ILIKE ").push_bind(pattern);
     }
     // pub_date_from query
     if let Some(pub_date_from) = query.pub_date_from {
@@ -251,7 +251,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
             qb.push(" WHERE ");
             has_where = true;
         }
-        qb.push("rl.pub_date >= ").push_bind(pub_date_from);
+        qb.push("al.pub_date >= ").push_bind(pub_date_from);
     }
     // pub_date_to query
     if let Some(pub_date_to) = query.pub_date_to {
@@ -261,7 +261,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
             qb.push(" WHERE ");
             has_where = true;
         }
-        qb.push("rl.pub_date <= ").push_bind(pub_date_to);
+        qb.push("al.pub_date <= ").push_bind(pub_date_to);
     }
     // article_status query
     if let Some(ref status) = query.article_status {
@@ -284,7 +284,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
         }
     }
 
-    qb.push(" ORDER BY rl.pub_date DESC");
+    qb.push(" ORDER BY al.pub_date DESC");
     // limit
     if let Some(limit) = query.limit {
         qb.push(" LIMIT ").push_bind(limit);
@@ -316,7 +316,7 @@ pub async fn get_article_content_with_client(
 ) -> Result<ArticleContent> {
     match client.scrape_url(url).await {
         Ok(result) => Ok(ArticleContent {
-            url: url.to_string(),
+            url: ual.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 200,
             content: result
@@ -324,7 +324,7 @@ pub async fn get_article_content_with_client(
                 .unwrap_or_else(|| "記事内容が取得できませんでした".to_string()),
         }),
         Err(e) => Ok(ArticleContent {
-            url: url.to_string(),
+            url: ual.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 500,
             content: format!("Firecrawl API エラー: {}", e),
@@ -340,15 +340,15 @@ pub async fn search_backlog_articles_light(
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"
         SELECT 
-            rl.link,
-            rl.title,
-            rl.pub_date,
+            al.link,
+            al.title,
+            al.pub_date,
             a.timestamp as updated_at,
             a.status_code
-        FROM rss_links rl
-        LEFT JOIN articles a ON rl.link = a.url
+        FROM article_links al
+        LEFT JOIN articles a ON al.link = a.url
         WHERE a.url IS NULL OR a.status_code != 200
-        ORDER BY rl.pub_date DESC
+        ORDER BY al.pub_date DESC
         "#,
     );
     // limit
@@ -460,7 +460,7 @@ mod tests {
             let article = result.unwrap();
             // 基本的なフィールドの検証
             assert!(!article.content.is_empty(), "contentが空です");
-            assert!(!article.url.is_empty(), "URLが空です");
+            assert!(!article.ual.is_empty(), "URLが空です");
 
             println!("✅ Firecrawlデータの読み込みテスト成功");
             println!("URL: {}", article.url);
@@ -782,7 +782,7 @@ mod tests {
     // 複合処理・複数モジュール連携系テスト
     mod composition {
         use super::*;
-        use crate::domain::rss::search_backlog_rss_links;
+        use crate::domain::rss::search_unprocessed_article_links;
 
         // データベースJOIN機能の統合テスト
 
@@ -819,7 +819,7 @@ mod tests {
         #[sqlx::test(fixtures("../../fixtures/article_unprocessed.sql"))]
         async fn test_search_backlog_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // 未処理リンクを取得
-            let unprocessed_links = search_backlog_rss_links(&pool).await?;
+            let unprocessed_links = search_unprocessed_article_links(&pool).await?;
             // unprocessedは含まれるべき、processedは含まれないべき
             let unprocessed_urls: Vec<&str> = unprocessed_links
                 .iter()

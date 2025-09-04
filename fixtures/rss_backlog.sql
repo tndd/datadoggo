@@ -1,8 +1,8 @@
--- search_backlog_rss_links テスト用のフィクスチャ
--- 未処理またはエラーのRSSリンクを取得するテスト用データ
+-- search_unprocessed_article_links テスト用のフィクスチャ
+-- 未処理またはエラーの記事リンクを取得するテスト用データ
 
--- RSSリンクデータ
-INSERT INTO rss_links (link, title, pub_date)
+-- 記事リンクデータ
+INSERT INTO article_links (link, title, pub_date)
 VALUES 
     -- 未処理リンク（articlesテーブルに対応するレコードなし）
     (

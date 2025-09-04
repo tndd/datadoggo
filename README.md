@@ -41,10 +41,11 @@ WIP
 # Workflow
 ## rss
 1. feedから対象のrssフィードへのリンクを取得
-2. rssフィードからニュースのリンク(`rss_link`)を取得
-    - 取得した情報は`rss_link`という構造体にしてDBに保存
-    - `rss_link`は、`article`の進捗管理のアンカーとしても機能してる
-	- もし`rss_link`に`article`が紐ついてない場合は、記事が未取得であるという判断を行う
+2. rssフィードからニュースのリンク(`article_link`)を取得
+    - 取得した情報は`article_link`という構造体にしてDBに保存
+    - `article_link`は、`article`の進捗管理のアンカーとしても機能してる
+    - `article_link`には情報の由来を示す`source`フィールドがある（例: rss, sitemap, curation, manual）
+	- もし`article_link`に`article`が紐ついてない場合は、記事が未取得であるという判断を行う
 3. linkからニュースの内容(`article`)を取得
 	- urlから取得した記事は`article`という構造体として保存する
 	- `article`には正常に記事が保存されたかどうかが記録されてる`status_code`がある

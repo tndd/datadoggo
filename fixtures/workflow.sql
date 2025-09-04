@@ -1,8 +1,8 @@
 -- workflow基本テスト用fixture
--- 8件のrss_linksのうち、3件は既に処理済み、5件は未処理の状態を作る
+-- 8件のarticle_linksのうち、3件は既に処理済み、5件は未処理の状態を作る
 
 -- RSSリンクデータ（8件）
-INSERT INTO rss_links (link, title, pub_date) VALUES 
+INSERT INTO article_links (link, title, pub_date) VALUES 
     -- 未処理になる予定のURL（5件）
     ('https://news.example.com/article1', '基本テスト記事1', '2025-01-01 10:00:00+00:00'),
     ('https://news.example.com/article2', '基本テスト記事2', '2025-01-01 11:00:00+00:00'),

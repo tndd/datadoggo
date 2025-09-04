@@ -2,7 +2,7 @@
 -- test_article_query_filters 用
 
 -- RSSリンクデータ（複数のドメインとステータス）
-INSERT INTO rss_links (link, title, pub_date)
+INSERT INTO article_links (link, title, pub_date)
 VALUES 
     -- example.comドメインの記事
     (

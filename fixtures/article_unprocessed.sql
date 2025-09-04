@@ -1,8 +1,8 @@
 -- 未処理リンクテスト用のデータ
--- test_search_backlog_rss_links 用
+-- test_search_backlog_article_links 用
 
 -- RSSリンクデータ
-INSERT INTO rss_links (link, title, pub_date)  
+INSERT INTO article_links (link, title, pub_date)  
 VALUES
     -- 未処理リンク
     (
