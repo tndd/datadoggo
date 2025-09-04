@@ -2,7 +2,7 @@
 -- 様々な状況を想定した現実的なテストデータ
 
 -- RSSリンクデータ（12件）
-INSERT INTO article_links (link, title, pub_date, source) VALUES 
+INSERT INTO article_links (url, title, pub_date, source) VALUES 
     -- 成功予定のURL（6件）
     ('https://success.example.com/news1', '成功記事1', '2025-01-01 09:00:00+00:00', 'test'),
     ('https://success.example.com/news2', '成功記事2', '2025-01-01 10:00:00+00:00', 'test'),

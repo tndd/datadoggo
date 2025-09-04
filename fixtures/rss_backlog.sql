@@ -2,7 +2,7 @@
 -- 未処理またはエラーの記事リンクを取得するテスト用データ
 
 -- 記事リンクデータ
-INSERT INTO article_links (link, title, pub_date, source)
+INSERT INTO article_links (url, title, pub_date, source)
 VALUES 
     -- 未処理リンク（articlesテーブルに対応するレコードなし）
     (

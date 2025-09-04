@@ -2,7 +2,7 @@
 -- test_search_backlog_article_links 用
 
 -- RSSリンクデータ
-INSERT INTO article_links (link, title, pub_date, source)  
+INSERT INTO article_links (url, title, pub_date, source)  
 VALUES
     -- 未処理リンク
     (

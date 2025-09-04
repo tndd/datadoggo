@@ -107,10 +107,10 @@ async fn process_collect_articles<F: FirecrawlClient>(
     println!("未処理リンク数: {}件", unprocessed_links.len());
 
     for article_link in unprocessed_links {
-        println!("記事処理中: {}", article_link.link);
+        println!("記事処理中: {}", article_link.url);
 
         let article_result =
-            get_article_content_with_client(&article_link.link, firecrawl_client).await;
+            get_article_content_with_client(&article_link.url, firecrawl_client).await;
 
         match article_result {
             Ok(article) => match store_article_content(&article, pool).await {
@@ -126,7 +126,7 @@ async fn process_collect_articles<F: FirecrawlClient>(
 
                 // エラーが発生した場合も、status_codeを記録してスキップ
                 let error_article = ArticleContent {
-                    url: article_link.link,
+                    url: article_link.url,
                     timestamp: chrono::Utc::now(),
                     status_code: 500, // エラー用のステータスコード
                     content: format!("取得エラー: {}", e),
@@ -333,7 +333,7 @@ mod tests {
 
                 // 各フィードから3件のリンクが生成されていることを確認
                 let feed_link_count = sqlx::query_scalar!(
-                    "SELECT COUNT(*) FROM article_links WHERE link LIKE $1",
+                    "SELECT COUNT(*) FROM article_links WHERE url LIKE $1",
                     format!("https://{}.example.com/%", hash)
                 )
                 .fetch_one(&pool)
@@ -352,7 +352,7 @@ mod tests {
                     let expected_link = format!("https://{}.example.com/{}", hash, article_num);
 
                     let title_exists = sqlx::query_scalar!(
-                        "SELECT COUNT(*) FROM article_links WHERE title = $1 AND link = $2",
+                        "SELECT COUNT(*) FROM article_links WHERE title = $1 AND url = $2",
                         expected_title,
                         expected_link
                     )
@@ -547,7 +547,7 @@ mod tests {
 
             // 1回目実行後の日付を記録（更新確認のため）
             let first_pub_dates: Vec<chrono::DateTime<chrono::Utc>> =
-                sqlx::query_scalar!("SELECT pub_date FROM article_links ORDER BY link")
+                sqlx::query_scalar!("SELECT pub_date FROM article_links ORDER BY url")
                     .fetch_all(&pool)
                     .await?;
             assert_eq!(
@@ -576,7 +576,7 @@ mod tests {
 
             // 2回目実行後の日付を取得して更新状況を確認
             let second_pub_dates: Vec<chrono::DateTime<chrono::Utc>> =
-                sqlx::query_scalar!("SELECT pub_date FROM article_links ORDER BY link")
+                sqlx::query_scalar!("SELECT pub_date FROM article_links ORDER BY url")
                     .fetch_all(&pool)
                     .await?;
             assert_eq!(
@@ -633,7 +633,7 @@ mod tests {
                     format!("https://{}.example.com/{}", expected_hash, article_num);
 
                 let link_exists = sqlx::query_scalar!(
-                    "SELECT COUNT(*) FROM article_links WHERE title = $1 AND link = $2",
+                    "SELECT COUNT(*) FROM article_links WHERE title = $1 AND url = $2",
                     expected_title,
                     expected_link
                 )

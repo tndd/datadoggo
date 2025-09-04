@@ -56,7 +56,7 @@ pub trait ArticleView {
 // 記事エンティティ（RSSリンクと記事内容の統合表現）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Article {
-    pub link: String,
+    pub url: String,
     pub title: String,
     pub pub_date: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
@@ -67,7 +67,7 @@ pub struct Article {
 // 軽量記事エンティティ（バックログ処理用、contentを除外）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ArticleLight {
-    pub link: String,
+    pub url: String,
     pub title: String,
     pub pub_date: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
@@ -78,7 +78,7 @@ pub struct ArticleLight {
 // ArticleViewトレイトの実装
 impl ArticleView for Article {
     fn get_link(&self) -> &str {
-        &self.link
+        &self.url
     }
     fn get_title(&self) -> &str {
         &self.title
@@ -93,7 +93,7 @@ impl ArticleView for Article {
 
 impl ArticleView for ArticleLight {
     fn get_link(&self) -> &str {
-        &self.link
+        &self.url
     }
     fn get_title(&self) -> &str {
         &self.title
@@ -222,14 +222,14 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"
         SELECT 
-            al.link,
+            al.url,
             al.title,
             al.pub_date,
             a.timestamp as updated_at,
             a.status_code,
             a.content
         FROM article_links al
-        LEFT JOIN articles a ON al.link = a.url
+        LEFT JOIN articles a ON al.url = a.url
         "#,
     );
 
@@ -241,7 +241,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
             has_where = true;
         }
         let pattern = format!("%{}%", link_pattern);
-        qb.push("al.link ILIKE ").push_bind(pattern);
+        qb.push("al.url ILIKE ").push_bind(pattern);
     }
     // pub_date_from query
     if let Some(pub_date_from) = query.pub_date_from {
@@ -340,13 +340,13 @@ pub async fn search_backlog_articles_light(
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"
         SELECT 
-            al.link,
+            al.url,
             al.title,
             al.pub_date,
             a.timestamp as updated_at,
             a.status_code
         FROM article_links al
-        LEFT JOIN articles a ON al.link = a.url
+        LEFT JOIN articles a ON al.url = a.url
         WHERE a.url IS NULL OR a.status_code != 200
         ORDER BY al.pub_date DESC
         "#,
@@ -609,7 +609,7 @@ mod tests {
         fn test_article_status_detection() {
             // 未処理リンクのテスト
             let unprocessed = Article {
-                link: "https://test.com/unprocessed".to_string(),
+                url: "https://test.com/unprocessed".to_string(),
                 title: "未処理記事".to_string(),
                 pub_date: Utc::now(),
                 updated_at: None,
@@ -625,7 +625,7 @@ mod tests {
             assert!(unprocessed.is_backlog());
             // 成功記事のテスト
             let success = Article {
-                link: "https://test.com/success".to_string(),
+                url: "https://test.com/success".to_string(),
                 title: "成功記事".to_string(),
                 pub_date: Utc::now(),
                 updated_at: Some(Utc::now()),
@@ -641,7 +641,7 @@ mod tests {
             assert!(!success.is_backlog());
             // エラー記事のテスト
             let error = Article {
-                link: "https://test.com/error".to_string(),
+                url: "https://test.com/error".to_string(),
                 title: "エラー記事".to_string(),
                 pub_date: Utc::now(),
                 updated_at: Some(Utc::now()),
@@ -664,7 +664,7 @@ mod tests {
         fn test_article_view_trait_implementation() {
             // 完全版記事のテスト
             let full_article = Article {
-                link: "https://test.com/full".to_string(),
+                url: "https://test.com/full".to_string(),
                 title: "完全版記事".to_string(),
                 pub_date: Utc::now(),
                 updated_at: Some(Utc::now()),
@@ -673,7 +673,7 @@ mod tests {
             };
             // 軽量版記事のテスト
             let light_article = ArticleLight {
-                link: "https://test.com/light".to_string(),
+                url: "https://test.com/light".to_string(),
                 title: "軽量版記事".to_string(),
                 pub_date: Utc::now(),
                 updated_at: Some(Utc::now()),
@@ -697,7 +697,7 @@ mod tests {
         fn test_generic_functions() {
             let full_articles = vec![
                 Article {
-                    link: "https://test.com/success".to_string(),
+                    url: "https://test.com/success".to_string(),
                     title: "成功記事".to_string(),
                     pub_date: Utc::now(),
                     updated_at: Some(Utc::now()),
@@ -705,7 +705,7 @@ mod tests {
                     content: Some("成功内容".to_string()),
                 },
                 Article {
-                    link: "https://test.com/error".to_string(),
+                    url: "https://test.com/error".to_string(),
                     title: "エラー記事".to_string(),
                     pub_date: Utc::now(),
                     updated_at: Some(Utc::now()),
@@ -716,14 +716,14 @@ mod tests {
 
             let light_articles = vec![
                 ArticleLight {
-                    link: "https://test.com/unprocessed".to_string(),
+                    url: "https://test.com/unprocessed".to_string(),
                     title: "未処理記事".to_string(),
                     pub_date: Utc::now(),
                     updated_at: None,
                     status_code: None,
                 },
                 ArticleLight {
-                    link: "https://test.com/success_light".to_string(),
+                    url: "https://test.com/success_light".to_string(),
                     title: "成功軽量記事".to_string(),
                     pub_date: Utc::now(),
                     updated_at: Some(Utc::now()),
@@ -794,7 +794,7 @@ mod tests {
             // link1は記事が紐づいているはず
             let link1 = all_links
                 .iter()
-                .find(|link| link.link == "https://test.com/link1")
+                .find(|link| link.url == "https://test.com/link1")
                 .expect("link1が見つからない");
 
             assert!(link1.status_code.is_some(), "link1に記事が紐づいているべき");
@@ -803,7 +803,7 @@ mod tests {
             // link2は記事が紐づいていないはず
             let link2 = all_links
                 .iter()
-                .find(|link| link.link == "https://test.com/link2")
+                .find(|link| link.url == "https://test.com/link2")
                 .expect("link2が見つからない");
 
             assert!(
@@ -823,7 +823,7 @@ mod tests {
             // unprocessedは含まれるべき、processedは含まれないべき
             let unprocessed_urls: Vec<&str> = unprocessed_links
                 .iter()
-                .map(|link| link.link.as_str())
+                .map(|link| link.url.as_str())
                 .collect();
 
             assert!(unprocessed_urls.contains(&"https://test.com/unprocessed"));

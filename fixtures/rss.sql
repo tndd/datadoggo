@@ -1,5 +1,5 @@
 -- 記事のテストデータ（ArticleLink構造対応：link, title, pub_date, sourceフィールド）
-INSERT INTO article_links (link, title, pub_date, source)
+INSERT INTO article_links (url, title, pub_date, source)
 VALUES -- 基本テストデータ（save_testsで重複テスト用として使用）
     (
         'https://test.example.com/article1',

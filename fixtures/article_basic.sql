@@ -2,7 +2,7 @@
 -- test_get_articles_status 用
 
 -- RSSリンクデータ
-INSERT INTO article_links (link, title, pub_date, source)
+INSERT INTO article_links (url, title, pub_date, source)
 VALUES 
     (
         'https://test.com/link1',

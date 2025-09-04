@@ -10,7 +10,7 @@ use sqlx::{FromRow, PgPool};
 // 記事のリンク情報を格納する構造体（<item>要素のみ対象）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ArticleLink {
-    pub link: String,
+    pub url: String,
     pub title: String,
     pub pub_date: DateTime<Utc>,
     pub source: String,
@@ -27,7 +27,7 @@ pub fn get_article_links_from_channel(channel: &Channel) -> Vec<ArticleLink> {
             let parsed_date = parse_date(pub_date_str).ok()?;
 
             Some(ArticleLink {
-                link: link.to_string(),
+                url: link.to_string(),
                 title: item.title().unwrap_or("タイトルなし").to_string(),
                 pub_date: parsed_date,
                 source: "rss".to_string(),
@@ -62,7 +62,7 @@ pub async fn store_article_links(article_links: &[ArticleLink], pool: &PgPool) -
     }
 
     // 配列として渡すためのデータ準備
-    let links: Vec<String> = article_links.iter().map(|r| r.link.clone()).collect();
+    let urls: Vec<String> = article_links.iter().map(|r| r.url.clone()).collect();
     let titles: Vec<String> = article_links.iter().map(|r| r.title.clone()).collect();
     let pub_dates: Vec<DateTime<Utc>> = article_links.iter().map(|r| r.pub_date).collect();
     let sources: Vec<String> = article_links.iter().map(|r| r.source.clone()).collect();
@@ -70,16 +70,16 @@ pub async fn store_article_links(article_links: &[ArticleLink], pool: &PgPool) -
     // バルクUPSERT処理
     sqlx::query!(
         r#"
-        INSERT INTO article_links (link, title, pub_date, source)
+        INSERT INTO article_links (url, title, pub_date, source)
         SELECT * FROM UNNEST($1::text[], $2::text[], $3::timestamptz[], $4::text[])
-        ON CONFLICT (link) DO UPDATE SET
+        ON CONFLICT (url) DO UPDATE SET
             title = EXCLUDED.title,
             pub_date = EXCLUDED.pub_date,
             source = EXCLUDED.source
         WHERE (article_links.title, article_links.pub_date, article_links.source)
             IS DISTINCT FROM (EXCLUDED.title, EXCLUDED.pub_date, EXCLUDED.source)
         "#,
-        &links,
+        &urls,
         &titles,
         &pub_dates,
         &sources
@@ -111,10 +111,10 @@ pub async fn search_article_links(
     let article_links = sqlx::query_as!(
         ArticleLink,
         r#"
-        SELECT link, title, pub_date, source
+        SELECT url, title, pub_date, source
         FROM article_links
         WHERE
-            ($1::text IS NULL OR link ILIKE '%' || $1 || '%')
+            ($1::text IS NULL OR url ILIKE '%' || $1 || '%')
             AND ($2::timestamptz IS NULL OR pub_date >= $2)
             AND ($3::timestamptz IS NULL OR pub_date <= $3)
         ORDER BY pub_date DESC
@@ -134,9 +134,9 @@ pub async fn search_backlog_article_links(pool: &PgPool) -> Result<Vec<ArticleLi
     let links = sqlx::query_as!(
         ArticleLink,
         r#"
-        SELECT al.link, al.title, al.pub_date, al.source
+        SELECT al.url, al.title, al.pub_date, al.source
         FROM article_links al
-        LEFT JOIN articles a ON al.link = a.url
+        LEFT JOIN articles a ON al.url = a.url
         WHERE a.url IS NULL OR a.status_code != 200
         ORDER BY al.pub_date DESC
         LIMIT 100
@@ -159,9 +159,9 @@ mod tests {
     fn validate_article_links(article_links: &[ArticleLink]) {
         for article_link in &article_links[..3.min(article_links.len())] {
             assert!(!article_link.title.is_empty(), "記事のタイトルが空です");
-            assert!(!article_link.link.is_empty(), "記事のリンクが空です");
+            assert!(!article_link.url.is_empty(), "記事のリンクが空です");
             assert!(
-                article_link.link.starts_with("http"),
+                article_link.url.starts_with("http"),
                 "リンクがHTTP形式ではありません"
             );
         }
@@ -214,9 +214,9 @@ mod tests {
 
             assert_eq!(article_links.len(), 2, "2件の記事が抽出されるはず");
             assert_eq!(article_links[0].title, "Test Article 1");
-            assert_eq!(article_links[0].link, "http://example.com/article1");
+            assert_eq!(article_links[0].url, "http://example.com/article1");
             assert_eq!(article_links[1].title, "Test Article 2");
-            assert_eq!(article_links[1].link, "http://example.com/article2");
+            assert_eq!(article_links[1].url, "http://example.com/article2");
         }
 
         #[test]
@@ -256,19 +256,19 @@ mod tests {
             let rss_basic = vec![
                 ArticleLink {
                     title: "Test Article 1".to_string(),
-                    link: "https://test.example.com/article1".to_string(),
+                    url: "https://test.example.com/article1".to_string(),
                     pub_date: "2025-08-26T10:00:00Z".parse().unwrap(),
                     source: "test".to_string(),
                 },
                 ArticleLink {
                     title: "Test Article 2".to_string(),
-                    link: "https://test.example.com/article2".to_string(),
+                    url: "https://test.example.com/article2".to_string(),
                     pub_date: "2025-08-26T11:00:00Z".parse().unwrap(),
                     source: "test".to_string(),
                 },
                 ArticleLink {
                     title: "異なるドメイン記事".to_string(),
-                    link: "https://different.domain.com/post".to_string(),
+                    url: "https://different.domain.com/post".to_string(),
                     pub_date: "2025-08-26T12:00:00Z".parse().unwrap(),
                     source: "test".to_string(),
                 },
@@ -295,7 +295,7 @@ mod tests {
             // 同じリンクの記事を作成（重複）
             let duplicate_article_link = ArticleLink {
                 title: "異なるタイトル".to_string(),
-                link: "https://test.example.com/article1".to_string(), // fixtureと同じリンク
+                url: "https://test.example.com/article1".to_string(), // fixtureと同じリンク
                 pub_date: "2025-08-26T13:00:00Z".parse().unwrap(),
                 source: "test".to_string(),
             };
@@ -326,19 +326,19 @@ mod tests {
             let mixed_articles = vec![
                 ArticleLink {
                     title: "既存記事".to_string(),
-                    link: "https://test.example.com/article1".to_string(), // fixtureと同じリンク
+                    url: "https://test.example.com/article1".to_string(), // fixtureと同じリンク
                     pub_date: "2025-08-26T14:00:00Z".parse().unwrap(),
                     source: "test".to_string(),
                 },
                 ArticleLink {
                     title: "新規記事1".to_string(),
-                    link: "https://test.example.com/new-article1".to_string(), // 新しいリンク
+                    url: "https://test.example.com/new-article1".to_string(), // 新しいリンク
                     pub_date: "2025-08-26T15:00:00Z".parse().unwrap(),
                     source: "test".to_string(),
                 },
                 ArticleLink {
                     title: "新規記事2".to_string(),
-                    link: "https://another.domain.com/article".to_string(), // 異なるドメイン
+                    url: "https://another.domain.com/article".to_string(), // 異なるドメイン
                     pub_date: "2025-08-26T16:00:00Z".parse().unwrap(),
                     source: "test".to_string(),
                 },
@@ -400,7 +400,7 @@ mod tests {
                 // リンクのパターン検証 ("https://{hash}.example.com/{index}")
                 let expected_link = format!("https://{}.example.com/{}", hash, article_num);
                 assert_eq!(
-                    link.link, expected_link,
+                    link.url, expected_link,
                     "記事{}のリンクパターンが不正です",
                     article_num
                 );
@@ -409,15 +409,15 @@ mod tests {
             println!("✅ 動的XMLパターン検証完了 - ハッシュ: {}", hash);
             println!(
                 "  記事1: {} -> {}",
-                article_links[0].title, article_links[0].link
+                article_links[0].title, article_links[0].url
             );
             println!(
                 "  記事2: {} -> {}",
-                article_links[1].title, article_links[1].link
+                article_links[1].title, article_links[1].url
             );
             println!(
                 "  記事3: {} -> {}",
-                article_links[2].title, article_links[2].link
+                article_links[2].title, article_links[2].url
             );
 
             println!("✅ HTTPモック使用のRSSフィード取得テスト完了");
@@ -487,7 +487,7 @@ mod tests {
                 search_article_links(Some(filter_start_boundary), &pool).await?;
             assert_eq!(article_links_start.len(), 1);
             assert_eq!(
-                article_links_start[0].link,
+                article_links_start[0].url,
                 "https://test.com/boundary/exactly-start"
             );
 
@@ -500,7 +500,7 @@ mod tests {
             let article_links_end = search_article_links(Some(filter_end_boundary), &pool).await?;
             assert_eq!(article_links_end.len(), 1);
             assert_eq!(
-                article_links_end[0].link,
+                article_links_end[0].url,
                 "https://test.com/boundary/exactly-end"
             );
 
@@ -511,7 +511,7 @@ mod tests {
                 pub_date_to: Some(parse_date("2025-01-15T23:59:59Z")?),
             };
             let article_links_day = search_article_links(Some(filter_full_day), &pool).await?;
-            let day_links: Vec<&str> = article_links_day.iter().map(|a| a.link.as_str()).collect();
+            let day_links: Vec<&str> = article_links_day.iter().map(|a| a.url.as_str()).collect();
             assert!(day_links.contains(&"https://test.com/boundary/exactly-start"));
             assert!(day_links.contains(&"https://test.com/boundary/exactly-end"));
             assert!(day_links.contains(&"https://example.com/tech/article-2025-01-15"));
@@ -538,7 +538,7 @@ mod tests {
             validate_date_sort_desc(&backlog_links);
 
             // 各リンクの詳細確認
-            let links: Vec<&str> = backlog_links.iter().map(|l| l.link.as_str()).collect();
+            let links: Vec<&str> = backlog_links.iter().map(|l| l.url.as_str()).collect();
 
             // 未処理リンクが含まれることを確認
             assert!(links.contains(&"https://example.com/unprocessed-article-1"));
