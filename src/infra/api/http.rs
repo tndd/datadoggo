@@ -61,8 +61,8 @@ impl HttpClient for ReqwestHttpClient {
 /// この実装はテスト時にDIされ、実際のHTTPリクエストを行わずに
 /// URL依存の動的XMLまたはエラーを返します。
 pub struct MockHttpClient {
-    /// モック時に返すステータス（成功/失敗の制御）
-    pub should_succeed: bool,
+    /// モック時に成功を返すかどうか
+    pub simulate_success: bool,
     /// エラー時に返すメッセージ
     pub error_message: Option<String>,
 }
@@ -71,7 +71,7 @@ impl MockHttpClient {
     /// URL依存の動的XMLレスポンスを返すモッククライアントを作成
     pub fn new_success() -> Self {
         Self {
-            should_succeed: true,
+            simulate_success: true,
             error_message: None,
         }
     }
@@ -79,7 +79,7 @@ impl MockHttpClient {
     /// エラーレスポンスを返すモッククライアントを作成
     pub fn new_error(error_message: &str) -> Self {
         Self {
-            should_succeed: false,
+            simulate_success: false,
             error_message: Some(error_message.to_string()),
         }
     }
@@ -88,7 +88,7 @@ impl MockHttpClient {
 #[async_trait]
 impl HttpClient for MockHttpClient {
     async fn fetch(&self, url: &str, _timeout_secs: u64) -> Result<String> {
-        if !self.should_succeed {
+        if !self.simulate_success {
             // エラー時のレスポンス
             let error_msg = self
                 .error_message

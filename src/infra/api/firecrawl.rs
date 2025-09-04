@@ -53,8 +53,8 @@ impl FirecrawlClient for ReqwestFirecrawlClient {
 pub struct MockFirecrawlClient {
     /// モック時に返すマークダウン内容
     pub mock_content: String,
-    /// モック時に返すステータス（成功/失敗の制御）
-    pub should_succeed: bool,
+    /// モック時に成功を返すかどうか
+    pub simulate_success: bool,
     /// エラー時に返すメッセージ
     pub error_message: Option<String>,
 }
@@ -64,7 +64,7 @@ impl MockFirecrawlClient {
     pub fn new_success(mock_content: &str) -> Self {
         Self {
             mock_content: mock_content.to_string(),
-            should_succeed: true,
+            simulate_success: true,
             error_message: None,
         }
     }
@@ -73,7 +73,7 @@ impl MockFirecrawlClient {
     pub fn new_error(error_message: &str) -> Self {
         Self {
             mock_content: String::new(),
-            should_succeed: false,
+            simulate_success: false,
             error_message: Some(error_message.to_string()),
         }
     }
@@ -82,7 +82,7 @@ impl MockFirecrawlClient {
 #[async_trait]
 impl FirecrawlClient for MockFirecrawlClient {
     async fn scrape_url(&self, _url: &str) -> Result<Document> {
-        if self.should_succeed {
+        if self.simulate_success {
             // 成功時のモックレスポンス
             Ok(Document {
                 markdown: Some(self.mock_content.clone()),
