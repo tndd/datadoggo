@@ -663,33 +663,8 @@ mod tests {
         use super::*;
         use crate::domain::rss::search_unprocessed_rss_links;
 
-        #[sqlx::test]
+        #[sqlx::test(fixtures("../../fixtures/article_basic.sql"))]
         async fn test_get_articles_status(pool: PgPool) -> Result<(), anyhow::Error> {
-            // テスト用のRSSリンクを挿入
-            sqlx::query!(
-                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                "https://test.com/link1",
-                "テストリンク1"
-            )
-            .execute(&pool)
-            .await?;
-
-            sqlx::query!(
-                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                "https://test.com/link2",
-                "テストリンク2"
-            )
-            .execute(&pool)
-            .await?;
-            // 1つのリンクに対応する記事を挿入
-            sqlx::query!(
-                "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
-                "https://test.com/link1",
-                200,
-                "記事内容1"
-            )
-            .execute(&pool)
-            .await?;
             // 全件取得テスト
             let all_links = search_articles(None, &pool).await?;
             assert!(all_links.len() >= 2, "最低2件のリンクが取得されるべき");
@@ -718,34 +693,8 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
+        #[sqlx::test(fixtures("../../fixtures/article_unprocessed.sql"))]
         async fn test_search_unprocessed_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
-            // テスト用のRSSリンクを挿入
-            sqlx::query!(
-                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                "https://test.com/unprocessed",
-                "未処理リンク"
-            )
-            .execute(&pool)
-            .await?;
-
-            sqlx::query!(
-                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                "https://test.com/processed",
-                "処理済みリンク"
-            )
-            .execute(&pool)
-            .await?;
-            // 1つだけ記事として処理済みにする
-            sqlx::query!(
-                "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
-                "https://test.com/processed",
-                200,
-                "処理済み記事内容"
-            )
-            .execute(&pool)
-            .await?;
-
             // 未処理リンクを取得
             let unprocessed_links = search_unprocessed_rss_links(&pool).await?;
             // unprocessedは含まれるべき、processedは含まれないべき
@@ -766,43 +715,8 @@ mod tests {
     mod query_filter_tests {
         use super::*;
 
-        #[sqlx::test]
+        #[sqlx::test(fixtures("../../fixtures/article_query_filter.sql"))]
         async fn test_article_query_filters(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 複数のテストデータを挿入
-            let test_data = vec![
-                (
-                    "https://example.com/news1",
-                    "ニュース1",
-                    200,
-                    "ニュース1の内容",
-                ),
-                ("https://example.com/news2", "ニュース2", 404, "エラー内容"),
-                (
-                    "https://different.com/news3",
-                    "ニュース3",
-                    200,
-                    "ニュース3の内容",
-                ),
-            ];
-
-            for (url, title, status_code, content) in &test_data {
-                sqlx::query!(
-                    "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                    url, title
-                )
-                .execute(&pool)
-                .await?;
-
-                sqlx::query!(
-                    "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
-                    url,
-                    status_code,
-                    content
-                )
-                .execute(&pool)
-                .await?;
-            }
-
             // link_patternフィルターのテスト
             let query = ArticleQuery {
                 link_pattern: Some("example.com".to_string()),
@@ -985,50 +899,8 @@ mod tests {
             println!("✅ ジェネリック関数テスト成功");
         }
 
-        #[sqlx::test]
+        #[sqlx::test(fixtures("../../fixtures/article_backlog.sql"))]
         async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
-            // テスト用のRSSリンクを挿入
-            sqlx::query!(
-                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                "https://test.com/trait_unprocessed",
-                "トレイト未処理リンク"
-            )
-            .execute(&pool)
-            .await?;
-
-            sqlx::query!(
-                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                "https://test.com/trait_error",
-                "トレイトエラーリンク"
-            )
-            .execute(&pool)
-            .await?;
-
-            sqlx::query!(
-                "INSERT INTO rss_links (link, title, pub_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-                "https://test.com/trait_success",
-                "トレイト成功リンク"
-            )
-            .execute(&pool)
-            .await?;
-            // エラー記事を挿入
-            sqlx::query!(
-                "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
-                "https://test.com/trait_error",
-                500,
-                "トレイトエラー記事内容"
-            )
-            .execute(&pool)
-            .await?;
-            // 成功記事を挿入
-            sqlx::query!(
-                "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
-                "https://test.com/trait_success",
-                200,
-                "トレイト成功記事内容"
-            )
-            .execute(&pool)
-            .await?;
             // バックログ記事の軽量版を取得
             let backlog_articles = search_backlog_articles_light(&pool, None).await?;
             // トレイトを使って処理
