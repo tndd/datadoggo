@@ -1,11 +1,13 @@
-mod domain;
-mod infra;
+/// NOTE: main.rsは単なる最小限の動作確認に過ぎないので凝った実装をしないように
+use datadoggo::{app, domain, infra};
 
-use domain::feed::{load_feeds_from_yaml, search_feeds, FeedQuery};
-use domain::rss::{extract_rss_links_from_channel, store_rss_links};
-
-use infra::db::setup_database;
-use infra::loader::{load_channel_from_xml_file, load_json_from_file};
+use app::workflow::execute_rss_workflow;
+use domain::feed::{search_feeds, FeedQuery};
+use domain::rss::{get_rss_links_from_channel, store_rss_links};
+use infra::api::firecrawl::ReqwestFirecrawlClient;
+use infra::api::http::ReqwestHttpClient;
+use infra::storage::db::setup_database;
+use infra::storage::file::{load_channel_from_xml_file, load_json_from_file};
 
 #[tokio::main]
 async fn main() {
@@ -14,30 +16,32 @@ async fn main() {
 
     // フィード設定を読み込み
     println!("=== フィード設定の読み込み ===");
-    match load_feeds_from_yaml("src/domain/data/feeds.yaml") {
+    match search_feeds(None) {
         Ok(feeds) => {
             println!("全フィード数: {}", feeds.len());
 
             // BBCフィードの例
-            let bbc_query = FeedQuery {
-                group: Some("bbc".to_string()),
-                name: None,
-            };
-            let bbc_feeds = search_feeds(&feeds, Some(bbc_query));
-            println!("BBCフィード数: {}", bbc_feeds.len());
-            for feed in bbc_feeds.iter().take(3) {
-                println!("  - {}: {}", feed.name, feed.link);
+            let bbc_query = Some(FeedQuery::from_group("bbc"));
+            match search_feeds(bbc_query) {
+                Ok(bbc_feeds) => {
+                    println!("BBCフィード数: {}", bbc_feeds.len());
+                    for feed in bbc_feeds.iter().take(3) {
+                        println!("  - {}", feed);
+                    }
+                }
+                Err(e) => eprintln!("BBCフィード検索エラー: {}", e),
             }
 
             // Yahoo Japanフィードの例
-            let yahoo_query = FeedQuery {
-                group: Some("yahoo_japan".to_string()),
-                name: None,
-            };
-            let yahoo_feeds = search_feeds(&feeds, Some(yahoo_query));
-            println!("Yahoo Japanフィード数: {}", yahoo_feeds.len());
-            for feed in yahoo_feeds.iter().take(3) {
-                println!("  - {}: {}", feed.name, feed.link);
+            let yahoo_query = Some(FeedQuery::from_group("yahoo_japan"));
+            match search_feeds(yahoo_query) {
+                Ok(yahoo_feeds) => {
+                    println!("Yahoo Japanフィード数: {}", yahoo_feeds.len());
+                    for feed in yahoo_feeds.iter().take(3) {
+                        println!("  - {}", feed);
+                    }
+                }
+                Err(e) => eprintln!("Yahoo Japanフィード検索エラー: {}", e),
             }
         }
         Err(e) => {
@@ -58,12 +62,12 @@ async fn main() {
     println!("=== RSS処理を開始 ===");
     match load_channel_from_xml_file("mock/rss/bbc.rss") {
         Ok(channel) => {
-            let links = extract_rss_links_from_channel(&channel);
+            let links = get_rss_links_from_channel(&channel);
             println!("BBCのRSSから{}件のリンクを抽出しました。", links.len());
 
             match store_rss_links(&links, &pool).await {
-                Ok(result) => {
-                    println!("{}", result);
+                Ok(_) => {
+                    println!("データベースへの保存が完了しました: {}件", links.len());
                 }
                 Err(e) => eprintln!("データベースへの保存中にエラーが発生しました: {}", e),
             }
@@ -87,6 +91,22 @@ async fn main() {
         }
         Err(e) => {
             eprintln!("Firecrawlデータの読み込み中にエラーが発生しました: {}", e);
+        }
+    }
+
+    // RSSワークフローのデモンストレーション（BBCグループのみ）
+    println!("\n=== RSSワークフロー（デモ実行） ===");
+    // 本番用のクライアントをインスタンス化
+    let http_client = ReqwestHttpClient::new();
+    let firecrawl_client =
+        ReqwestFirecrawlClient::new().expect("Firecrawlクライアントの初期化に失敗");
+
+    match execute_rss_workflow(&http_client, &firecrawl_client, &pool, Some("bbc")).await {
+        Ok(()) => {
+            println!("RSSワークフローが正常に完了しました");
+        }
+        Err(e) => {
+            eprintln!("RSSワークフローでエラーが発生しました: {}", e);
         }
     }
 }

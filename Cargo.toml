@@ -15,10 +15,17 @@ chrono = { version = "0.4", features = ["serde"] }
 dateparser = "0.2"
 thiserror = "1.0"
 anyhow = "1.0"
+async-trait = "0.1"
 time = { version = "0.3", features = ["serde"] }
+reqwest = { version = "0.11", features = ["json"] }
+firecrawl-sdk = "0.3.1"
+sha2 = "0.10"
 
 [dev-dependencies]
 ctor = "0.2"
+httpmock = "0.7"
 
-[lints.rust]
-dead_code = "allow"
+[features]
+default = []
+online = []              # 軽量オンラインテスト (接続確認)
+online-slow = ["online"] # 重い統合テスト (完全フロー)

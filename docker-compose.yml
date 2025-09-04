@@ -12,7 +12,7 @@ services:
     ports:
       - "15432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U datadoggo"]
+      test: [ "CMD-SHELL", "pg_isready -U datadoggo" ]
       interval: 5s
       timeout: 3s
       retries: 3
@@ -26,7 +26,7 @@ services:
     volumes:
       - firecrawl_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -34,12 +34,12 @@ services:
   firecrawl-playwright:
     image: ghcr.io/firecrawl/firecrawl:latest
     platform: linux/amd64
+    env_file:
+      - .env.firecrawl
     environment:
       - PORT=3000
       - PROXY_SERVER=
       - BLOCK_MEDIA=true
-      - REDIS_URL=redis://firecrawl-redis:6379
-      - REDIS_RATE_LIMIT_URL=redis://firecrawl-redis:6379
     ports:
       - "13000:3000"
     command: pnpm run start:playwright-service
@@ -53,15 +53,11 @@ services:
     depends_on:
       - firecrawl-redis
       - firecrawl-playwright
+    env_file:
+      - .env.firecrawl
     environment:
       - PORT=3002
       - HOST=0.0.0.0
-      - REDIS_URL=redis://firecrawl-redis:6379
-      - REDIS_RATE_LIMIT_URL=redis://firecrawl-redis:6379
-      - PLAYWRIGHT_MICROSERVICE_URL=http://firecrawl-playwright:3000
-      - NUM_WORKERS_PER_QUEUE=2
-      - USE_DB_AUTHENTICATION=false
-      - BULL_AUTH_KEY=changeme
     ports:
       - "13002:3002"
     command: pnpm run start:production
@@ -73,13 +69,8 @@ services:
       - firecrawl-redis
       - firecrawl-playwright
       - firecrawl-api
-    environment:
-      - REDIS_URL=redis://firecrawl-redis:6379
-      - REDIS_RATE_LIMIT_URL=redis://firecrawl-redis:6379
-      - PLAYWRIGHT_MICROSERVICE_URL=http://firecrawl-playwright:3000
-      - NUM_WORKERS_PER_QUEUE=2
-      - USE_DB_AUTHENTICATION=false
-      - BULL_AUTH_KEY=changeme
+    env_file:
+      - .env.firecrawl
     command: pnpm run workers
 
 volumes:

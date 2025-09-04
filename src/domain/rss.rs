@@ -1,5 +1,6 @@
-use crate::infra::db::DatabaseInsertResult;
-use crate::infra::parser::parse_date;
+use crate::domain::feed::Feed;
+use crate::infra::api::http::HttpClient;
+use crate::infra::parser::{parse_channel_from_xml_str, parse_date};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rss::Channel;
@@ -15,28 +16,37 @@ pub struct RssLink {
 }
 
 // RSSのチャンネルから<item>要素のリンク情報を抽出する関数
-pub fn extract_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
+pub fn get_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
     channel
         .items()
         .iter()
         .filter_map(|item| {
-            if let (Some(link), Some(pub_date_str)) = (item.link(), item.pub_date()) {
-                // infra::parserを利用して日付文字列を解析
-                if let Ok(parsed_date) = parse_date(pub_date_str) {
-                    let rss_link = RssLink {
-                        link: link.to_string(),
-                        title: item.title().unwrap_or("タイトルなし").to_string(),
-                        pub_date: parsed_date, // 既にUTC
-                    };
-                    Some(rss_link)
-                } else {
-                    None // 日付の解析に失敗した場合はスキップ
-                }
-            } else {
-                None // リンクまたはpub_dateがない場合はスキップ
-            }
+            let link = item.link()?;
+            let pub_date_str = item.pub_date()?;
+            let parsed_date = parse_date(pub_date_str).ok()?;
+
+            Some(RssLink {
+                link: link.to_string(),
+                title: item.title().unwrap_or("タイトルなし").to_string(),
+                pub_date: parsed_date,
+            })
         })
         .collect()
+}
+
+/// feedからrss_linkのリストを取得する
+pub async fn get_rss_links_from_feed<H: HttpClient>(
+    client: &H,
+    feed: &Feed,
+) -> Result<Vec<RssLink>> {
+    let xml_content = client
+        .fetch(&feed.rss_link, 30)
+        .await
+        .context(format!("RSSフィードの取得に失敗: {}", feed))?;
+    let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
+    let rss_links = get_rss_links_from_channel(&channel);
+
+    Ok(rss_links)
 }
 
 /// # 概要
@@ -44,46 +54,36 @@ pub fn extract_rss_links_from_channel(channel: &Channel) -> Vec<RssLink> {
 ///
 /// # Note
 /// sqlxの推奨パターンに従い、sqlx::query!マクロを使用してコンパイル時安全性を確保しています。
-pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<DatabaseInsertResult> {
+pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<()> {
     if rss_links.is_empty() {
-        return Ok(DatabaseInsertResult::empty());
+        return Ok(());
     }
 
-    let mut tx = pool
-        .begin()
-        .await
-        .context("トランザクションの開始に失敗しました")?;
-    let mut total_inserted = 0;
+    // 配列として渡すためのデータ準備
+    let links: Vec<String> = rss_links.iter().map(|r| r.link.clone()).collect();
+    let titles: Vec<String> = rss_links.iter().map(|r| r.title.clone()).collect();
+    let pub_dates: Vec<DateTime<Utc>> = rss_links.iter().map(|r| r.pub_date).collect();
 
-    // sqlx::query!マクロを使用してコンパイル時にSQLを検証
-    for rss_link in rss_links {
-        let result = sqlx::query!(
-            r#"
-            INSERT INTO rss_links (link, title, pub_date)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (link) DO NOTHING
-            "#,
-            rss_link.link,
-            rss_link.title,
-            rss_link.pub_date
-        )
-        .execute(&mut *tx)
-        .await
-        .context("リンクのデータベースへの挿入に失敗しました")?;
+    // バルクUPSERT処理
+    sqlx::query!(
+        r#"
+        INSERT INTO rss_links (link, title, pub_date)
+        SELECT * FROM UNNEST($1::text[], $2::text[], $3::timestamptz[])
+        ON CONFLICT (link) DO UPDATE SET
+            title = EXCLUDED.title,
+            pub_date = EXCLUDED.pub_date
+        WHERE (rss_links.title, rss_links.pub_date)
+            IS DISTINCT FROM (EXCLUDED.title, EXCLUDED.pub_date)
+        "#,
+        &links,
+        &titles,
+        &pub_dates
+    )
+    .execute(pool)
+    .await
+    .context("RSSリンクのバルクUPSERT処理に失敗しました")?;
 
-        if result.rows_affected() > 0 {
-            total_inserted += 1;
-        }
-    }
-
-    tx.commit()
-        .await
-        .context("トランザクションのコミットに失敗しました")?;
-
-    Ok(DatabaseInsertResult::new(
-        total_inserted,
-        rss_links.len() - total_inserted,
-    ))
+    Ok(())
 }
 
 // RSS記事のフィルター条件を表す構造体
@@ -121,11 +121,31 @@ pub async fn search_rss_links(query: Option<RssLinkQuery>, pool: &PgPool) -> Res
     Ok(rss_links)
 }
 
+/// 未処理かエラーのRSSリンクを取得する
+pub async fn search_backlog_rss_links(pool: &PgPool) -> Result<Vec<RssLink>> {
+    let links = sqlx::query_as!(
+        RssLink,
+        r#"
+        SELECT rl.link, rl.title, rl.pub_date
+        FROM rss_links rl
+        LEFT JOIN articles a ON rl.link = a.url
+        WHERE a.url IS NULL OR a.status_code != 200
+        ORDER BY rl.pub_date DESC
+        LIMIT 100
+        "#
+    )
+    .fetch_all(pool)
+    .await
+    .context("未処理RSSリンクの取得に失敗")?;
+
+    Ok(links)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::loader::load_channel_from_xml_file;
     use crate::infra::parser::parse_channel_from_xml_str;
+    use crate::infra::storage::file::load_channel_from_xml_file;
 
     // 記事の基本構造をチェックするヘルパー関数
     fn validate_rss_links(rss_links: &[RssLink]) {
@@ -151,22 +171,6 @@ mod tests {
             }
             prev_date = Some(rss_link.pub_date);
         }
-    }
-
-    // SaveResultの基本検証ヘルパー関数
-    fn validate_save_result(
-        result: &DatabaseInsertResult,
-        expected_inserted: usize,
-        expected_skipped: usize,
-    ) {
-        assert_eq!(
-            result.inserted, expected_inserted,
-            "新規挿入数が期待と異なります"
-        );
-        assert_eq!(
-            result.skipped_duplicate, expected_skipped,
-            "重複スキップ数が期待と異なります"
-        );
     }
 
     // XML解析関数のテスト
@@ -198,7 +202,7 @@ mod tests {
                 </rss>
                 "#;
             let channel = parse_channel_from_xml_str(xml).expect("Failed to parse test RSS");
-            let rss_links = extract_rss_links_from_channel(&channel);
+            let rss_links = get_rss_links_from_channel(&channel);
 
             assert_eq!(rss_links.len(), 2, "2件の記事が抽出されるはず");
             assert_eq!(rss_links[0].title, "Test Article 1");
@@ -221,7 +225,7 @@ mod tests {
                 assert!(result.is_ok(), "{}のRSSファイル読み込みに失敗", feed_name);
 
                 let channel = result.unwrap();
-                let rss_links = extract_rss_links_from_channel(&channel);
+                let rss_links = get_rss_links_from_channel(&channel);
                 assert!(!rss_links.is_empty(), "{}の記事が0件", feed_name);
 
                 validate_rss_links(&rss_links);
@@ -256,10 +260,7 @@ mod tests {
             ];
 
             // データベースに保存をテスト
-            let result = store_rss_links(&rss_basic, &pool).await?;
-
-            // SaveResultの検証
-            validate_save_result(&result, 3, 0);
+            store_rss_links(&rss_basic, &pool).await?;
 
             // 実際にデータベースに保存されたことを確認
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
@@ -267,16 +268,12 @@ mod tests {
                 .await?;
             assert_eq!(count, Some(3), "期待する件数(3件)が保存されませんでした");
 
-            println!("✅ RSSリンク保存件数検証成功: {}件", result.inserted);
-            println!(
-                "✅ RSS SaveResult検証成功: {}",
-                result.display_with_domain("RSSリンク")
-            );
+            println!("✅ RSSリンク保存テスト成功: 3件");
 
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss"))]
+        #[sqlx::test(fixtures("../../fixtures/rss.sql"))]
         async fn test_duplicate_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // fixtureで既に17件のデータが存在している状態
 
@@ -288,10 +285,7 @@ mod tests {
             };
 
             // 重複記事を保存しようとする
-            let result = store_rss_links(&[duplicate_rss_link], &pool).await?;
-
-            // SaveResultの検証
-            validate_save_result(&result, 0, 1);
+            store_rss_links(&[duplicate_rss_link], &pool).await?;
 
             // データベースの件数は変わらない（19件のまま）
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
@@ -303,12 +297,12 @@ mod tests {
                 "重複記事が挿入され、件数が変わってしまいました"
             );
 
-            println!("✅ RSS重複スキップ検証成功: {}", result);
+            println!("✅ RSS重複スキップ検証成功");
 
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss"))]
+        #[sqlx::test(fixtures("../../fixtures/rss.sql"))]
         async fn test_mixed_new_and_existing_links(pool: PgPool) -> Result<(), anyhow::Error> {
             // fixtureで既に17件のデータが存在している状態
 
@@ -331,10 +325,7 @@ mod tests {
                 },
             ];
 
-            let result = store_rss_links(&mixed_articles, &pool).await?;
-
-            // SaveResultの検証
-            validate_save_result(&result, 2, 1);
+            store_rss_links(&mixed_articles, &pool).await?;
 
             // 最終的にデータベースには19件（fixture 17件 + 新規 2件）
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
@@ -342,8 +333,89 @@ mod tests {
                 .await?;
             assert_eq!(count, Some(19), "期待する件数(19件)と異なります");
 
-            println!("✅ RSS混在データ処理検証成功: {}", result);
+            println!("✅ RSS混在データ処理検証成功");
 
+            Ok(())
+        }
+    }
+
+    // HTTPクライアントを使用したフィード取得テスト
+    mod feed_fetch_tests {
+        use super::*;
+        use crate::infra::api::http::MockHttpClient;
+
+        #[tokio::test]
+        async fn test_get_rss_links_with_mock() -> Result<(), anyhow::Error> {
+            // 動的XML生成を使用するモッククライアント
+            let mock_client = MockHttpClient::new_success();
+
+            let test_feed = Feed {
+                group: "test".to_string(),
+                name: "テストフィード".to_string(),
+                rss_link: "https://example.com/rss.xml".to_string(),
+            };
+
+            let result = get_rss_links_from_feed(&mock_client, &test_feed).await;
+
+            assert!(result.is_ok(), "RSSフィードの取得が失敗");
+
+            let rss_links = result.unwrap();
+            assert_eq!(rss_links.len(), 3, "3件のリンクが取得されるべき"); // 動的XMLは3件の記事を生成
+
+            // URLハッシュを計算
+            use crate::infra::compute::generate_mock_rss_id;
+            let hash = generate_mock_rss_id(&test_feed.rss_link);
+
+            // 各記事の詳細検証
+            for (index, link) in rss_links.iter().enumerate() {
+                let article_num = index + 1;
+
+                // タイトルのパターン検証 ("{hash}:title:{index}")
+                let expected_title = format!("{}:title:{}", hash, article_num);
+                assert_eq!(
+                    link.title, expected_title,
+                    "記事{}のタイトルパターンが不正です",
+                    article_num
+                );
+
+                // リンクのパターン検証 ("https://{hash}.example.com/{index}")
+                let expected_link = format!("https://{}.example.com/{}", hash, article_num);
+                assert_eq!(
+                    link.link, expected_link,
+                    "記事{}のリンクパターンが不正です",
+                    article_num
+                );
+            }
+
+            println!("✅ 動的XMLパターン検証完了 - ハッシュ: {}", hash);
+            println!("  記事1: {} -> {}", rss_links[0].title, rss_links[0].link);
+            println!("  記事2: {} -> {}", rss_links[1].title, rss_links[1].link);
+            println!("  記事3: {} -> {}", rss_links[2].title, rss_links[2].link);
+
+            println!("✅ HTTPモック使用のRSSフィード取得テスト完了");
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn test_get_rss_links_with_error_mock() -> Result<(), anyhow::Error> {
+            // エラーを返すモッククライアント
+            let error_client = MockHttpClient::new_error("接続タイムアウト");
+
+            let test_feed = Feed {
+                group: "test".to_string(),
+                name: "エラーテストフィード".to_string(),
+                rss_link: "https://example.com/error.xml".to_string(),
+            };
+
+            let result = get_rss_links_from_feed(&error_client, &test_feed).await;
+
+            assert!(result.is_err(), "エラーが発生するべき");
+            let error_msg = result.unwrap_err().to_string();
+            println!("エラーメッセージ: {}", error_msg);
+            // エラーが正しく伝播されていることを確認
+            assert!(error_msg.contains("の取得に失敗"));
+
+            println!("✅ HTTPモック使用のエラーハンドリングテスト完了");
             Ok(())
         }
     }
@@ -352,7 +424,7 @@ mod tests {
     mod retrieval_tests {
         use super::*;
 
-        #[sqlx::test(fixtures("rss"))]
+        #[sqlx::test(fixtures("../../fixtures/rss.sql"))]
         async fn test_search_all_rss_links_comprehensive(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
@@ -372,7 +444,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss"))]
+        #[sqlx::test(fixtures("../../fixtures/rss.sql"))]
         async fn test_date_filtering_comprehensive(pool: PgPool) -> Result<(), anyhow::Error> {
             // 開始境界時刻の記事テスト
             let filter_start_boundary = RssLinkQuery {
@@ -415,6 +487,62 @@ mod tests {
             assert!(!day_links.contains(&"https://test.com/boundary/one-second-after"));
 
             println!("✅ RSS日付境界総合テスト成功");
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("../../fixtures/rss_backlog.sql"))]
+        async fn test_search_backlog_rss_links(pool: PgPool) -> Result<(), anyhow::Error> {
+            // バックログのRSSリンクを取得
+            let backlog_links = search_backlog_rss_links(&pool).await?;
+
+            // 未処理リンク2件 + エラーリンク4件 = 6件が返されることを確認
+            assert_eq!(
+                backlog_links.len(),
+                6,
+                "バックログRSSリンクの件数が期待値と異なります"
+            );
+
+            // 日付の降順ソートを確認
+            validate_date_sort_desc(&backlog_links);
+
+            // 各リンクの詳細確認
+            let links: Vec<&str> = backlog_links.iter().map(|l| l.link.as_str()).collect();
+
+            // 未処理リンクが含まれることを確認
+            assert!(links.contains(&"https://example.com/unprocessed-article-1"));
+            assert!(links.contains(&"https://example.com/unprocessed-article-2"));
+
+            // エラーリンクが含まれることを確認
+            assert!(links.contains(&"https://example.com/error-article-1"));
+            assert!(links.contains(&"https://example.com/error-article-2"));
+            assert!(links.contains(&"https://example.com/timeout-article"));
+            assert!(links.contains(&"https://example.com/notfound-article"));
+
+            // 正常処理済みリンクが含まれないことを確認
+            assert!(!links.contains(&"https://example.com/success-article-1"));
+            assert!(!links.contains(&"https://example.com/success-article-2"));
+
+            println!(
+                "✅ バックログRSSリンク取得テスト成功: {}件",
+                backlog_links.len()
+            );
+
+            Ok(())
+        }
+
+        #[sqlx::test]
+        async fn test_search_backlog_rss_links_empty(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 空のデータベースでテスト
+            let backlog_links = search_backlog_rss_links(&pool).await?;
+
+            assert_eq!(
+                backlog_links.len(),
+                0,
+                "空のデータベースでは0件が返されることを期待"
+            );
+
+            println!("✅ バックログRSSリンク空データベーステスト成功");
+
             Ok(())
         }
     }
