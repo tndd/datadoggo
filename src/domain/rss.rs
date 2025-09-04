@@ -64,7 +64,7 @@ pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<Ins
         .begin()
         .await
         .context("トランザクションの開始に失敗しました")?;
-    let mut total_attempted = 0;
+    let mut total_input = 0;
 
     // シンプルなUPSERT処理
     for rss_link in rss_links {
@@ -87,7 +87,7 @@ pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<Ins
         .context("リンクのデータベースへの挿入・更新に失敗しました")?;
 
         if result.rows_affected() > 0 {
-            total_attempted += 1;
+            total_input += 1;
         }
     }
 
@@ -95,7 +95,8 @@ pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<Ins
         .await
         .context("トランザクションのコミットに失敗しました")?;
 
-    Ok(InsertResult::new(total_attempted, 0))
+    let skipped = rss_links.len() - total_input;
+    Ok(InsertResult::new(total_input, skipped))
 }
 
 // RSS記事のフィルター条件を表す構造体
@@ -186,15 +187,8 @@ mod tests {
     }
 
     // SaveResultの基本検証ヘルパー関数
-    fn validate_save_result(
-        result: &InsertResult,
-        expected_attempted: usize,
-        expected_skipped: usize,
-    ) {
-        assert_eq!(
-            result.attempted, expected_attempted,
-            "試行数が期待と異なります"
-        );
+    fn validate_save_result(result: &InsertResult, expected_input: usize, expected_skipped: usize) {
+        assert_eq!(result.input, expected_input, "投入数が期待と異なります");
         assert_eq!(
             result.skipped, expected_skipped,
             "スキップ数が期待と異なります"
@@ -299,7 +293,7 @@ mod tests {
                 .await?;
             assert_eq!(count, Some(3), "期待する件数(3件)が保存されませんでした");
 
-            println!("✅ RSSリンク保存件数検証成功: {}件", result.attempted);
+            println!("✅ RSSリンク保存件数検証成功: {}件", result.input);
             println!(
                 "✅ RSS SaveResult検証成功: {}",
                 result.display_with_domain("RSSリンク")

@@ -6,16 +6,16 @@ use std::env;
 /// 処理件数とスキップ件数を記録
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InsertResult {
-    /// データ投入数（試行数）
-    pub attempted: usize,
+    /// データ投入数
+    pub input: usize,
     /// スキップされた件数
     pub skipped: usize,
 }
 
 impl InsertResult {
     /// 新しい操作結果を作成
-    pub fn new(attempted: usize, skipped: usize) -> Self {
-        Self { attempted, skipped }
+    pub fn new(input: usize, skipped: usize) -> Self {
+        Self { input, skipped }
     }
 
     /// 空の結果（0件）を作成
@@ -27,16 +27,14 @@ impl InsertResult {
     pub fn display_with_domain(&self, domain_name: &str) -> String {
         if self.skipped > 0 {
             format!(
-                "{}処理完了: 処理{}件、スキップ{}件",
-                domain_name, self.attempted, self.skipped
+                "{}処理完了: 投入{}件、スキップ{}件",
+                domain_name, self.input, self.skipped
             )
         } else {
-            format!("{}処理完了: {}件", domain_name, self.attempted)
+            format!("{}処理完了: {}件", domain_name, self.input)
         }
     }
 }
-
-
 
 // 汎用的なDisplay実装（デフォルトでは「データ」という名称を使用）
 impl std::fmt::Display for InsertResult {

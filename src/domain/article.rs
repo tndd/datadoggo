@@ -165,13 +165,13 @@ pub async fn store_article_content(
     .await
     .context("Firecrawl記事のデータベースへの挿入に失敗しました")?;
 
-    let attempted = if result.rows_affected() > 0 { 1 } else { 0 };
+    let input = if result.rows_affected() > 0 { 1 } else { 0 };
 
     tx.commit()
         .await
         .context("トランザクションのコミットに失敗しました")?;
 
-    Ok(InsertResult::new(attempted, 0))
+    Ok(InsertResult::new(input, 0))
 }
 
 // ArticleContent記事のフィルター条件を表す構造体
@@ -534,10 +534,7 @@ mod tests {
             // データベースに保存をテスト
             let result = store_article_content(&test_article, &pool).await?;
             // SaveResultの検証
-            assert_eq!(
-                result.attempted, 1,
-                "新規挿入された記事数が期待と異なります"
-            );
+            assert_eq!(result.input, 1, "新規挿入された記事数が期待と異なります");
             assert_eq!(result.skipped, 0, "重複スキップ数が期待と異なります");
             // 実際にデータベースに保存されたことを確認
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
@@ -545,7 +542,7 @@ mod tests {
                 .await?;
             assert_eq!(count, Some(1), "期待する件数(1件)が保存されませんでした");
 
-            println!("✅ Firecrawl記事保存件数検証成功: {}件", result.attempted);
+            println!("✅ Firecrawl記事保存件数検証成功: {}件", result.input);
             println!(
                 "✅ Firecrawl SaveResult検証成功: {}",
                 result.display_with_domain("Firecrawlドキュメント")
@@ -566,7 +563,7 @@ mod tests {
             };
             // 最初の記事内容を保存
             let result1 = store_article_content(&original_article, &pool).await?;
-            assert_eq!(result1.attempted, 1);
+            assert_eq!(result1.input, 1);
             // 同じURLで違う内容の記事内容を作成（重複）
             let duplicate_article = ArticleContent {
                 url: "https://test.example.com/duplicate".to_string(),
@@ -577,7 +574,7 @@ mod tests {
             // 重複記事内容を保存しようとする（新しい仕様では更新される）
             let result2 = store_article_content(&duplicate_article, &pool).await?;
             // SaveResultの検証（更新される場合、inserted=1として扱う）
-            assert_eq!(result2.attempted, 1, "重複URLの記事は更新されるべきです");
+            assert_eq!(result2.input, 1, "重複URLの記事は更新されるべきです");
             assert_eq!(result2.skipped, 0, "重複スキップ数が期待と異なります");
             // データベースの件数は1件のまま
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
