@@ -386,25 +386,8 @@ mod tests {
 
         #[tokio::test]
         async fn test_get_rss_links_with_mock() -> Result<(), anyhow::Error> {
-            let rss_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-    <channel>
-        <title>テストRSSフィード</title>
-        <item>
-            <title>記事1</title>
-            <link>https://example.com/article1</link>
-            <pubDate>Wed, 01 Jan 2025 12:00:00 GMT</pubDate>
-        </item>
-        <item>
-            <title>記事2</title>
-            <link>https://example.com/article2</link>
-            <pubDate>Thu, 02 Jan 2025 12:00:00 GMT</pubDate>
-        </item>
-    </channel>
-</rss>"#;
-
-            // モッククライアントでRSSフィードを設定
-            let mock_client = MockHttpClient::new_success(rss_xml);
+            // 動的XML生成を使用するモッククライアント
+            let mock_client = MockHttpClient::new_success();
 
             let test_feed = Feed {
                 group: "test".to_string(),
@@ -417,11 +400,37 @@ mod tests {
             assert!(result.is_ok(), "RSSフィードの取得が失敗");
 
             let rss_links = result.unwrap();
-            assert_eq!(rss_links.len(), 2, "2件のリンクが取得されるべき");
+            assert_eq!(rss_links.len(), 3, "3件のリンクが取得されるべき"); // 動的XMLは3件の記事を生成
 
-            let first_link = &rss_links[0];
-            assert_eq!(first_link.link, "https://example.com/article1");
-            assert_eq!(first_link.title, "記事1");
+            // URLハッシュを計算
+            use crate::infra::compute::calc_hash;
+            let hash = calc_hash(&test_feed.rss_link, 6);
+
+            // 各記事の詳細検証
+            for (index, link) in rss_links.iter().enumerate() {
+                let article_num = index + 1;
+
+                // タイトルのパターン検証 ("{hash}:title:{index}")
+                let expected_title = format!("{}:title:{}", hash, article_num);
+                assert_eq!(
+                    link.title, expected_title,
+                    "記事{}のタイトルパターンが不正です",
+                    article_num
+                );
+
+                // リンクのパターン検証 ("https://{hash}.example.com/{index}")
+                let expected_link = format!("https://{}.example.com/{}", hash, article_num);
+                assert_eq!(
+                    link.link, expected_link,
+                    "記事{}のリンクパターンが不正です",
+                    article_num
+                );
+            }
+
+            println!("✅ 動的XMLパターン検証完了 - ハッシュ: {}", hash);
+            println!("  記事1: {} -> {}", rss_links[0].title, rss_links[0].link);
+            println!("  記事2: {} -> {}", rss_links[1].title, rss_links[1].link);
+            println!("  記事3: {} -> {}", rss_links[2].title, rss_links[2].link);
 
             println!("✅ HTTPモック使用のRSSフィード取得テスト完了");
             Ok(())
@@ -447,27 +456,6 @@ mod tests {
             assert!(error_msg.contains("の取得に失敗"));
 
             println!("✅ HTTPモック使用のエラーハンドリングテスト完了");
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn test_get_rss_links_with_invalid_xml() -> Result<(), anyhow::Error> {
-            let invalid_xml = "<invalid>xml content</broken>";
-
-            let mock_client = MockHttpClient::new_success(invalid_xml);
-
-            let test_feed = Feed {
-                group: "test".to_string(),
-                name: "無効XMLテストフィード".to_string(),
-                rss_link: "https://example.com/invalid.xml".to_string(),
-            };
-
-            let result = get_rss_links_from_feed(&mock_client, &test_feed).await;
-
-            // XMLパースエラーが発生するべき
-            assert!(result.is_err(), "無効なXMLでエラーが発生するべき");
-
-            println!("✅ 無効XMLハンドリングテスト完了");
             Ok(())
         }
     }

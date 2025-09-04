@@ -59,10 +59,8 @@ impl HttpClient for ReqwestHttpClient {
 /// テスト用のモックHTTPクライアント
 ///
 /// この実装はテスト時にDIされ、実際のHTTPリクエストを行わずに
-/// 定義済みのレスポンスやエラーを返します。
+/// URL依存の動的XMLまたはエラーを返します。
 pub struct MockHttpClient {
-    /// モック時に返すレスポンス内容（Noneの場合は動的生成）
-    pub mock_response: Option<String>,
     /// モック時に返すステータス（成功/失敗の制御）
     pub should_succeed: bool,
     /// エラー時に返すメッセージ
@@ -70,10 +68,9 @@ pub struct MockHttpClient {
 }
 
 impl MockHttpClient {
-    /// 成功レスポンスを返すモッククライアントを作成
-    pub fn new_success(mock_response: &str) -> Self {
+    /// URL依存の動的XMLレスポンスを返すモッククライアントを作成
+    pub fn new_success() -> Self {
         Self {
-            mock_response: Some(mock_response.to_string()),
             should_succeed: true,
             error_message: None,
         }
@@ -82,18 +79,8 @@ impl MockHttpClient {
     /// エラーレスポンスを返すモッククライアントを作成
     pub fn new_error(error_message: &str) -> Self {
         Self {
-            mock_response: Some(String::new()),
             should_succeed: false,
             error_message: Some(error_message.to_string()),
-        }
-    }
-
-    /// URL依存の動的XMLレスポンスを返すモッククライアントを作成
-    pub fn new_dynamic() -> Self {
-        Self {
-            mock_response: None, // 動的生成のためNone
-            should_succeed: true,
-            error_message: None,
         }
     }
 }
@@ -111,17 +98,11 @@ impl HttpClient for MockHttpClient {
             return Err(anyhow::anyhow!("モックHTTPエラー: {}", error_msg));
         }
 
-        match &self.mock_response {
-            Some(response) => {
-                // 固定レスポンスを返す（従来の動作）
-                Ok(response.clone())
-            }
-            None => {
-                // URL依存の動的XML生成
-                let hash = calc_hash(url, 6);
+        // URL依存の動的XML生成
+        let hash = calc_hash(url, 6);
 
-                Ok(format!(
-                    r#"<?xml version="1.0" encoding="UTF-8"?>
+        Ok(format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
                             <rss version="2.0">
                                 <channel>
                                     <title>{}:channel_title</title>
@@ -142,10 +123,8 @@ impl HttpClient for MockHttpClient {
                                     </item>
                                 </channel>
                             </rss>"#,
-                    hash, hash, hash, hash, hash, hash, hash
-                ))
-            }
-        }
+            hash, hash, hash, hash, hash, hash, hash
+        ))
     }
 }
 
@@ -155,13 +134,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_http_client_success() {
-        let mock_client = MockHttpClient::new_success("<rss>テストXML内容</rss>");
+        let mock_client = MockHttpClient::new_success();
+        let test_url = "https://example.com/rss.xml";
 
-        let result = mock_client.fetch("https://example.com/rss.xml", 30).await;
+        let result = mock_client.fetch(test_url, 30).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
-        assert!(response.contains("テストXML内容"));
+
+        // 動的XMLの基本構造を確認
+        assert!(response.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assert!(response.contains("<rss version=\"2.0\">"));
+        assert!(response.contains("<channel>"));
+        assert!(response.contains("<item>"));
+        assert!(response.contains("<title>"));
+        assert!(response.contains("<link>"));
+        assert!(response.contains("<pubDate>"));
+
+        // URLハッシュが含まれていることを確認
+        let hash = calc_hash(test_url, 6);
+        assert!(response.contains(&format!("{}:channel_title", hash)));
+        assert!(response.contains(&format!("{}:title:1", hash)));
     }
 
     #[tokio::test]
@@ -176,7 +169,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_http_client_dynamic() {
-        let mock_client = MockHttpClient::new_dynamic();
+        let mock_client = MockHttpClient::new_success();
 
         // 異なるURLで異なるXMLが生成されることを確認
         let url1 = "https://test1.com/rss";
