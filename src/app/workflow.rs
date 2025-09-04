@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(
             after_second_count.unwrap_or(0),
             3,
-            "2回目実行後も3件のまま（重複スキップ）であるべきです"
+            "2回目実行後も3件のまま（重複時は上書き更新）であるべきです"
         );
 
         // 2回目実行後の日付を取得して更新状況を確認
@@ -578,19 +578,26 @@ mod tests {
             "2回目実行後も3件の日付が記録されているべきです"
         );
 
-        // 重複リンクの場合、日付は更新されない（ON CONFLICT DO NOTHING）
+        // 重複リンクの場合、日付は更新される（ON CONFLICT DO UPDATE）
         for (i, (first_date, second_date)) in first_pub_dates
             .iter()
             .zip(second_pub_dates.iter())
             .enumerate()
         {
-            assert_eq!(
+            assert_ne!(
                 first_date,
                 second_date,
-                "記事{}の日付が更新されました（重複スキップで日付は変更されないべき）: {} != {}",
+                "記事{}の日付が更新されませんでした（重複時は新しい日付で更新されるべき）: {} == {}",
                 i + 1,
                 first_date,
                 second_date
+            );
+            assert!(
+                second_date >= first_date,
+                "記事{}の日付が過去に戻りました（新しい日付のほうが新しいべき）: {} < {}",
+                i + 1,
+                second_date,
+                first_date
             );
         }
 
@@ -605,7 +612,7 @@ mod tests {
         assert_eq!(
             final_count.unwrap_or(0),
             3,
-            "最終的にも3件のまま（すべての重複がスキップ）であるべきです"
+            "最終的にも3件のまま（すべての重複が上書き更新）であるべきです"
         );
 
         // 保存されたリンクの内容確認
@@ -656,7 +663,7 @@ mod tests {
         );
 
         println!("✅ RSS重複処理テスト完了");
-        println!("  重複リンクは正しくスキップされました（日付更新なし）");
+        println!("  重複リンクは正しく上書き更新されました（日付が新しく更新）");
         println!("  新規リンクは正しく追加されました（動的日付生成）");
         println!("  最終リンク数: {}", final_unique_count.unwrap_or(0));
 

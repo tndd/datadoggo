@@ -65,35 +65,49 @@ pub async fn store_rss_links(rss_links: &[RssLink], pool: &PgPool) -> Result<Dat
         .await
         .context("トランザクションの開始に失敗しました")?;
     let mut total_inserted = 0;
+    let mut total_updated = 0;
 
-    // sqlx::query!マクロを使用してコンパイル時にSQLを検証
+    // RETURNING句を使ってUPSERTの結果を効率的に判定
     for rss_link in rss_links {
         let result = sqlx::query!(
             r#"
             INSERT INTO rss_links (link, title, pub_date)
             VALUES ($1, $2, $3)
-            ON CONFLICT (link) DO NOTHING
+            ON CONFLICT (link) DO UPDATE SET
+                title = EXCLUDED.title,
+                pub_date = EXCLUDED.pub_date
+            WHERE rss_links.title IS DISTINCT FROM EXCLUDED.title
+               OR rss_links.pub_date IS DISTINCT FROM EXCLUDED.pub_date
+            RETURNING (xmax = 0) AS was_inserted
             "#,
             rss_link.link,
             rss_link.title,
             rss_link.pub_date
         )
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await
-        .context("リンクのデータベースへの挿入に失敗しました")?;
+        .context("リンクのデータベースへの挿入・更新に失敗しました")?;
 
-        if result.rows_affected() > 0 {
-            total_inserted += 1;
+        if let Some(record) = result {
+            if record.was_inserted.unwrap_or(false) {
+                // xmax = 0 は新規挿入を意味する
+                total_inserted += 1;
+            } else {
+                // xmax > 0 は更新を意味する
+                total_updated += 1;
+            }
         }
+        // result が None の場合は、データが同一でWHERE句の条件に合わず更新もスキップされた
     }
 
     tx.commit()
         .await
         .context("トランザクションのコミットに失敗しました")?;
 
-    Ok(DatabaseInsertResult::new(
+    Ok(DatabaseInsertResult::new_complete(
         total_inserted,
-        rss_links.len() - total_inserted,
+        total_updated,
+        rss_links.len() - total_inserted - total_updated,
     ))
 }
 
@@ -188,12 +202,14 @@ mod tests {
     fn validate_save_result(
         result: &DatabaseInsertResult,
         expected_inserted: usize,
+        expected_updated: usize,
         expected_skipped: usize,
     ) {
         assert_eq!(
             result.inserted, expected_inserted,
             "新規挿入数が期待と異なります"
         );
+        assert_eq!(result.updated, expected_updated, "更新数が期待と異なります");
         assert_eq!(
             result.skipped_duplicate, expected_skipped,
             "重複スキップ数が期待と異なります"
@@ -290,7 +306,7 @@ mod tests {
             let result = store_rss_links(&rss_basic, &pool).await?;
 
             // SaveResultの検証
-            validate_save_result(&result, 3, 0);
+            validate_save_result(&result, 3, 0, 0);
 
             // 実際にデータベースに保存されたことを確認
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
@@ -322,7 +338,7 @@ mod tests {
             let result = store_rss_links(&[duplicate_rss_link], &pool).await?;
 
             // SaveResultの検証
-            validate_save_result(&result, 0, 1);
+            validate_save_result(&result, 0, 1, 0);
 
             // データベースの件数は変わらない（19件のまま）
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
@@ -365,7 +381,7 @@ mod tests {
             let result = store_rss_links(&mixed_articles, &pool).await?;
 
             // SaveResultの検証
-            validate_save_result(&result, 2, 1);
+            validate_save_result(&result, 2, 1, 0);
 
             // 最終的にデータベースには19件（fixture 17件 + 新規 2件）
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM rss_links")
