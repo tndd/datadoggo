@@ -23,6 +23,7 @@ pub struct ReqwestFirecrawlClient {
 impl ReqwestFirecrawlClient {
     /// デフォルトのFirecrawl設定で新しいクライアントを作成
     pub fn new() -> Result<Self> {
+        // NOTE: APIキーはダミーであり、httpの使用もlocalhostを用いるので警告不要
         let firecrawl_app = FirecrawlApp::new_selfhosted("http://localhost:13002", Some("fc-test"))
             .context("Firecrawl SDKの初期化に失敗")?;
 
