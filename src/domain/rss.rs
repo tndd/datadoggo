@@ -41,7 +41,7 @@ pub async fn get_rss_links_from_feed<H: HttpClient>(
     feed: &Feed,
 ) -> Result<Vec<RssLink>> {
     let xml_content = client
-        .fetch_text(&feed.rss_link, 30)
+        .fetch(&feed.rss_link, 30)
         .await
         .context(format!("RSSフィードの取得に失敗: {}", feed))?;
     let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
