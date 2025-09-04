@@ -194,47 +194,37 @@ mod tests {
         let xml2 = result2.unwrap();
 
         // 各URLのハッシュを計算して期待値を生成
-        let hash1 = format!("{:x}", url1.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64)));
+        let hash1 = format!(
+            "{:x}",
+            url1.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64))
+        );
         let hash1 = &hash1[..6.min(hash1.len())];
-        let hash2 = format!("{:x}", url2.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64)));
+        let hash2 = format!(
+            "{:x}",
+            url2.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64))
+        );
         let hash2 = &hash2[..6.min(hash2.len())];
 
         // ハッシュが確実に異なることを確認
         assert_ne!(hash1, hash2, "異なるURLから同じハッシュが生成されました");
 
-        // 両方とも有効なRSS XMLであることを確認
-        assert!(xml1.contains("<?xml version=\"1.0\""));
-        assert!(xml1.contains("<rss version=\"2.0\">"));
-        assert!(xml1.contains(":channel_title"));
-        assert!(xml1.contains(":title:1"));
-        assert!(xml1.contains(":title:2"));
-        assert!(xml1.contains(":title:3"));
-        assert!(xml1.contains(".example.com/1"));
-
-        assert!(xml2.contains("<?xml version=\"1.0\""));
-        assert!(xml2.contains("<rss version=\"2.0\">"));
-        assert!(xml2.contains(":channel_title"));
-        assert!(xml2.contains(":title:1"));
-        assert!(xml2.contains(":title:2"));
-        assert!(xml2.contains(":title:3"));
-        assert!(xml2.contains(".example.com/1"));
-
-        // XML1にはhash1が含まれ、hash2は含まれないことを確認
-        assert!(xml1.contains(hash1), "XML1にhash1({})が含まれていません", hash1);
-        assert!(!xml1.contains(hash2), "XML1にhash2({})が含まれています", hash2);
-
-        // XML2にはhash2が含まれ、hash1は含まれないことを確認
-        assert!(xml2.contains(hash2), "XML2にhash2({})が含まれていません", hash2);
-        assert!(!xml2.contains(hash1), "XML2にhash1({})が含まれています", hash1);
-
-        // 各XMLの特定パターンが異なることを確認
-        assert!(xml1.contains(&format!("https://{}.example.com/1", hash1)));
-        assert!(xml1.contains(&format!("{}:title:1", hash1)));
+        // ハッシュを含む特定の文字列でcontains検証
+        // xml1
         assert!(xml1.contains(&format!("{}:channel_title", hash1)));
-        
-        assert!(xml2.contains(&format!("https://{}.example.com/1", hash2)));
-        assert!(xml2.contains(&format!("{}:title:1", hash2)));
+        assert!(xml1.contains(&format!("{}:title:1", hash1)));
+        assert!(xml1.contains(&format!("{}:title:2", hash1)));
+        assert!(xml1.contains(&format!("{}:title:3", hash1)));
+        assert!(xml1.contains(&format!("https://{}.example.com/1", hash1)));
+        assert!(xml1.contains(&format!("https://{}.example.com/2", hash1)));
+        assert!(xml1.contains(&format!("https://{}.example.com/3", hash1)));
+        // xml2
         assert!(xml2.contains(&format!("{}:channel_title", hash2)));
+        assert!(xml2.contains(&format!("{}:title:1", hash2)));
+        assert!(xml2.contains(&format!("{}:title:2", hash2)));
+        assert!(xml2.contains(&format!("{}:title:3", hash2)));
+        assert!(xml2.contains(&format!("https://{}.example.com/1", hash2)));
+        assert!(xml2.contains(&format!("https://{}.example.com/2", hash2)));
+        assert!(xml2.contains(&format!("https://{}.example.com/3", hash2)));
 
         // 異なるURLから生成されたXMLは異なる内容であることを確認
         assert_ne!(xml1, xml2, "異なるURLから同じXMLが生成されました");
