@@ -194,16 +194,20 @@ mod tests {
         let xml2 = result2.unwrap();
 
         // 各URLのハッシュを計算して期待値を生成
-        let hash1 = format!(
-            "{:x}",
-            url1.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64))
-        );
-        let hash1 = &hash1[..6.min(hash1.len())];
-        let hash2 = format!(
-            "{:x}",
-            url2.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64))
-        );
-        let hash2 = &hash2[..6.min(hash2.len())];
+        let hash1 = {
+            let full_hash = format!(
+                "{:x}",
+                url1.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64))
+            );
+            full_hash[..6.min(full_hash.len())].to_string()
+        };
+        let hash2 = {
+            let full_hash = format!(
+                "{:x}",
+                url2.chars().fold(0u64, |acc, c| acc.wrapping_add(c as u64))
+            );
+            full_hash[..6.min(full_hash.len())].to_string()
+        };
 
         // ハッシュが確実に異なることを確認
         assert_ne!(hash1, hash2, "異なるURLから同じハッシュが生成されました");
