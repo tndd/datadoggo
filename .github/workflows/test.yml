@@ -14,9 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgres://datadoggo:datadoggo@localhost:5432/datadoggo
+      CARGO_INCREMENTAL: "0"
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
           POSTGRES_DB: datadoggo
           POSTGRES_USER: datadoggo
@@ -25,9 +26,10 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U datadoggo -d datadoggo"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+          --tmpfs /var/lib/postgresql/data:rw
 
     steps:
     - uses: actions/checkout@v4
@@ -40,22 +42,36 @@ jobs:
       with:
         path: ~/.cargo/registry
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
         
     - name: Cache cargo index
       uses: actions/cache@v3
       with:
         path: ~/.cargo/git
         key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-index-
         
     - name: Cache cargo build
       uses: actions/cache@v3
       with:
         path: target
         key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-build-target-
 
+    - name: Cache sqlx-cli binary
+      id: cache-sqlx
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/bin/sqlx
+        key: ${{ runner.os }}-sqlx-cli-v1
+ 
     - name: Install SQLx CLI
+      if: steps.cache-sqlx.outputs.cache-hit != 'true'
       run: cargo install sqlx-cli --no-default-features --features rustls,postgres
-
+ 
     - name: Reset database and run migrations
       run: sqlx database reset --force
         
