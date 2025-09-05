@@ -66,7 +66,7 @@ pub struct Article {
 
 // 軽量記事エンティティ（バックログ処理用、contentを除外）
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct ArticleLight {
+pub struct ArticleMetadata {
     pub url: String,
     pub title: String,
     pub pub_date: DateTime<Utc>,
@@ -91,7 +91,7 @@ impl ArticleView for Article {
     }
 }
 
-impl ArticleView for ArticleLight {
+impl ArticleView for ArticleMetadata {
     fn get_link(&self) -> &str {
         &self.url
     }
@@ -336,7 +336,7 @@ pub async fn get_article_content_with_client(
 pub async fn search_backlog_articles_light(
     pool: &PgPool,
     limit: Option<i64>,
-) -> Result<Vec<ArticleLight>> {
+) -> Result<Vec<ArticleMetadata>> {
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"
         SELECT 
@@ -357,7 +357,7 @@ pub async fn search_backlog_articles_light(
     }
 
     let results = qb
-        .build_query_as::<ArticleLight>()
+        .build_query_as::<ArticleMetadata>()
         .fetch_all(pool)
         .await
         .context("バックログ記事の軽量版取得に失敗")?;
@@ -672,7 +672,7 @@ mod tests {
                 content: Some("記事内容".to_string()),
             };
             // 軽量版記事のテスト
-            let light_article = ArticleLight {
+            let light_article = ArticleMetadata {
                 url: "https://test.com/light".to_string(),
                 title: "軽量版記事".to_string(),
                 pub_date: Utc::now(),
@@ -715,14 +715,14 @@ mod tests {
             ];
 
             let light_articles = vec![
-                ArticleLight {
+                ArticleMetadata {
                     url: "https://test.com/unprocessed".to_string(),
                     title: "未処理記事".to_string(),
                     pub_date: Utc::now(),
                     updated_at: None,
                     status_code: None,
                 },
-                ArticleLight {
+                ArticleMetadata {
                     url: "https://test.com/success_light".to_string(),
                     title: "成功軽量記事".to_string(),
                     pub_date: Utc::now(),
