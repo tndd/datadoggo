@@ -73,7 +73,8 @@ jobs:
       run: cargo install sqlx-cli --no-default-features --features rustls,postgres
  
     - name: Reset database and run migrations
-      run: sqlx database reset --force
+-      run: sqlx database reset --force
++      run: sqlx database reset -y
         
     - name: Run tests
       run: cargo test --verbose
