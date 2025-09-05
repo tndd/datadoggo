@@ -63,7 +63,7 @@ fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<Feed>> {
 ///
 /// 内部でfeeds.yamlファイルを読み込み、指定されたクエリでフィルタリングする
 pub fn search_feeds(query: Option<FeedQuery>) -> Result<Vec<Feed>> {
-    let feeds = load_feeds_from_yaml("src/domain/data/feeds.yaml")?;
+    let feeds = load_feeds_from_yaml("config/feeds.yaml")?;
     let query = query.unwrap_or_default();
 
     let filtered_feeds = feeds
