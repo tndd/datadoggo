@@ -33,26 +33,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      
-    # 1 つのステップでレジストリ・インデックス・ビルド成果物をまとめてキャッシュ
-    - uses: Swatinem/rust-cache@v2
-      with:
-        # target ディレクトリだけでなく依存 crate 全体もキャッシュ
-        cache-all-crates: true
 
-    - name: Cache sqlx-cli binary
-      id: cache-sqlx
-      uses: actions/cache@v3
-      with:
-        path: ~/.cargo/bin/sqlx
-        key: ${{ runner.os }}-sqlx-cli-v1
- 
-    - name: Install SQLx CLI
-      if: steps.cache-sqlx.outputs.cache-hit != 'true'
-      run: cargo install sqlx-cli --no-default-features --features rustls,postgres
+    # Common Rust environment setup (toolchain, cache, sqlx CLI)
+    - uses: ./.github/actions/setup-rust
  
     - name: Reset database and run migrations
       run: sqlx database reset -y

@@ -18,17 +18,42 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://datadoggo:datadoggo@localhost:5432/datadoggo
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
     permissions:
       contents: read
       pull-requests: read
       issues: read
       id-token: write
       actions: read # Required for Claude to read CI results on PRs
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: datadoggo
+          POSTGRES_USER: datadoggo
+          POSTGRES_PASSWORD: datadoggo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U datadoggo -d datadoggo"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+          --tmpfs /var/lib/postgresql/data:rw
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      # Common Rust environment setup (toolchain, cache, sqlx CLI)
+      - uses: ./.github/actions/setup-rust
+
+      - name: Reset database and run migrations
+        run: sqlx database reset -y
 
       - name: Run Claude Code
         id: claude
@@ -47,4 +72,5 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.anthropic.com/en/docs/claude-code/sdk#command-line for available options
           # claude_args: '--model claude-opus-4-1-20250805 --allowed-tools Bash(gh pr:*)'
+          claude_args: '--allowedTools Bash(*)'
 

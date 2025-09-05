@@ -1,0 +1,44 @@
+name: "Setup Rust Environment"
+description: "Common steps to prepare Rust toolchain, caching, and sqlx CLI for CI jobs"
+
+inputs:
+  cache-all-crates:
+    description: "Whether to cache all cargo crates (default: true)"
+    required: false
+    default: "true"
+  sqlx-version:
+    description: "Version spec for sqlx-cli (passed to cargo install --version <ver>). If empty installs latest."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    # Install rust toolchain (stable)
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    # Cache cargo registry + target directory (Swatinem/rust-cache does this automatically)
+    - name: Cache cargo registry & build artifacts
+      uses: Swatinem/rust-cache@v2
+      with:
+        cache-all-crates: ${{ inputs.cache-all-crates }}
+
+    # Cache sqlx-cli binary to speed up subsequent runs
+    - name: Cache sqlx-cli binary
+      id: cache-sqlx
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/bin/sqlx
+        key: ${{ runner.os }}-sqlx-cli-v1
+
+    # Install sqlx-cli (only when cache miss)
+    - name: Install SQLx CLI
+      if: steps.cache-sqlx.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.sqlx-version }}" ]; then
+          cargo install sqlx-cli --no-default-features --features rustls,postgres --version "${{ inputs.sqlx-version }}"
+        else
+          cargo install sqlx-cli --no-default-features --features rustls,postgres
+        fi

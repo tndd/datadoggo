@@ -21,17 +21,42 @@ jobs:
     #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
     
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://datadoggo:datadoggo@localhost:5432/datadoggo
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
     permissions:
       contents: read
       pull-requests: read
       issues: read
       id-token: write
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: datadoggo
+          POSTGRES_USER: datadoggo
+          POSTGRES_PASSWORD: datadoggo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U datadoggo -d datadoggo"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+          --tmpfs /var/lib/postgresql/data:rw
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      # Common Rust environment setup (toolchain, cache, sqlx CLI)
+      - uses: ./.github/actions/setup-rust
+
+      - name: Reset database and run migrations
+        run: sqlx database reset -y
 
       - name: Run Claude Code Review
         id: claude-review
