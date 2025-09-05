@@ -38,9 +38,5 @@ WIP
 - CFR（外交問題評議会） - Foreign Affairs誌、CFR報告書で米国外交思想を形成
 - ...
 
-## bluesky
-## google news
-## scrape
-
 # Todo
 - [ ] search_backlog_articles_light, search_backlog_article_linksの類似
