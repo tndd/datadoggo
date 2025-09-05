@@ -91,11 +91,7 @@ impl FirecrawlClient for MockFirecrawlClient {
             })
         } else {
             // エラー時のレスポンス
-            let error_msg = self
-                .error_message
-                .as_ref()
-                .map(|s| s.as_str())
-                .unwrap_or("Mock error");
+            let error_msg = self.error_message.as_deref().unwrap_or("Mock error");
             Err(anyhow::anyhow!("モックエラー: {}", error_msg))
         }
     }
