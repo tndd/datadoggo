@@ -90,11 +90,7 @@ impl HttpClient for MockHttpClient {
     async fn fetch(&self, url: &str, _timeout_secs: u64) -> Result<String> {
         if !self.simulate_success {
             // エラー時のレスポンス
-            let error_msg = self
-                .error_message
-                .as_ref()
-                .map(|s| s.as_str())
-                .unwrap_or("Mock HTTP error");
+            let error_msg = self.error_message.as_deref().unwrap_or("Mock HTTP error");
             return Err(anyhow::anyhow!("モックHTTPエラー: {}", error_msg));
         }
 
@@ -234,7 +230,7 @@ mod tests {
         match result {
             Ok(content) => {
                 assert!(!content.is_empty(), "取得した内容が空");
-                assert!(content.contains("xml"), "XMLコンテンツを含むべき");
+                assert!(content.contains("xml"), "XMLコンテントを含むべき");
                 println!("✅ HTTP軽量オンラインテスト成功: {}文字取得", content.len());
             }
             Err(e) => {
