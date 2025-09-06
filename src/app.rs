@@ -1,7 +1,7 @@
 use crate::{
     core::feed::{search_feeds, FeedQuery},
     infra::api::{firecrawl::FirecrawlClient, http::HttpClient},
-    task::{process_collect_article_links, task_collect_articles},
+    task::{task_collect_article_links, task_collect_articles},
 };
 use anyhow::{Context, Result};
 use sqlx::PgPool;
@@ -44,7 +44,7 @@ pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
     }
 
     // 段階1: RSSフィードからリンクを取得
-    process_collect_article_links(http_client, &feeds, pool).await?;
+    task_collect_article_links(http_client, &feeds, pool).await?;
     // 段階2: 未処理のリンクから記事内容を取得
     task_collect_articles(firecrawl_client, pool).await?;
 

@@ -9,7 +9,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 /// RSSフィードからリンクを収集してDBに保存する
-pub async fn process_collect_article_links<H: HttpClient>(
+pub async fn task_collect_article_links<H: HttpClient>(
     client: &H,
     feeds: &[Feed],
     pool: &PgPool,
@@ -48,7 +48,7 @@ mod tests {
     use sqlx::PgPool;
 
     #[sqlx::test]
-    async fn test_process_collect_article_links_success(pool: PgPool) -> Result<(), anyhow::Error> {
+    async fn test_task_collect_article_links_success(pool: PgPool) -> Result<(), anyhow::Error> {
         use crate::core::feed::Feed;
         use crate::infra::api::http::MockHttpClient;
 
@@ -84,8 +84,8 @@ mod tests {
             "初期状態でarticle_linksが空ではありません"
         );
 
-        // process_collect_article_linksを実行
-        let result = process_collect_article_links(&mock_client, &test_feeds, &pool).await;
+        // task_collect_article_linksを実行
+        let result = task_collect_article_links(&mock_client, &test_feeds, &pool).await;
         assert!(
             result.is_ok(),
             "RSS収集処理が失敗しました: {:?}",
@@ -169,7 +169,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_process_collect_article_links_with_errors(
+    async fn test_task_collect_article_links_with_errors(
         pool: PgPool,
     ) -> Result<(), anyhow::Error> {
         use crate::core::feed::Feed;
@@ -197,12 +197,12 @@ mod tests {
         // 成功クライアントで正常フィードを処理
         let success_client = MockHttpClient::new_success();
 
-        // process_collect_article_linksは内部的にはエラーを握り潰して継続処理するため、
+        // task_collect_article_linksは内部的にはエラーを握り潰して継続処理するため、
         // 個別にテストする必要がある
 
         // 1. 成功フィードのテスト
         let success_feeds = vec![test_feeds[0].clone()];
-        let result = process_collect_article_links(&success_client, &success_feeds, &pool).await;
+        let result = task_collect_article_links(&success_client, &success_feeds, &pool).await;
         assert!(result.is_ok(), "成功フィードの処理が失敗しました");
 
         // 成功フィードからの3件のリンクが保存されることを確認
@@ -219,7 +219,7 @@ mod tests {
         let error_client = MockHttpClient::new_error("接続タイムアウト");
 
         // エラークライアントでも処理自体は成功する（内部でエラーハンドリング）
-        let all_result = process_collect_article_links(&error_client, &test_feeds, &pool).await;
+        let all_result = task_collect_article_links(&error_client, &test_feeds, &pool).await;
         assert!(
             all_result.is_ok(),
             "エラーハンドリングが正しく動作していません"
@@ -244,8 +244,7 @@ mod tests {
         // 混在処理では各フィードが個別に処理される
         // この関数は現在の実装ではクライアント固定なので、実際の混在テストは困難
         // その代わりに、成功ケースが正しく処理されることを再確認
-        let final_result =
-            process_collect_article_links(&success_client, &success_feeds, &pool).await;
+        let final_result = task_collect_article_links(&success_client, &success_feeds, &pool).await;
         assert!(
             final_result.is_ok(),
             "最終的な成功フィード処理が失敗しました"
@@ -267,7 +266,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_process_collect_article_links_duplicate_handling(
+    async fn test_task_collect_article_links_duplicate_handling(
         pool: PgPool,
     ) -> Result<(), anyhow::Error> {
         use crate::core::feed::Feed;
@@ -308,7 +307,7 @@ mod tests {
 
         // 1回目の実行：最初のフィードを処理
         let first_feed = vec![duplicate_feeds[0].clone()];
-        let result1 = process_collect_article_links(&mock_client, &first_feed, &pool).await;
+        let result1 = task_collect_article_links(&mock_client, &first_feed, &pool).await;
         assert!(result1.is_ok(), "1回目のRSS収集処理が失敗しました");
 
         // 1回目実行後の件数確認（3件のリンクが挿入されるはず）
@@ -337,7 +336,7 @@ mod tests {
 
         // 2回目の実行：同一URLのフィードを再度処理（重複発生）
         let second_feed = vec![duplicate_feeds[1].clone()];
-        let result2 = process_collect_article_links(&mock_client, &second_feed, &pool).await;
+        let result2 = task_collect_article_links(&mock_client, &second_feed, &pool).await;
         assert!(result2.is_ok(), "2回目のRSS収集処理が失敗しました");
 
         // 2回目実行後の件数確認（重複により件数は変わらず3件のまま）
@@ -385,7 +384,7 @@ mod tests {
         }
 
         // 3回目の実行：全ての重複フィードを一度に処理
-        let all_result = process_collect_article_links(&mock_client, &duplicate_feeds, &pool).await;
+        let all_result = task_collect_article_links(&mock_client, &duplicate_feeds, &pool).await;
         assert!(all_result.is_ok(), "全重複フィードの処理が失敗しました");
 
         // 最終的な件数確認（依然として3件のまま）
@@ -429,7 +428,7 @@ mod tests {
             rss_link: "https://unique.example.com/different.xml".to_string(),
         }];
 
-        let unique_result = process_collect_article_links(&mock_client, &unique_feed, &pool).await;
+        let unique_result = task_collect_article_links(&mock_client, &unique_feed, &pool).await;
         assert!(
             unique_result.is_ok(),
             "ユニークフィードの処理が失敗しました"

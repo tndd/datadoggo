@@ -2,4 +2,4 @@ pub mod article;
 pub mod rss;
 
 pub use article::task_collect_articles;
-pub use rss::process_collect_article_links;
+pub use rss::task_collect_article_links;
