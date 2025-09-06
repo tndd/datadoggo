@@ -1,20 +1,12 @@
-use super::model::{Article, ArticleInfo, ArticleStatus};
+use super::model::ArticleInfo;
 use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
+// 記事軽量版検索用クエリ（内部実装用、非公開）
 #[derive(Debug, Default)]
-pub struct ArticleQuery {
-    pub link_pattern: Option<String>,
-    pub pub_date_from: Option<DateTime<Utc>>,
-    pub pub_date_to: Option<DateTime<Utc>>,
-    pub article_status: Option<ArticleStatus>,
-    pub limit: Option<i64>,
-}
-
-#[derive(Debug, Default)]
-pub struct ArticleInfoQuery {
+struct ArticleInfoQuery {
     pub url_pattern: Option<String>,
     pub pub_date_from: Option<DateTime<Utc>>,
     pub pub_date_to: Option<DateTime<Utc>>,
@@ -107,8 +99,8 @@ pub async fn fetch_and_store_article_with_client(
     Ok(article)
 }
 
-/// 記事情報（軽量版）を取得する - URLとステータスコードのみ
-pub async fn search_article_info(
+/// 記事情報（軽量版）を取得する - URLとステータスコードのみ（内部実装用）
+async fn search_article_info(
     query: Option<ArticleInfoQuery>,
     pool: &PgPool,
 ) -> Result<Vec<ArticleInfo>> {
@@ -170,86 +162,6 @@ pub async fn search_article_info(
     let articles = qb.build_query_as::<ArticleInfo>().fetch_all(pool).await?;
 
     Ok(articles)
-}
-
-/// 完全な記事データを取得する（処理済みの記事のみ）
-pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
-    let query = query.unwrap_or_default();
-
-    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        r#"
-        SELECT 
-            al.url,
-            al.title,
-            al.pub_date,
-            a.timestamp as updated_at,
-            a.status_code,
-            a.content
-        FROM article_links al
-        INNER JOIN articles a ON al.url = a.url
-        "#,
-    );
-
-    let mut has_where = false;
-    if let Some(ref link_pattern) = query.link_pattern {
-        if !has_where {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        let pattern = format!("%{}%", link_pattern);
-        qb.push("al.url ILIKE ").push_bind(pattern);
-    }
-    if let Some(pub_date_from) = query.pub_date_from {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        qb.push("al.pub_date >= ").push_bind(pub_date_from);
-    }
-    if let Some(pub_date_to) = query.pub_date_to {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        qb.push("al.pub_date <= ").push_bind(pub_date_to);
-    }
-    if let Some(ref status) = query.article_status {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-        }
-
-        match status {
-            ArticleStatus::Success => {
-                qb.push("a.status_code = 200");
-            }
-            ArticleStatus::Error(code) => {
-                qb.push("a.status_code = ").push_bind(*code);
-            }
-            ArticleStatus::Unprocessed => {
-                // INNER JOINを使っているので、未処理記事は取得されない
-                qb.push("FALSE");
-            }
-        }
-    }
-
-    qb.push(" ORDER BY al.pub_date DESC");
-    if let Some(limit) = query.limit {
-        qb.push(" LIMIT ").push_bind(limit);
-    }
-
-    let results = qb
-        .build_query_as::<Article>()
-        .fetch_all(pool)
-        .await
-        .context("記事情報の取得に失敗")?;
-
-    Ok(results)
 }
 
 /// バックログ記事の軽量版を取得する（URLとステータスコードのみ）
@@ -525,6 +437,8 @@ mod tests {
 
         #[sqlx::test(fixtures("../../../fixtures/article_query_filter.sql"))]
         async fn test_article_query_filters(pool: PgPool) -> Result<(), anyhow::Error> {
+            use crate::core::article::model::{search_articles, ArticleQuery};
+
             let query = ArticleQuery {
                 link_pattern: Some("example.com".to_string()),
                 ..Default::default()
@@ -532,20 +446,14 @@ mod tests {
             let example_links = search_articles(Some(query), &pool).await?;
             assert_eq!(example_links.len(), 2, "example.comのリンクは2件のはず");
 
-            let query = ArticleQuery {
-                article_status: Some(ArticleStatus::Success),
-                ..Default::default()
-            };
-            let success_links = search_articles(Some(query), &pool).await?;
-            let success_count = success_links
+            // article_statusフィールドは削除されたため、成功記事のみを取得するクエリは不要
+            // 代わりに、取得した記事が処理済み（status_code=200）であることを検証
+            let all_processed_links = search_articles(None, &pool).await?;
+            let success_count = all_processed_links
                 .iter()
                 .filter(|link| link.status_code == 200)
                 .count();
-            assert_eq!(
-                success_count,
-                success_links.len(),
-                "成功記事のみが取得されるべき"
-            );
+            assert!(success_count > 0, "成功記事が存在するべき");
 
             println!("✅ クエリフィルターテスト成功");
             Ok(())
@@ -581,6 +489,8 @@ mod tests {
         async fn test_search_processed_articles_with_join(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
+            use crate::core::article::model::search_articles;
+
             let all_links = search_articles(None, &pool).await?;
             assert!(
                 all_links.len() >= 1,
