@@ -13,6 +13,28 @@ pub struct ArticleContent {
     pub content: String,
 }
 
+// 軽量記事エンティティ（バックログ処理用、contentを除外）
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ArticleMetadata {
+    pub url: String,
+    pub title: String,
+    pub pub_date: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub status_code: Option<i32>,
+    // content フィールドは意図的に除外
+}
+
+// 記事エンティティ（RSSリンクと記事内容の統合表現）
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Article {
+    pub url: String,
+    pub title: String,
+    pub pub_date: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub status_code: Option<i32>,
+    pub content: Option<String>,
+}
+
 // 記事の処理状態を表現するenum
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ArticleStatus {
@@ -51,28 +73,6 @@ pub trait ArticleView {
     fn is_backlog(&self) -> bool {
         self.is_unprocessed() || self.is_error()
     }
-}
-
-// 記事エンティティ（RSSリンクと記事内容の統合表現）
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct Article {
-    pub url: String,
-    pub title: String,
-    pub pub_date: DateTime<Utc>,
-    pub updated_at: Option<DateTime<Utc>>,
-    pub status_code: Option<i32>,
-    pub content: Option<String>,
-}
-
-// 軽量記事エンティティ（バックログ処理用、contentを除外）
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct ArticleMetadata {
-    pub url: String,
-    pub title: String,
-    pub pub_date: DateTime<Utc>,
-    pub updated_at: Option<DateTime<Utc>>,
-    pub status_code: Option<i32>,
-    // content フィールドは意図的に除外
 }
 
 // ArticleViewトレイトの実装
