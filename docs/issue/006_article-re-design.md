@@ -99,6 +99,32 @@ mod.rsとは従属的な関係となる。
 注意点:
 - このArticleUrlStatus追加に伴い、その取得のためのクエリと関数とテストの実装が必要となる
 
+### ArticleJoinRow
+- `article_links`と`articles`のJOIN結果をそのまま受け取るDB用の構造体
+- 外部には公開しない
+
+---
+
+テーブル定義:
+| Field       | Type                  |
+| ----------- | --------------------- |
+| url         | String                |
+| title       | String                |
+| pub_date    | DateTime<Utc>         |
+| source      | String                |
+| timestamp   | Option<DateTime<Utc>> |
+| status_code | Option<i32>           |
+| content     | Option<String>        |
+
+---
+
+JOIN想定:
+- FROM article_links AS al
+- LEFT JOIN articles AS ar ON al.url = ar.url
+- SELECT ではカラムの競合を避けるため、al.url AS url のように明示的にエイリアスを付ける
+
+注意点:
+- ドメイン`Article`への変換機能が必要となる
 
 # 要望
 - 過度な抽象化は控えること
