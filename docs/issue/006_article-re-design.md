@@ -1,8 +1,8 @@
 # Article モジュールの構造改善
-mod.rsにユーザー側が使うものを集め、service.rsに外部からの情報取得や関数を集める棲み分けを行いたいと考えている。
+[mod.rs](../../src/core/article/mod.rs)にユーザー側が使うものを集め、[service.rs](../../src/core/article/service.rs)に外部からの情報取得や関数を集める棲み分けを行いたいと考えている。
 
 # 修正対象
-## mod.rs
+## [mod.rs](../../src/core/article/mod.rs)
 中間データやdbのテーブル定義に引っ張られない情報が集まるファイル。\
 ユーザーが直接見る
 
@@ -58,10 +58,11 @@ mod.rsにユーザー側が使うものを集め、service.rsに外部からの�
 - ArticleQuery変更に伴うsqlの修正
   - statusがクエリから消し去られたに伴い、この関数のsqlやその他の処理に関しても修正が必要となる
 
-## service.rs
+## [service.rs](../../src/core/article/service.rs)
 その他のドメイン領域から外れたdirtyな処理を集めたファイル。\
 mod.rsとは従属的な関係となる。
 
 # 要望
 - 過度な抽象化は控えること
 - なるべく簡潔な実装を行い可読性を上げること
+- 後方互換性を無視して作り直すこと
