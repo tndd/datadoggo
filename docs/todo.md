@@ -1,6 +1,7 @@
 # Issue
 - [ ] search_backlog_articles_light, search_backlog_article_linksの類似
 - [ ] Article構造体のに意図しないOption指定がある問題
+- [ ] Article構造体がArticleStatusを持っていない問題
 
 # Todo
 
