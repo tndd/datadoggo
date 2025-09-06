@@ -22,6 +22,68 @@ pub struct ArticleUrlStatus {
     pub status_code: Option<i32>,
 }
 
+// ArticleUrlStatusを取得する際に使用するクエリモデル
+#[derive(Debug, Default)]
+pub struct ArticleUrlStatusQuery {
+    pub url_pattern: Option<String>,
+    pub status_codes: Option<Vec<i32>>,
+    pub limit: Option<i64>,
+}
+
+// ArticleUrlStatusを取得する関数
+pub async fn search_article_url_statuses(
+    query: Option<ArticleUrlStatusQuery>,
+    pool: &PgPool,
+) -> Result<Vec<ArticleUrlStatus>> {
+    let query = query.unwrap_or_default();
+
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        r#"
+        SELECT 
+            al.url,
+            a.status_code
+        FROM article_links al
+        LEFT JOIN articles a ON al.url = a.url
+        "#,
+    );
+
+    let mut has_where = false;
+
+    if let Some(ref url_pattern) = query.url_pattern {
+        if !has_where {
+            qb.push(" WHERE ");
+            has_where = true;
+        }
+        let pattern = format!("%{}%", url_pattern);
+        qb.push("al.url ILIKE ").push_bind(pattern);
+    }
+
+    if let Some(ref status_codes) = query.status_codes {
+        if has_where {
+            qb.push(" AND ");
+        } else {
+            qb.push(" WHERE ");
+        }
+        qb.push("a.status_code = ANY(")
+            .push_bind(status_codes)
+            .push(")");
+    }
+
+    qb.push(" ORDER BY al.url");
+
+    if let Some(limit) = query.limit {
+        qb.push(" LIMIT ").push_bind(limit);
+    }
+
+    let results = qb
+        .build_query_as::<ArticleUrlStatus>()
+        .fetch_all(pool)
+        .await
+        .context("ArticleUrlStatus情報の取得に失敗")?;
+
+    Ok(results)
+}
+
 // ArticleLinkとArticleのJOIN結果をそのまま受け取るDB用の構造体
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ArticleJoinRow {
@@ -142,6 +204,14 @@ pub struct ArticleContent {
     pub content: String,
 }
 
+#[derive(Debug, Default)]
+pub struct ArticleContentQuery {
+    pub url_pattern: Option<String>,
+    pub timestamp_from: Option<DateTime<Utc>>,
+    pub timestamp_to: Option<DateTime<Utc>>,
+    pub status_code: Option<i32>,
+}
+
 /// URLから記事内容を取得してArticleContent構造体に変換する（Firecrawl SDK使用）
 pub async fn get_article_content(url: &str) -> Result<ArticleContent> {
     let client =
@@ -218,14 +288,6 @@ pub async fn fetch_and_store_article_with_client(
     Ok(article)
 }
 
-#[derive(Debug, Default)]
-pub struct ArticleContentQuery {
-    pub url_pattern: Option<String>,
-    pub timestamp_from: Option<DateTime<Utc>>,
-    pub timestamp_to: Option<DateTime<Utc>>,
-    pub status_code: Option<i32>,
-}
-
 /// 指定されたデータベースプールからArticleContentを取得する。
 pub async fn search_article_contents(
     query: Option<ArticleContentQuery>,
@@ -282,38 +344,6 @@ pub async fn search_article_contents(
         .await?;
 
     Ok(articles)
-}
-
-/// バックログ記事の軽量版を取得する（article_contentを除外し、パフォーマンスを向上）
-pub async fn search_backlog_articles_light(
-    pool: &PgPool,
-    limit: Option<i64>,
-) -> Result<Vec<super::model::ArticleMetadata>> {
-    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        r#"
-        SELECT 
-            al.url,
-            al.title,
-            al.pub_date,
-            a.timestamp as updated_at,
-            a.status_code
-        FROM article_links al
-        LEFT JOIN articles a ON al.url = a.url
-        WHERE a.url IS NULL OR a.status_code != 200
-        ORDER BY al.pub_date DESC
-        "#,
-    );
-    if let Some(limit) = limit {
-        qb.push(" LIMIT ").push_bind(limit);
-    }
-
-    let results = qb
-        .build_query_as::<super::model::ArticleMetadata>()
-        .fetch_all(pool)
-        .await
-        .context("バックログ記事の軽量版取得に失敗")?;
-
-    Ok(results)
 }
 
 #[cfg(test)]
@@ -577,6 +607,54 @@ mod tests {
             assert!(result.content.is_some());
 
             println!("✅ ArticleJoinRow検索テスト成功");
+            Ok(())
+        }
+
+        #[sqlx::test]
+        async fn test_search_article_url_statuses(pool: PgPool) -> Result<(), anyhow::Error> {
+            // テストデータを挿入
+            sqlx::query!(
+                "INSERT INTO article_links (url, title, pub_date, source) VALUES ($1, $2, $3, $4)",
+                "https://status.test.com/url1",
+                "ステータステスト記事1",
+                chrono::Utc::now(),
+                "test"
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query!(
+                "INSERT INTO article_links (url, title, pub_date, source) VALUES ($1, $2, $3, $4)",
+                "https://status.test.com/url2",
+                "ステータステスト記事2",
+                chrono::Utc::now(),
+                "test"
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query!(
+                "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
+                "https://status.test.com/url1",
+                404,
+                "エラー内容"
+            )
+            .execute(&pool)
+            .await?;
+
+            // エラー状態のURLを検索
+            let query = ArticleUrlStatusQuery {
+                status_codes: Some(vec![404]),
+                ..Default::default()
+            };
+            let results = search_article_url_statuses(Some(query), &pool).await?;
+
+            assert!(!results.is_empty());
+            let result = &results[0];
+            assert_eq!(result.url, "https://status.test.com/url1");
+            assert_eq!(result.status_code, Some(404));
+
+            println!("✅ ArticleUrlStatus検索テスト成功");
             Ok(())
         }
     }

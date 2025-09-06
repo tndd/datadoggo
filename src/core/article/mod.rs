@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-pub mod model;
 pub mod service;
 
 // ユーザー側が実際に取り扱う情報モデル
@@ -67,16 +66,10 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
 
 // 公開APIの再エクスポート
 
-// model.rsから
-pub use model::{
-    count_articles_metadata_by_status, filter_articles_metadata_by_status,
-    format_backlog_articles_metadata, ArticleMetadata,
-};
-
 // service.rsから
 pub use service::{
     fetch_and_store_article, fetch_and_store_article_with_client, get_article_content,
     get_article_content_with_client, search_article_contents, search_article_join_rows,
-    search_backlog_articles_light, store_article_content, ArticleContent, ArticleContentQuery,
-    ArticleJoinRow, ArticleJoinRowQuery, ArticleStatus, ArticleUrlStatus,
+    search_article_url_statuses, store_article_content, ArticleContent, ArticleContentQuery,
+    ArticleJoinRow, ArticleJoinRowQuery, ArticleStatus, ArticleUrlStatus, ArticleUrlStatusQuery,
 };
