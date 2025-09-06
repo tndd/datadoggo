@@ -1,14 +1,24 @@
-# Issue
+# Todo
+- [x] rss_linkという具象的すぎる名前の改名
+- [x] 自動cargo fmt
+- [x] article再編
+- [x] dataディレクトリ移動
+- [x] sqlディレクトリの作成
+- [x] Article構造体がドメインとDB両方の間で板挟みになってる問題
 - [ ] search_backlog_articles_light, search_backlog_article_linksの類似
 
-# Todo
+# Summary
+Todoの内容を具体化する。
+
 ## Article構造体がドメインとDB両方の間で板挟みになってる問題
 - modelとserviceの分割の基準
 - article構造体のoption問題
 
 ---
 
-# Done
+# Documented
+issueとして文書化されたSummaryはこちらに移動。
+
 ## rss_linkという具象的すぎる名前の改名
 - 本来これはスクレイプする前の待機リストの役割がある
 - つまり、むしろarticle_linkという名前での方が正しい。
