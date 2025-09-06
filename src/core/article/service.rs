@@ -381,6 +381,107 @@ mod tests {
     use super::*;
     use crate::infra::storage::file::load_json_from_file;
 
+    #[test]
+    fn test_article_status_enum() {
+        // 各バリアントの基本動作テスト
+        let unprocessed = ArticleStatus::Unprocessed;
+        let success = ArticleStatus::Success;
+        let error_404 = ArticleStatus::Error(404);
+        let error_500 = ArticleStatus::Error(500);
+
+        // パターンマッチングの動作確認
+        match unprocessed {
+            ArticleStatus::Unprocessed => (),
+            _ => panic!("Unprocessedのマッチングが失敗"),
+        }
+
+        match success {
+            ArticleStatus::Success => (),
+            _ => panic!("Successのマッチングが失敗"),
+        }
+
+        match error_404 {
+            ArticleStatus::Error(404) => (),
+            _ => panic!("Error(404)のマッチングが失敗"),
+        }
+
+        // シリアライゼーション/デシリアライゼーションテスト
+        let json_success = serde_json::to_string(&success).unwrap();
+        let deserialized: ArticleStatus = serde_json::from_str(&json_success).unwrap();
+        match deserialized {
+            ArticleStatus::Success => (),
+            _ => panic!("シリアライゼーション後のデシリアライズが失敗"),
+        }
+
+        // エラーコードの値検証
+        match error_500 {
+            ArticleStatus::Error(code) => assert_eq!(code, 500),
+            _ => panic!("Error(500)の値取得が失敗"),
+        }
+    }
+
+    #[test]
+    fn test_query_structures() {
+        use chrono::{TimeZone, Utc};
+
+        // ArticleUrlStatusQueryのデフォルト値テスト
+        let default_url_query = ArticleUrlStatusQuery::default();
+        assert!(default_url_query.url_pattern.is_none());
+        assert!(default_url_query.statuses.is_none());
+        assert!(default_url_query.limit.is_none());
+
+        // ArticleJoinRowQueryのデフォルト値テスト
+        let default_join_query = ArticleJoinRowQuery::default();
+        assert!(default_join_query.link_pattern.is_none());
+        assert!(default_join_query.pub_date_from.is_none());
+        assert!(default_join_query.pub_date_to.is_none());
+        assert!(default_join_query.statuses.is_none());
+        assert!(default_join_query.source.is_none());
+        assert!(default_join_query.limit.is_none());
+
+        // ArticleContentQueryのデフォルト値テスト
+        let default_content_query = ArticleContentQuery::default();
+        assert!(default_content_query.url_pattern.is_none());
+        assert!(default_content_query.timestamp_from.is_none());
+        assert!(default_content_query.timestamp_to.is_none());
+        assert!(default_content_query.status_code.is_none());
+
+        // 複合条件の構築テスト
+        let pub_date_from = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
+        let pub_date_to = Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap();
+
+        let complex_join_query = ArticleJoinRowQuery {
+            link_pattern: Some("example.com".to_string()),
+            pub_date_from: Some(pub_date_from),
+            pub_date_to: Some(pub_date_to),
+            statuses: Some(vec![ArticleStatus::Success, ArticleStatus::Error(404)]),
+            source: Some("test-feed".to_string()),
+            limit: Some(10),
+        };
+
+        assert_eq!(
+            complex_join_query.link_pattern,
+            Some("example.com".to_string())
+        );
+        assert_eq!(complex_join_query.pub_date_from, Some(pub_date_from));
+        assert_eq!(complex_join_query.pub_date_to, Some(pub_date_to));
+        assert_eq!(complex_join_query.statuses.as_ref().unwrap().len(), 2);
+        assert_eq!(complex_join_query.source, Some("test-feed".to_string()));
+        assert_eq!(complex_join_query.limit, Some(10));
+
+        // 境界値パターンのテスト
+        let boundary_query = ArticleContentQuery {
+            url_pattern: Some("".to_string()), // 空文字パターン
+            timestamp_from: Some(pub_date_from),
+            timestamp_to: Some(pub_date_from), // 同じ日時での範囲
+            status_code: Some(0),              // 境界値
+        };
+
+        assert_eq!(boundary_query.url_pattern, Some("".to_string()));
+        assert_eq!(boundary_query.timestamp_from, boundary_query.timestamp_to);
+        assert_eq!(boundary_query.status_code, Some(0));
+    }
+
     mod helper {
         use super::*;
 
@@ -416,25 +517,20 @@ mod tests {
         }
 
         #[test]
-        fn test_read_article_from_file() {
+        fn test_file_operations() {
+            use std::fs;
+
+            // 正常なファイル読み込みテスト
             let result = read_article_content_from_file("mock/fc/bbc.json");
             assert!(result.is_ok(), "Firecrawl JSONファイルの読み込みに失敗");
 
             let article = result.unwrap();
             assert!(!article.content.is_empty(), "contentが空です");
             assert!(!article.url.is_empty(), "URLが空です");
+            assert!(article.status_code > 0, "status_codeが無効です");
 
-            println!("✅ Firecrawlデータの読み込みテスト成功");
-            println!("URL: {}", article.url);
-            println!("Contentサイズ: {} characters", article.content.len());
-            println!("Status Code: {:?}", article.status_code);
-        }
-
-        #[test]
-        fn test_read_article_missing_status_code() {
-            use std::fs;
-
-            let json_content = r#"
+            // statusCode欠損エラーテスト
+            let missing_status_json = r#"
             {
                 "markdown": "テスト記事の内容です",
                 "metadata": {
@@ -442,30 +538,78 @@ mod tests {
                 }
             }
             "#;
-            let temp_file = "temp_test_missing_status_code.json";
-            fs::write(temp_file, json_content).expect("テストファイルの作成に失敗");
-            let result = read_article_content_from_file(temp_file);
+            let temp_file1 = "temp_missing_status.json";
+            fs::write(temp_file1, missing_status_json).expect("テストファイルの作成に失敗");
+            let result = read_article_content_from_file(temp_file1);
             assert!(
                 result.is_err(),
                 "statusCodeが存在しないのにエラーにならなかった"
             );
-            let error_message = result.unwrap_err().to_string();
-            assert!(
-                error_message.contains("statusCodeフィールドが見つかりません"),
-                "期待されるエラーメッセージが含まれていません: {}",
-                error_message
-            );
-            fs::remove_file(temp_file).ok();
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("statusCodeフィールドが見つかりません"));
+            fs::remove_file(temp_file1).ok();
 
-            println!("✅ statusCode欠損エラーハンドリング検証成功");
+            // URL欠損エラーテスト
+            let missing_url_json = r#"
+            {
+                "markdown": "テスト記事の内容です",
+                "metadata": {
+                    "statusCode": 200
+                }
+            }
+            "#;
+            let temp_file2 = "temp_missing_url.json";
+            fs::write(temp_file2, missing_url_json).expect("テストファイルの作成に失敗");
+            let result = read_article_content_from_file(temp_file2);
+            assert!(result.is_err(), "URLが存在しないのにエラーにならなかった");
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("URLが見つかりません"));
+            fs::remove_file(temp_file2).ok();
+
+            // 不正JSON形式テスト
+            let invalid_json = "{ invalid json }";
+            let temp_file3 = "temp_invalid.json";
+            fs::write(temp_file3, invalid_json).expect("テストファイルの作成に失敗");
+            let result = read_article_content_from_file(temp_file3);
+            assert!(result.is_err(), "不正JSONでエラーにならなかった");
+            fs::remove_file(temp_file3).ok();
+
+            // 空ファイルテスト
+            let temp_file4 = "temp_empty.json";
+            fs::write(temp_file4, "").expect("空ファイルの作成に失敗");
+            let result = read_article_content_from_file(temp_file4);
+            assert!(result.is_err(), "空ファイルでエラーにならなかった");
+            fs::remove_file(temp_file4).ok();
+
+            // sourceURL代替パターンテスト
+            let source_url_json = r#"
+            {
+                "markdown": "sourceURL使用の記事内容",
+                "metadata": {
+                    "sourceURL": "https://sourceurl.example.com/article",
+                    "statusCode": 200
+                }
+            }
+            "#;
+            let temp_file5 = "temp_source_url.json";
+            fs::write(temp_file5, source_url_json).expect("テストファイルの作成に失敗");
+            let result = read_article_content_from_file(temp_file5);
+            assert!(result.is_ok(), "sourceURL形式の読み込みが失敗");
+            let article = result.unwrap();
+            assert_eq!(article.url, "https://sourceurl.example.com/article");
+            fs::remove_file(temp_file5).ok();
         }
     }
 
-    mod pure {
+    mod get_article_content_with_client {
         use super::*;
 
         #[tokio::test]
-        async fn test_get_article_content_with_mock() -> Result<(), anyhow::Error> {
+        async fn test_successful_content_retrieval() -> Result<(), anyhow::Error> {
             use crate::infra::api::firecrawl::MockFirecrawlClient;
 
             let test_url = "https://test.com/article";
@@ -476,16 +620,16 @@ mod tests {
             assert_eq!(article.url, test_url);
             assert_eq!(article.status_code, 200);
             assert!(article.content.contains(mock_content));
+            assert!(article.timestamp <= chrono::Utc::now());
 
-            println!("✅ モック記事取得テスト成功");
             Ok(())
         }
 
         #[tokio::test]
-        async fn test_get_article_content_with_error_client() -> Result<(), anyhow::Error> {
+        async fn test_error_handling() -> Result<(), anyhow::Error> {
             use crate::infra::api::firecrawl::MockFirecrawlClient;
 
-            let error_client = MockFirecrawlClient::new_error("テストエラー");
+            let error_client = MockFirecrawlClient::new_error("Network timeout");
             let result = get_article_content_with_client("https://test.com", &error_client).await;
 
             assert!(result.is_ok(), "エラークライアントでも結果を返すべき");
@@ -495,39 +639,94 @@ mod tests {
                 "エラー時はstatus_code=500になるべき"
             );
             assert!(
-                article.content.contains("エラー"),
+                article.content.contains("Firecrawl API エラー"),
                 "エラー内容が記録されるべき"
             );
+            assert!(
+                article.content.contains("Network timeout"),
+                "具体的なエラーメッセージが含まれるべき"
+            );
 
-            println!("✅ エラークライアント処理テスト完了");
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn test_empty_content_handling() -> Result<(), anyhow::Error> {
+            use crate::infra::api::firecrawl::MockFirecrawlClient;
+
+            let empty_client = MockFirecrawlClient::new_success("");
+            let article =
+                get_article_content_with_client("https://empty.test.com", &empty_client).await?;
+
+            assert_eq!(article.status_code, 200);
+            assert!(article.content.is_empty());
+            assert_eq!(article.url, "https://empty.test.com");
+
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn test_url_validation() -> Result<(), anyhow::Error> {
+            use crate::infra::api::firecrawl::MockFirecrawlClient;
+
+            let test_urls = [
+                "https://example.com",
+                "http://test.org/path",
+                "https://sub.domain.co.jp/article/123",
+                "",            // 空URL
+                "invalid-url", // 不正URL
+            ];
+
+            for url in test_urls {
+                let mock_client = MockFirecrawlClient::new_success("content");
+                let result = get_article_content_with_client(url, &mock_client).await;
+
+                assert!(result.is_ok(), "URL '{}' でエラーが発生", url);
+                let article = result.unwrap();
+                assert_eq!(article.url, url, "URLが正しく設定されていない");
+            }
+
             Ok(())
         }
     }
 
-    mod called {
+    mod store_article_content {
         use super::*;
 
         #[sqlx::test]
-        async fn test_store_article_content(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_basic_storage(pool: PgPool) -> Result<(), anyhow::Error> {
             let now = Utc::now();
             let test_article = ArticleContent {
-                url: "https://test.example.com/firecrawl".to_string(),
+                url: "https://test.example.com/basic".to_string(),
                 timestamp: now,
                 status_code: 200,
-                content: "# Test Article\n\nThis is a test content.".to_string(),
+                content: "# Basic Test Article\n\nThis is basic test content.".to_string(),
             };
             store_article_content(&test_article, &pool).await?;
+
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
                 .fetch_one(&pool)
                 .await?;
             assert_eq!(count, Some(1), "期待する件数(1件)が保存されませんでした");
 
-            println!("✅ 記事保存テスト成功: 1件");
+            // 保存されたデータの検証
+            let stored = sqlx::query_as!(
+                ArticleContent,
+                "SELECT url, timestamp, status_code, content FROM articles WHERE url = $1",
+                test_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            assert_eq!(stored.url, test_article.url);
+            assert_eq!(stored.status_code, test_article.status_code);
+            assert_eq!(stored.content, test_article.content);
+
             Ok(())
         }
 
         #[sqlx::test]
-        async fn test_store_duplicate_article_contents(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_duplicate_handling(pool: PgPool) -> Result<(), anyhow::Error> {
             let now = Utc::now();
             let original_article = ArticleContent {
                 url: "https://test.example.com/duplicate".to_string(),
@@ -536,13 +735,15 @@ mod tests {
                 content: "Original content".to_string(),
             };
             store_article_content(&original_article, &pool).await?;
-            let duplicate_article = ArticleContent {
+
+            let updated_article = ArticleContent {
                 url: "https://test.example.com/duplicate".to_string(),
                 timestamp: now,
                 status_code: 404,
-                content: "Different content".to_string(),
+                content: "Updated content".to_string(),
             };
-            store_article_content(&duplicate_article, &pool).await?;
+            store_article_content(&updated_article, &pool).await?;
+
             let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
                 .fetch_one(&pool)
                 .await?;
@@ -552,9 +753,584 @@ mod tests {
                 "重複記事が挿入され、件数が変わってしまいました"
             );
 
-            println!("✅ 重複更新検証成功");
+            // 更新されたデータの検証
+            let stored = sqlx::query_as!(
+                ArticleContent,
+                "SELECT url, timestamp, status_code, content FROM articles WHERE url = $1",
+                updated_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            assert_eq!(stored.status_code, 404, "status_codeが更新されていない");
+            assert_eq!(
+                stored.content, "Updated content",
+                "contentが更新されていない"
+            );
+
             Ok(())
         }
+
+        #[sqlx::test]
+        async fn test_large_content_storage(pool: PgPool) -> Result<(), anyhow::Error> {
+            let large_content = "A".repeat(100000); // 100KB のコンテンツ
+            let test_article = ArticleContent {
+                url: "https://test.example.com/large".to_string(),
+                timestamp: Utc::now(),
+                status_code: 200,
+                content: large_content.clone(),
+            };
+
+            store_article_content(&test_article, &pool).await?;
+
+            let stored = sqlx::query_as!(
+                ArticleContent,
+                "SELECT url, timestamp, status_code, content FROM articles WHERE url = $1",
+                test_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            assert_eq!(
+                stored.content.len(),
+                large_content.len(),
+                "大容量コンテンツが正しく保存されていない"
+            );
+            assert_eq!(
+                stored.content, large_content,
+                "大容量コンテンツの内容が一致しない"
+            );
+
+            Ok(())
+        }
+
+        #[sqlx::test]
+        async fn test_special_characters(pool: PgPool) -> Result<(), anyhow::Error> {
+            let special_content = "特殊文字テスト: éñüñ, 🚀, \"quotes\", <tags>, & entities";
+            let test_article = ArticleContent {
+                url: "https://test.example.com/special-chars".to_string(),
+                timestamp: Utc::now(),
+                status_code: 200,
+                content: special_content.to_string(),
+            };
+
+            store_article_content(&test_article, &pool).await?;
+
+            let stored = sqlx::query_as!(
+                ArticleContent,
+                "SELECT url, timestamp, status_code, content FROM articles WHERE url = $1",
+                test_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            assert_eq!(
+                stored.content, special_content,
+                "特殊文字が正しく保存されていない"
+            );
+
+            Ok(())
+        }
+
+        #[sqlx::test]
+        async fn test_no_update_when_same_content(pool: PgPool) -> Result<(), anyhow::Error> {
+            let test_article = ArticleContent {
+                url: "https://test.example.com/same".to_string(),
+                timestamp: Utc::now(),
+                status_code: 200,
+                content: "Same content".to_string(),
+            };
+
+            // 最初の保存
+            store_article_content(&test_article, &pool).await?;
+            let first_timestamp = sqlx::query_scalar!(
+                "SELECT timestamp FROM articles WHERE url = $1",
+                test_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            // 同じ内容で再保存（timestampは異なるがstatus_codeとcontentは同じ）
+            std::thread::sleep(std::time::Duration::from_millis(10)); // 時間差を作る
+            store_article_content(&test_article, &pool).await?;
+
+            let second_timestamp = sqlx::query_scalar!(
+                "SELECT timestamp FROM articles WHERE url = $1",
+                test_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            // 同一内容の場合、timestampが更新されないことを確認
+            assert_eq!(
+                first_timestamp, second_timestamp,
+                "同一内容なのにtimestampが更新された"
+            );
+
+            Ok(())
+        }
+    }
+
+    mod search_article_join_rows {
+        use super::*;
+        use chrono::Datelike;
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_basic_search(pool: PgPool) -> Result<(), anyhow::Error> {
+            let result = search_article_join_rows(None, &pool).await?;
+            assert!(result.len() >= 5, "基本検索で最低5件の結果が必要");
+
+            // 日付順ソート（DESC）の確認
+            for i in 1..result.len() {
+                assert!(
+                    result[i - 1].pub_date >= result[i].pub_date,
+                    "結果が日付順（降順）にソートされていない"
+                );
+            }
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_status_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 成功記事のみ取得
+            let success_query = ArticleJoinRowQuery {
+                statuses: Some(vec![ArticleStatus::Success]),
+                ..Default::default()
+            };
+            let success_results = search_article_join_rows(Some(success_query), &pool).await?;
+
+            for result in &success_results {
+                assert_eq!(
+                    result.status_code,
+                    Some(200),
+                    "Success状態でstatus_code=200以外が含まれている"
+                );
+                assert!(result.content.is_some(), "Success状態でcontentがNone");
+            }
+
+            // エラー記事のみ取得
+            let error_query = ArticleJoinRowQuery {
+                statuses: Some(vec![ArticleStatus::Error(404), ArticleStatus::Error(500)]),
+                ..Default::default()
+            };
+            let error_results = search_article_join_rows(Some(error_query), &pool).await?;
+
+            for result in &error_results {
+                assert!(
+                    result.status_code == Some(404) || result.status_code == Some(500),
+                    "エラー状態で期待外のstatus_codeが含まれている: {:?}",
+                    result.status_code
+                );
+            }
+
+            // 未処理記事のみ取得
+            let unprocessed_query = ArticleJoinRowQuery {
+                statuses: Some(vec![ArticleStatus::Unprocessed]),
+                ..Default::default()
+            };
+            let unprocessed_results =
+                search_article_join_rows(Some(unprocessed_query), &pool).await?;
+
+            for result in &unprocessed_results {
+                assert!(
+                    result.status_code.is_none(),
+                    "未処理状態でstatus_codeが存在する"
+                );
+                assert!(result.content.is_none(), "未処理状態でcontentが存在する");
+            }
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_pattern_and_date_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
+            use chrono::{TimeZone, Utc};
+
+            let pub_date_from = Utc.with_ymd_and_hms(2025, 1, 10, 0, 0, 0).unwrap();
+            let pub_date_to = Utc.with_ymd_and_hms(2025, 1, 12, 23, 59, 59).unwrap();
+
+            let query = ArticleJoinRowQuery {
+                link_pattern: Some("tech.example.com".to_string()),
+                pub_date_from: Some(pub_date_from),
+                pub_date_to: Some(pub_date_to),
+                statuses: None,
+                source: None,
+                limit: None,
+            };
+
+            let results = search_article_join_rows(Some(query), &pool).await?;
+
+            for result in &results {
+                assert!(
+                    result.url.contains("tech.example.com"),
+                    "URLパターンが一致しない: {}",
+                    result.url
+                );
+                assert!(
+                    result.pub_date >= pub_date_from,
+                    "pub_date_fromより前の日付が含まれている"
+                );
+                assert!(
+                    result.pub_date <= pub_date_to,
+                    "pub_date_toより後の日付が含まれている"
+                );
+            }
+
+            // tech.example.comで該当期間の記事が2件以上あることを確認
+            assert!(results.len() >= 2, "期待される件数が取得できていない");
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_limit_and_source_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
+            // limitテスト
+            let limit_query = ArticleJoinRowQuery {
+                limit: Some(3),
+                ..Default::default()
+            };
+            let limit_results = search_article_join_rows(Some(limit_query), &pool).await?;
+            assert!(
+                limit_results.len() <= 3,
+                "limit=3で3件を超える結果が返された"
+            );
+
+            // sourceフィルタテスト
+            let source_query = ArticleJoinRowQuery {
+                source: Some("tech-feed".to_string()),
+                ..Default::default()
+            };
+            let source_results = search_article_join_rows(Some(source_query), &pool).await?;
+
+            for result in &source_results {
+                assert_eq!(
+                    result.source, "tech-feed",
+                    "source='tech-feed'で異なるsourceが含まれている"
+                );
+            }
+
+            // 複合条件テスト
+            let complex_query = ArticleJoinRowQuery {
+                source: Some("limit-feed".to_string()),
+                statuses: Some(vec![ArticleStatus::Success]),
+                limit: Some(5),
+                ..Default::default()
+            };
+            let complex_results = search_article_join_rows(Some(complex_query), &pool).await?;
+
+            assert!(
+                complex_results.len() <= 5,
+                "複合条件でlimit=5を超える結果が返された"
+            );
+            for result in &complex_results {
+                assert_eq!(result.source, "limit-feed");
+                assert_eq!(result.status_code, Some(200));
+            }
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_edge_cases_and_boundary_values(pool: PgPool) -> Result<(), anyhow::Error> {
+            use chrono::{TimeZone, Utc};
+
+            // 空パターンテスト
+            let empty_pattern_query = ArticleJoinRowQuery {
+                link_pattern: Some("".to_string()),
+                ..Default::default()
+            };
+            let empty_results = search_article_join_rows(Some(empty_pattern_query), &pool).await?;
+            // 空パターンは全てにマッチするはず
+            let all_results = search_article_join_rows(None, &pool).await?;
+            assert_eq!(
+                empty_results.len(),
+                all_results.len(),
+                "空パターンで全件取得されない"
+            );
+
+            // 存在しないパターンテスト
+            let nonexistent_query = ArticleJoinRowQuery {
+                link_pattern: Some("nonexistent.domain.com".to_string()),
+                ..Default::default()
+            };
+            let nonexistent_results =
+                search_article_join_rows(Some(nonexistent_query), &pool).await?;
+            assert_eq!(
+                nonexistent_results.len(),
+                0,
+                "存在しないパターンで結果が返された"
+            );
+
+            // 境界値日付テスト
+            let boundary_start = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
+            let boundary_end = Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap();
+
+            let boundary_query = ArticleJoinRowQuery {
+                pub_date_from: Some(boundary_start),
+                pub_date_to: Some(boundary_end),
+                ..Default::default()
+            };
+            let boundary_results = search_article_join_rows(Some(boundary_query), &pool).await?;
+
+            // 境界値に該当する記事があることを確認
+            let has_start_boundary = boundary_results.iter().any(|r| {
+                r.pub_date.year() == 2025 && r.pub_date.month() == 1 && r.pub_date.day() == 1
+            });
+            let has_end_boundary = boundary_results.iter().any(|r| {
+                r.pub_date.year() == 2025 && r.pub_date.month() == 12 && r.pub_date.day() == 31
+            });
+
+            assert!(has_start_boundary, "年始境界値の記事が含まれていない");
+            assert!(has_end_boundary, "年末境界値の記事が含まれていない");
+
+            // limit=0テスト
+            let zero_limit_query = ArticleJoinRowQuery {
+                limit: Some(0),
+                ..Default::default()
+            };
+            let zero_results = search_article_join_rows(Some(zero_limit_query), &pool).await?;
+            assert_eq!(zero_results.len(), 0, "limit=0で結果が返された");
+
+            Ok(())
+        }
+    }
+
+    mod search_article_url_statuses {
+        use super::*;
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_basic_url_status_search(pool: PgPool) -> Result<(), anyhow::Error> {
+            let results = search_article_url_statuses(None, &pool).await?;
+            assert!(
+                results.len() >= 10,
+                "基本検索で十分な件数が取得されていない"
+            );
+
+            // URL順ソートの確認
+            for i in 1..results.len() {
+                assert!(
+                    results[i - 1].url <= results[i].url,
+                    "結果がURL順にソートされていない"
+                );
+            }
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_status_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 成功記事のみ取得
+            let success_query = ArticleUrlStatusQuery {
+                statuses: Some(vec![ArticleStatus::Success]),
+                ..Default::default()
+            };
+            let success_results = search_article_url_statuses(Some(success_query), &pool).await?;
+
+            for result in &success_results {
+                assert_eq!(
+                    result.status_code,
+                    Some(200),
+                    "Success状態で200以外が含まれている"
+                );
+            }
+
+            // 複数エラー状態の取得
+            let error_query = ArticleUrlStatusQuery {
+                statuses: Some(vec![
+                    ArticleStatus::Error(404),
+                    ArticleStatus::Error(500),
+                    ArticleStatus::Error(403),
+                ]),
+                ..Default::default()
+            };
+            let error_results = search_article_url_statuses(Some(error_query), &pool).await?;
+
+            for result in &error_results {
+                assert!(
+                    result.status_code == Some(404)
+                        || result.status_code == Some(500)
+                        || result.status_code == Some(403),
+                    "エラー状態で期待外のstatus_codeが含まれている: {:?}",
+                    result.status_code
+                );
+            }
+
+            // 未処理記事のみ取得
+            let unprocessed_query = ArticleUrlStatusQuery {
+                statuses: Some(vec![ArticleStatus::Unprocessed]),
+                ..Default::default()
+            };
+            let unprocessed_results =
+                search_article_url_statuses(Some(unprocessed_query), &pool).await?;
+
+            for result in &unprocessed_results {
+                assert!(
+                    result.status_code.is_none(),
+                    "未処理状態でstatus_codeが存在する"
+                );
+            }
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_url_pattern_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 特定ドメインの検索
+            let domain_query = ArticleUrlStatusQuery {
+                url_pattern: Some("example.com".to_string()),
+                ..Default::default()
+            };
+            let domain_results = search_article_url_statuses(Some(domain_query), &pool).await?;
+
+            for result in &domain_results {
+                assert!(
+                    result.url.contains("example.com"),
+                    "URLパターンが一致しない: {}",
+                    result.url
+                );
+            }
+
+            // サブドメインの検索
+            let subdomain_query = ArticleUrlStatusQuery {
+                url_pattern: Some("tech.example.com".to_string()),
+                ..Default::default()
+            };
+            let subdomain_results =
+                search_article_url_statuses(Some(subdomain_query), &pool).await?;
+
+            for result in &subdomain_results {
+                assert!(
+                    result.url.contains("tech.example.com"),
+                    "サブドメインパターンが一致しない: {}",
+                    result.url
+                );
+            }
+
+            // パス部分の検索
+            let path_query = ArticleUrlStatusQuery {
+                url_pattern: Some("tutorial".to_string()),
+                ..Default::default()
+            };
+            let path_results = search_article_url_statuses(Some(path_query), &pool).await?;
+
+            for result in &path_results {
+                assert!(
+                    result.url.contains("tutorial"),
+                    "パスパターンが一致しない: {}",
+                    result.url
+                );
+            }
+
+            Ok(())
+        }
+    }
+
+    mod search_article_contents {
+        use super::*;
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_basic_content_search(pool: PgPool) -> Result<(), anyhow::Error> {
+            let results = search_article_contents(None, &pool).await?;
+            assert!(
+                results.len() >= 8,
+                "基本検索で十分な記事内容が取得されていない"
+            );
+
+            // timestamp順ソート（DESC）の確認
+            for i in 1..results.len() {
+                assert!(
+                    results[i - 1].timestamp >= results[i].timestamp,
+                    "結果がtimestamp順（降順）にソートされていない"
+                );
+            }
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_url_pattern_search(pool: PgPool) -> Result<(), anyhow::Error> {
+            let query = ArticleContentQuery {
+                url_pattern: Some("tech.example.com".to_string()),
+                ..Default::default()
+            };
+            let results = search_article_contents(Some(query), &pool).await?;
+
+            for result in &results {
+                assert!(
+                    result.url.contains("tech.example.com"),
+                    "URLパターンが一致しない"
+                );
+                assert!(result.status_code > 0, "status_codeが無効");
+                assert!(
+                    !result.content.is_empty() || result.status_code != 200,
+                    "成功記事でcontentが空"
+                );
+            }
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_timestamp_range_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
+            use chrono::{TimeZone, Utc};
+
+            let timestamp_from = Utc.with_ymd_and_hms(2025, 1, 10, 0, 0, 0).unwrap();
+            let timestamp_to = Utc.with_ymd_and_hms(2025, 1, 12, 23, 59, 59).unwrap();
+
+            let query = ArticleContentQuery {
+                timestamp_from: Some(timestamp_from),
+                timestamp_to: Some(timestamp_to),
+                ..Default::default()
+            };
+            let results = search_article_contents(Some(query), &pool).await?;
+
+            for result in &results {
+                assert!(
+                    result.timestamp >= timestamp_from,
+                    "timestamp_fromより前のtimestamp"
+                );
+                assert!(
+                    result.timestamp <= timestamp_to,
+                    "timestamp_toより後のtimestamp"
+                );
+            }
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("service_comprehensive"))]
+        async fn test_status_code_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 成功記事のみ
+            let success_query = ArticleContentQuery {
+                status_code: Some(200),
+                ..Default::default()
+            };
+            let success_results = search_article_contents(Some(success_query), &pool).await?;
+
+            for result in &success_results {
+                assert_eq!(result.status_code, 200, "status_code=200以外が含まれている");
+                // 成功記事でも空コンテンツは許可（empty.example.com/titleのケース）
+                // assert!(!result.content.is_empty(), "成功記事でcontentが空");
+            }
+
+            // エラー記事のみ
+            let error_query = ArticleContentQuery {
+                status_code: Some(404),
+                ..Default::default()
+            };
+            let error_results = search_article_contents(Some(error_query), &pool).await?;
+
+            for result in &error_results {
+                assert_eq!(result.status_code, 404, "status_code=404以外が含まれている");
+            }
+
+            Ok(())
+        }
+    }
+
+    mod called {
+        use super::*;
 
         #[sqlx::test]
         async fn test_search_article_contents(pool: PgPool) -> Result<(), anyhow::Error> {
@@ -692,7 +1468,7 @@ mod tests {
     mod online {
         use super::*;
 
-        #[sqlx::test(fixtures("../../../fixtures/article_basic.sql"))]
+        #[sqlx::test(fixtures("service_comprehensive"))]
         async fn test_search_article_join_rows_with_fixtures(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
