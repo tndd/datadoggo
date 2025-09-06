@@ -83,39 +83,32 @@ mod tests {
     }
 
     #[test]
-    fn test_article_query_default() {
-        let query = ArticleQuery::default();
+    fn test_article_query() {
+        // デフォルト値のテスト
+        let default_query = ArticleQuery::default();
+        assert!(default_query.link_pattern.is_none());
+        assert!(default_query.pub_date_from.is_none());
+        assert!(default_query.pub_date_to.is_none());
+        assert!(default_query.limit.is_none());
 
-        assert!(query.link_pattern.is_none());
-        assert!(query.pub_date_from.is_none());
-        assert!(query.pub_date_to.is_none());
-        assert!(query.limit.is_none());
-    }
-
-    #[test]
-    fn test_article_query_with_values() {
+        // 値設定のテスト
         let pub_date_from = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
         let pub_date_to = Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap();
 
-        let query = ArticleQuery {
+        let query_with_values = ArticleQuery {
             link_pattern: Some("example.com".to_string()),
             pub_date_from: Some(pub_date_from),
             pub_date_to: Some(pub_date_to),
             limit: Some(10),
         };
 
-        assert_eq!(query.link_pattern, Some("example.com".to_string()));
-        assert_eq!(query.pub_date_from, Some(pub_date_from));
-        assert_eq!(query.pub_date_to, Some(pub_date_to));
-        assert_eq!(query.limit, Some(10));
-    }
-
-    #[test]
-    fn test_search_articles_empty_database() {
-        // 空データベースでの動作確認（fixtureなしの通常テスト）
-        // 実際のDB テストは実装時に必要に応じて追加
-        let query = ArticleQuery::default();
-        assert!(query.link_pattern.is_none());
+        assert_eq!(
+            query_with_values.link_pattern,
+            Some("example.com".to_string())
+        );
+        assert_eq!(query_with_values.pub_date_from, Some(pub_date_from));
+        assert_eq!(query_with_values.pub_date_to, Some(pub_date_to));
+        assert_eq!(query_with_values.limit, Some(10));
     }
 
     #[sqlx::test(fixtures("prelude_basic"))]
