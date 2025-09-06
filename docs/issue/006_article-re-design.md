@@ -63,15 +63,37 @@
 mod.rsとは従属的な関係となる。
 
 # 削除対象
-## service.rs
-### ArticleContentQuery
+## ArticleMetadata
+- ユーザーがメタデータだけ欲しいという場面は今のところ考えられないため不要
+
+## ArticleContentQuery
 - これは`ArticleContent`というモデルの取得を目的として作られたクエリ構造体
 - だが、ArticleContent単体で情報を取得するというケースはない
   - それはユーザー側から見てもそう
   - そしてservice側から見ても、このArticleContentはArticleLinkテーブルとjoinして使用されうるものだからだ
 
+# 追加対象
+## service.rs
+### ArticleUrlStatus
+- どのurlがどういうステータスを持っているかを確認するための軽量な構造体
+- 想定している用途は、エラーや未実行のurlを割り出し取得するため
+
+---
+
+テーブル定義:
+| Field       | Type   |
+| ----------- | ------ |
+| url         | String |
+| status_code | i32    |
+
+---
+
+注意点:
+- このArticleUrlStatus追加に伴い、その取得のためのクエリと関数とテストの実装が必要となる
+
+
 # 疑問
-- ArticleContentQueryの削除は問題を引き起こしうるか？
+- ArticleStatusは削除可能？
 
 # 要望
 - 過度な抽象化は控えること
