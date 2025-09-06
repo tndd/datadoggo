@@ -173,10 +173,7 @@ pub async fn search_article_info(
 }
 
 /// 完全な記事データを取得する（処理済みの記事のみ）
-pub async fn search_processed_articles(
-    query: Option<ArticleQuery>,
-    pool: &PgPool,
-) -> Result<Vec<Article>> {
+pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
     let query = query.unwrap_or_default();
 
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
@@ -532,14 +529,14 @@ mod tests {
                 link_pattern: Some("example.com".to_string()),
                 ..Default::default()
             };
-            let example_links = search_processed_articles(Some(query), &pool).await?;
+            let example_links = search_articles(Some(query), &pool).await?;
             assert_eq!(example_links.len(), 2, "example.comのリンクは2件のはず");
 
             let query = ArticleQuery {
                 article_status: Some(ArticleStatus::Success),
                 ..Default::default()
             };
-            let success_links = search_processed_articles(Some(query), &pool).await?;
+            let success_links = search_articles(Some(query), &pool).await?;
             let success_count = success_links
                 .iter()
                 .filter(|link| link.status_code == 200)
@@ -584,7 +581,7 @@ mod tests {
         async fn test_search_processed_articles_with_join(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
-            let all_links = search_processed_articles(None, &pool).await?;
+            let all_links = search_articles(None, &pool).await?;
             assert!(
                 all_links.len() >= 1,
                 "最低1件の処理済み記事が取得されるべき"

@@ -12,7 +12,7 @@ pub use model::{
 // service.rsから
 pub use service::{
     fetch_and_store_article, fetch_and_store_article_with_client, get_article_content_for_storage,
-    get_article_content_for_storage_with_client, search_article_info, search_backlog_article_info,
-    search_processed_articles, store_article_content, ArticleInfoQuery, ArticleQuery,
+    get_article_content_for_storage_with_client, search_article_info, search_articles,
+    search_backlog_article_info, store_article_content, ArticleInfoQuery, ArticleQuery,
     ArticleStorageData,
 };
