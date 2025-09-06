@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -124,13 +124,51 @@ mod tests {
         assert!(result.is_ok());
 
         let articles = result.unwrap();
-        // status_code=200かつcontentありのもののみ取得される
-        assert_eq!(articles.len(), 3);
+        // status_code=200かつcontentありのもののみ取得される（エッジケース含む）
+        assert_eq!(articles.len(), 6);
 
         let urls: Vec<&str> = articles.iter().map(|a| a.url.as_str()).collect();
         assert!(urls.contains(&"https://example.com/article1"));
         assert!(urls.contains(&"https://example.com/article2"));
         assert!(urls.contains(&"https://example.com/article4"));
+        assert!(urls.contains(&"https://example.com/special-chars"));
+        assert!(urls.contains(&"https://example.com/empty-title"));
+        assert!(urls.contains(&"https://very-long-domain-name-for-testing-url-limits.example.com/very/long/path/to/article"));
+
+        // 特殊文字を含む記事の内容検証
+        let special_chars_article = articles
+            .iter()
+            .find(|a| a.url == "https://example.com/special-chars")
+            .expect("特殊文字記事が見つからない");
+        assert_eq!(
+            special_chars_article.title,
+            "Title with \"quotes\" & <tags>"
+        );
+        assert!(special_chars_article.content.contains("éñüñ"));
+
+        // 空タイトル記事の検証
+        let empty_title_article = articles
+            .iter()
+            .find(|a| a.url == "https://example.com/empty-title")
+            .expect("空タイトル記事が見つからない");
+        assert_eq!(empty_title_article.title, "");
+        assert_eq!(empty_title_article.content, "");
+
+        // 長いURL/タイトル記事の検証
+        let long_article = articles
+            .iter()
+            .find(|a| a.url.contains("very-long-domain"))
+            .expect("長いURL記事が見つからない");
+        assert!(long_article.title.len() > 50);
+        assert!(long_article.content.len() > 100);
+
+        // データの整合性確認: pub_dateとupdated_atの関係
+        for article in &articles {
+            assert!(
+                article.updated_at >= article.pub_date,
+                "updated_atはpub_date以降である必要がある"
+            );
+        }
     }
 
     #[sqlx::test(fixtures("prelude_filter"))]
@@ -138,6 +176,7 @@ mod tests {
         let pub_date_from = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
         let pub_date_to = Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap();
 
+        // 基本的なフィルタリングテスト
         let query = Some(ArticleQuery {
             link_pattern: Some("tech.example.com".to_string()),
             pub_date_from: Some(pub_date_from),
@@ -150,11 +189,103 @@ mod tests {
 
         let articles = result.unwrap();
         assert!(articles.len() <= 5);
+        assert!(articles.len() >= 1); // 少なくとも1件は存在する
 
         for article in &articles {
             assert!(article.url.contains("tech.example.com"));
             assert!(article.pub_date >= pub_date_from);
             assert!(article.pub_date <= pub_date_to);
+        }
+
+        // 境界値テスト: 日付範囲境界での検証
+        let exact_boundary_from = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
+        let exact_boundary_to = Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap();
+
+        let boundary_query = Some(ArticleQuery {
+            link_pattern: Some("tech.example.com".to_string()),
+            pub_date_from: Some(exact_boundary_from),
+            pub_date_to: Some(exact_boundary_to),
+            limit: None,
+        });
+
+        let boundary_result = search_articles(boundary_query, &pool).await;
+        assert!(boundary_result.is_ok());
+        let boundary_articles = boundary_result.unwrap();
+
+        // 境界値に含まれる記事の確認
+        let has_year_start = boundary_articles
+            .iter()
+            .any(|a| a.pub_date.year() == 2025 && a.pub_date.month() == 1 && a.pub_date.day() == 1);
+        let has_year_end = boundary_articles.iter().any(|a| {
+            a.pub_date.year() == 2025 && a.pub_date.month() == 12 && a.pub_date.day() == 31
+        });
+
+        assert!(has_year_start, "年始境界値の記事が含まれていない");
+        assert!(has_year_end, "年末境界値の記事が含まれていない");
+
+        // limitテスト: 0, 1, 大きな値での動作
+        let limit_tests = [
+            (Some(0i64), "limit=0で結果なし"),
+            (Some(1i64), "limit=1で1件のみ"),
+            (Some(100i64), "limit=100で全件取得可能"),
+        ];
+
+        for (limit_val, description) in limit_tests {
+            let limit_query = Some(ArticleQuery {
+                link_pattern: Some("tech.example.com".to_string()),
+                pub_date_from: None,
+                pub_date_to: None,
+                limit: limit_val,
+            });
+
+            let limit_result = search_articles(limit_query, &pool).await;
+            assert!(limit_result.is_ok(), "{}でエラーが発生", description);
+            let limit_articles = limit_result.unwrap();
+
+            match limit_val {
+                Some(0) => assert_eq!(limit_articles.len(), 0, "limit=0で結果が0件でない"),
+                Some(1) => assert!(limit_articles.len() <= 1, "limit=1で1件超過"),
+                Some(100) => assert!(limit_articles.len() <= 100, "limit=100を超過"),
+                _ => {}
+            }
+        }
+
+        // パターンマッチング精度テスト
+        let pattern_tests = [
+            ("tech.example.com", true, "完全一致パターン"),
+            ("tech", true, "部分一致パターン"),
+            ("nonexistent.com", false, "存在しないドメインパターン"),
+        ];
+
+        for (pattern, should_have_results, description) in pattern_tests {
+            let pattern_query = Some(ArticleQuery {
+                link_pattern: Some(pattern.to_string()),
+                pub_date_from: None,
+                pub_date_to: None,
+                limit: None,
+            });
+
+            let pattern_result = search_articles(pattern_query, &pool).await;
+            assert!(pattern_result.is_ok(), "{}でエラーが発生", description);
+            let pattern_articles = pattern_result.unwrap();
+
+            if should_have_results {
+                assert!(!pattern_articles.is_empty(), "{}で結果が0件", description);
+                for article in &pattern_articles {
+                    assert!(
+                        article.url.contains(pattern),
+                        "{}でパターン不一致: {}",
+                        description,
+                        article.url
+                    );
+                }
+            } else {
+                assert!(
+                    pattern_articles.is_empty(),
+                    "{}で予期しない結果",
+                    description
+                );
+            }
         }
     }
 }
