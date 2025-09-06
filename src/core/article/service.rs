@@ -1,8 +1,9 @@
-use super::model::ArticleInfo;
+use super::model::ArticleStatus;
 use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use sqlx::PgPool;
+use serde::{Deserialize, Serialize};
+use sqlx::{FromRow, PgPool};
 
 // 記事軽量版検索用クエリ（内部実装用、非公開）
 #[derive(Debug, Default)]
@@ -21,6 +22,95 @@ pub struct ArticleStorageData {
     pub timestamp: DateTime<Utc>,
     pub status_code: i32,
     pub content: String,
+}
+
+// 軽量記事情報（処理判断用、内部実装）
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+struct ArticleInfo {
+    pub url: String,
+    pub status_code: Option<i32>, // None=未取得, Some(200)=成功, Some(4xx)=失敗
+}
+
+// ArticleInfoの処理状態判定メソッド
+impl ArticleInfo {
+    /// 記事の処理状態を取得
+    fn get_article_status(&self) -> ArticleStatus {
+        match self.status_code {
+            None => ArticleStatus::Unprocessed,
+            Some(200) => ArticleStatus::Success,
+            Some(code) => ArticleStatus::Error(code),
+        }
+    }
+
+    /// 未処理のリンクかどうかを判定
+    fn is_unprocessed(&self) -> bool {
+        matches!(self.get_article_status(), ArticleStatus::Unprocessed)
+    }
+
+    /// エラー状態のリンクかどうかを判定
+    fn is_error(&self) -> bool {
+        matches!(self.get_article_status(), ArticleStatus::Error(_))
+    }
+
+    /// バックログ対象のリンクかどうかを判定
+    fn is_backlog(&self) -> bool {
+        self.is_unprocessed() || self.is_error()
+    }
+}
+
+/// バックログ記事をフォーマットする関数（ArticleInfo用、内部実装）
+fn format_backlog_article_info(articles: &[ArticleInfo]) -> Vec<String> {
+    articles
+        .iter()
+        .filter(|article| article.is_backlog())
+        .map(|article| {
+            format!(
+                "処理待ち: {} - {}",
+                article.url,
+                match article.status_code {
+                    None => "未処理".to_string(),
+                    Some(code) => format!("エラー({})", code),
+                }
+            )
+        })
+        .collect()
+}
+
+/// 記事ステータスでフィルタリングする関数（ArticleInfo用、内部実装）
+fn filter_article_info_by_status(
+    articles: &[ArticleInfo],
+    status: ArticleStatus,
+) -> Vec<&ArticleInfo> {
+    articles
+        .iter()
+        .filter(|article| {
+            let article_status = article.get_article_status();
+            match status {
+                ArticleStatus::Unprocessed => matches!(article_status, ArticleStatus::Unprocessed),
+                ArticleStatus::Success => matches!(article_status, ArticleStatus::Success),
+                ArticleStatus::Error(code) => {
+                    matches!(article_status, ArticleStatus::Error(c) if c == code)
+                }
+            }
+        })
+        .collect()
+}
+
+/// 記事統計情報を計算する関数（ArticleInfo用、内部実装）
+fn count_article_info_by_status(articles: &[ArticleInfo]) -> (usize, usize, usize) {
+    let mut unprocessed = 0;
+    let mut success = 0;
+    let mut error = 0;
+
+    for article in articles {
+        match article.get_article_status() {
+            ArticleStatus::Unprocessed => unprocessed += 1,
+            ArticleStatus::Success => success += 1,
+            ArticleStatus::Error(_) => error += 1,
+        }
+    }
+
+    (unprocessed, success, error)
 }
 
 /// URLから記事内容を取得してデータベース保存用の構造体に変換する（Firecrawl SDK使用）
@@ -164,8 +254,8 @@ async fn search_article_info(
     Ok(articles)
 }
 
-/// バックログ記事の軽量版を取得する（URLとステータスコードのみ）
-pub async fn search_backlog_article_info(
+/// バックログ記事の軽量版を取得する（URLとステータスコードのみ、内部実装）
+async fn search_backlog_article_info(
     pool: &PgPool,
     limit: Option<i64>,
 ) -> Result<Vec<ArticleInfo>> {
@@ -461,10 +551,6 @@ mod tests {
 
         #[sqlx::test(fixtures("../../../fixtures/article_backlog.sql"))]
         async fn test_search_backlog_article_info(pool: PgPool) -> Result<(), anyhow::Error> {
-            use crate::core::article::model::{
-                count_article_info_by_status, format_backlog_article_info,
-            };
-
             let backlog_articles = search_backlog_article_info(&pool, None).await?;
             let backlog_messages = format_backlog_article_info(&backlog_articles);
             let (unprocessed, success, error) = count_article_info_by_status(&backlog_articles);
