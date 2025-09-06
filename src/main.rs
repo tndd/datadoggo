@@ -1,7 +1,7 @@
 /// NOTE: main.rsは単なる最小限の動作確認に過ぎないので凝った実装をしないように
 use datadoggo::{app, core, infra};
 
-use app::workflow::execute_rss_workflow;
+use app::execute_rss_workflow;
 use core::feed::{search_feeds, FeedQuery};
 use core::rss::{get_article_links_from_channel, store_article_links};
 use infra::api::firecrawl::ReqwestFirecrawlClient;
