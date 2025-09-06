@@ -62,7 +62,18 @@
 その他のドメイン領域から外れたdirtyな処理を集めたファイル。\
 mod.rsとは従属的な関係となる。
 
+# 削除対象
+## service.rs
+### ArticleContentQuery
+- これは`ArticleContent`というモデルの取得を目的として作られたクエリ構造体
+- だが、ArticleContent単体で情報を取得するというケースはない
+  - それはユーザー側から見てもそう
+  - そしてservice側から見ても、このArticleContentはArticleLinkテーブルとjoinして使用されうるものだからだ
+
+# 疑問
+- ArticleContentQueryの削除は問題を引き起こしうるか？
+
 # 要望
 - 過度な抽象化は控えること
 - なるべく簡潔な実装を行い可読性を上げること
-- 後方互換性を無視して作り直すこと
+- 後方互換性は一切考慮せず、新たに作り直すこと
