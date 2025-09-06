@@ -1,3 +1,3 @@
-pub mod workflow;
+pub mod article;
 
-pub use workflow::{process_collect_article_links, process_collect_articles};
+pub use article::{process_collect_article_links, process_collect_articles};
