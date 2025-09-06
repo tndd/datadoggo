@@ -100,7 +100,7 @@ mod.rsとは従属的な関係となる。
 - このArticleUrlStatus追加に伴い、その取得のためのクエリと関数とテストの実装が必要となる
 
 ### ArticleJoinRow
-- `article_links`と`articles`のJOIN結果をそのまま受け取るDB用の構造体
+- `ArticleLink`と`Article`のJOIN結果をそのまま受け取るDB用の構造体
 - 外部には公開しない
 
 ---
@@ -119,8 +119,9 @@ mod.rsとは従属的な関係となる。
 ---
 
 注意点:
-- timestampは`Article`における`update_at`
 - ドメイン`Article`への変換機能が必要となる
+  - timestampは`Article`における`update_at`
+  - sourceは`Article`には変換されない
 
 # 要望
 - 過度な抽象化は控えること
