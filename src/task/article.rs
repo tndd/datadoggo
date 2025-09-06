@@ -9,7 +9,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 /// バックログ対象リンクから処理待ちの記事を収集してDBに保存する
-pub async fn process_collect_articles<F: FirecrawlClient>(
+pub async fn task_collect_articles<F: FirecrawlClient>(
     firecrawl_client: &F,
     pool: &PgPool,
 ) -> Result<()> {
@@ -68,7 +68,7 @@ mod tests {
         // 全URL成功のモッククライアントを設定（基本テスト用）
         let mock_client = MockFirecrawlClient::new_success("基本テスト記事の内容です");
         // 記事取得を実行（未処理の6件が処理される）
-        let result = process_collect_articles(&mock_client, &pool).await;
+        let result = task_collect_articles(&mock_client, &pool).await;
         assert!(
             result.is_ok(),
             "記事取得処理が失敗しました: {:?}",
@@ -126,7 +126,7 @@ mod tests {
         // 全URL成功のモッククライアントを設定（混在テスト用）
         let mock_client = MockFirecrawlClient::new_success("混在テスト記事の内容です");
         // 記事取得を実行（未処理の11件が処理される）
-        let result = process_collect_articles(&mock_client, &pool).await;
+        let result = task_collect_articles(&mock_client, &pool).await;
         assert!(
             result.is_ok(),
             "混在シナリオの処理が失敗しました: {:?}",
