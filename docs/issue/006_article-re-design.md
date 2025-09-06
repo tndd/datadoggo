@@ -118,12 +118,8 @@ mod.rsとは従属的な関係となる。
 
 ---
 
-JOIN想定:
-- FROM article_links AS al
-- LEFT JOIN articles AS ar ON al.url = ar.url
-- SELECT ではカラムの競合を避けるため、al.url AS url のように明示的にエイリアスを付ける
-
 注意点:
+- timestampは`Article`における`update_at`
 - ドメイン`Article`への変換機能が必要となる
 
 # 要望

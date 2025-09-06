@@ -8,7 +8,7 @@ use sqlx::{FromRow, PgPool};
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ArticleContent {
     pub url: String,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: DateTime<Utc>, // (updated_at)
     pub status_code: i32,
     pub content: String,
 }
