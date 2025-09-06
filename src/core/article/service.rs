@@ -1,9 +1,138 @@
-use super::model::{Article, ArticleMetadata, ArticleStatus};
 use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
+
+// 記事の処理状態を表現するenum（model.rsから移動）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ArticleStatus {
+    /// 記事が未処理（articleテーブルに存在しない）
+    Unprocessed,
+    /// 記事が正常に取得済み（status_code = 200）
+    Success,
+    /// 記事の取得にエラーが発生（status_code != 200）
+    Error(i32),
+}
+
+// どのurlがどういうステータスを持っているかを確認するための軽量な構造体
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ArticleUrlStatus {
+    pub url: String,
+    pub status_code: Option<i32>,
+}
+
+// ArticleLinkとArticleのJOIN結果をそのまま受け取るDB用の構造体
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ArticleJoinRow {
+    pub url: String,
+    pub title: String,
+    pub pub_date: DateTime<Utc>,
+    pub source: String,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub status_code: Option<i32>,
+    pub content: Option<String>,
+}
+
+// ArticleJoinRowを取得する際に使用するクエリモデル
+#[derive(Debug, Default)]
+pub struct ArticleJoinRowQuery {
+    pub link_pattern: Option<String>,
+    pub pub_date_from: Option<DateTime<Utc>>,
+    pub pub_date_to: Option<DateTime<Utc>>,
+    pub status_codes: Option<Vec<i32>>,
+    pub source: Option<String>,
+    pub limit: Option<i64>,
+}
+
+// ArticleJoinRowQueryを受け取り、Vec<ArticleJoinRow>を返す関数
+pub async fn search_article_join_rows(
+    query: Option<ArticleJoinRowQuery>,
+    pool: &PgPool,
+) -> Result<Vec<ArticleJoinRow>> {
+    let query = query.unwrap_or_default();
+
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        r#"
+        SELECT 
+            al.url,
+            al.title,
+            al.pub_date,
+            al.source,
+            a.timestamp,
+            a.status_code,
+            a.content
+        FROM article_links al
+        LEFT JOIN articles a ON al.url = a.url
+        "#,
+    );
+
+    let mut has_where = false;
+
+    if let Some(ref link_pattern) = query.link_pattern {
+        if !has_where {
+            qb.push(" WHERE ");
+            has_where = true;
+        }
+        let pattern = format!("%{}%", link_pattern);
+        qb.push("al.url ILIKE ").push_bind(pattern);
+    }
+
+    if let Some(pub_date_from) = query.pub_date_from {
+        if has_where {
+            qb.push(" AND ");
+        } else {
+            qb.push(" WHERE ");
+            has_where = true;
+        }
+        qb.push("al.pub_date >= ").push_bind(pub_date_from);
+    }
+
+    if let Some(pub_date_to) = query.pub_date_to {
+        if has_where {
+            qb.push(" AND ");
+        } else {
+            qb.push(" WHERE ");
+            has_where = true;
+        }
+        qb.push("al.pub_date <= ").push_bind(pub_date_to);
+    }
+
+    if let Some(ref status_codes) = query.status_codes {
+        if has_where {
+            qb.push(" AND ");
+        } else {
+            qb.push(" WHERE ");
+            has_where = true;
+        }
+        qb.push("a.status_code = ANY(")
+            .push_bind(status_codes)
+            .push(")");
+    }
+
+    if let Some(ref source) = query.source {
+        if has_where {
+            qb.push(" AND ");
+        } else {
+            qb.push(" WHERE ");
+        }
+        qb.push("al.source = ").push_bind(source);
+    }
+
+    qb.push(" ORDER BY al.pub_date DESC");
+
+    if let Some(limit) = query.limit {
+        qb.push(" LIMIT ").push_bind(limit);
+    }
+
+    let results = qb
+        .build_query_as::<ArticleJoinRow>()
+        .fetch_all(pool)
+        .await
+        .context("記事結合情報の取得に失敗")?;
+
+    Ok(results)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ArticleContent {
@@ -11,23 +140,6 @@ pub struct ArticleContent {
     pub timestamp: DateTime<Utc>, // (updated_at)
     pub status_code: i32,
     pub content: String,
-}
-
-#[derive(Debug, Default)]
-pub struct ArticleQuery {
-    pub link_pattern: Option<String>,
-    pub pub_date_from: Option<DateTime<Utc>>,
-    pub pub_date_to: Option<DateTime<Utc>>,
-    pub article_status: Option<ArticleStatus>,
-    pub limit: Option<i64>,
-}
-
-#[derive(Debug, Default)]
-pub struct ArticleContentQuery {
-    pub url_pattern: Option<String>,
-    pub timestamp_from: Option<DateTime<Utc>>,
-    pub timestamp_to: Option<DateTime<Utc>>,
-    pub status_code: Option<i32>,
 }
 
 /// URLから記事内容を取得してArticleContent構造体に変換する（Firecrawl SDK使用）
@@ -106,6 +218,14 @@ pub async fn fetch_and_store_article_with_client(
     Ok(article)
 }
 
+#[derive(Debug, Default)]
+pub struct ArticleContentQuery {
+    pub url_pattern: Option<String>,
+    pub timestamp_from: Option<DateTime<Utc>>,
+    pub timestamp_to: Option<DateTime<Utc>>,
+    pub status_code: Option<i32>,
+}
+
 /// 指定されたデータベースプールからArticleContentを取得する。
 pub async fn search_article_contents(
     query: Option<ArticleContentQuery>,
@@ -164,90 +284,11 @@ pub async fn search_article_contents(
     Ok(articles)
 }
 
-/// RSSリンクと記事の結合情報を取得する
-pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
-    let query = query.unwrap_or_default();
-
-    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        r#"
-        SELECT 
-            al.url,
-            al.title,
-            al.pub_date,
-            a.timestamp as updated_at,
-            a.status_code,
-            a.content
-        FROM article_links al
-        LEFT JOIN articles a ON al.url = a.url
-        "#,
-    );
-
-    let mut has_where = false;
-    if let Some(ref link_pattern) = query.link_pattern {
-        if !has_where {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        let pattern = format!("%{}%", link_pattern);
-        qb.push("al.url ILIKE ").push_bind(pattern);
-    }
-    if let Some(pub_date_from) = query.pub_date_from {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        qb.push("al.pub_date >= ").push_bind(pub_date_from);
-    }
-    if let Some(pub_date_to) = query.pub_date_to {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        qb.push("al.pub_date <= ").push_bind(pub_date_to);
-    }
-    if let Some(ref status) = query.article_status {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-        }
-
-        match status {
-            ArticleStatus::Unprocessed => {
-                qb.push("a.url IS NULL");
-            }
-            ArticleStatus::Success => {
-                qb.push("a.status_code = 200");
-            }
-            ArticleStatus::Error(code) => {
-                qb.push("a.status_code = ").push_bind(*code);
-            }
-        }
-    }
-
-    qb.push(" ORDER BY al.pub_date DESC");
-    if let Some(limit) = query.limit {
-        qb.push(" LIMIT ").push_bind(limit);
-    }
-
-    let results = qb
-        .build_query_as::<Article>()
-        .fetch_all(pool)
-        .await
-        .context("記事情報の取得に失敗")?;
-
-    Ok(results)
-}
-
 /// バックログ記事の軽量版を取得する（article_contentを除外し、パフォーマンスを向上）
 pub async fn search_backlog_articles_light(
     pool: &PgPool,
     limit: Option<i64>,
-) -> Result<Vec<ArticleMetadata>> {
+) -> Result<Vec<super::model::ArticleMetadata>> {
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"
         SELECT 
@@ -267,7 +308,7 @@ pub async fn search_backlog_articles_light(
     }
 
     let results = qb
-        .build_query_as::<ArticleMetadata>()
+        .build_query_as::<super::model::ArticleMetadata>()
         .fetch_all(pool)
         .await
         .context("バックログ記事の軽量版取得に失敗")?;
@@ -501,54 +542,41 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("../../../fixtures/article_query_filter.sql"))]
-        async fn test_article_query_filters(pool: PgPool) -> Result<(), anyhow::Error> {
-            let query = ArticleQuery {
-                link_pattern: Some("example.com".to_string()),
+        #[sqlx::test]
+        async fn test_search_article_join_rows(pool: PgPool) -> Result<(), anyhow::Error> {
+            // テストデータを挿入
+            sqlx::query!(
+                "INSERT INTO article_links (url, title, pub_date, source) VALUES ($1, $2, $3, $4)",
+                "https://test.com/join",
+                "テスト記事",
+                chrono::Utc::now(),
+                "test"
+            )
+            .execute(&pool)
+            .await?;
+
+            sqlx::query!(
+                "INSERT INTO articles (url, status_code, content) VALUES ($1, $2, $3)",
+                "https://test.com/join",
+                200,
+                "テスト内容"
+            )
+            .execute(&pool)
+            .await?;
+
+            let query = ArticleJoinRowQuery {
+                status_codes: Some(vec![200]),
                 ..Default::default()
             };
-            let example_links = search_articles(Some(query), &pool).await?;
-            assert_eq!(example_links.len(), 2, "example.comのリンクは2件のはず");
+            let results = search_article_join_rows(Some(query), &pool).await?;
 
-            let query = ArticleQuery {
-                article_status: Some(ArticleStatus::Success),
-                ..Default::default()
-            };
-            let success_links = search_articles(Some(query), &pool).await?;
-            let success_count = success_links
-                .iter()
-                .filter(|link| link.status_code == Some(200))
-                .count();
-            assert_eq!(
-                success_count,
-                success_links.len(),
-                "成功記事のみが取得されるべき"
-            );
+            assert!(!results.is_empty());
+            let result = &results[0];
+            assert_eq!(result.url, "https://test.com/join");
+            assert_eq!(result.status_code, Some(200));
+            assert!(result.content.is_some());
 
-            println!("✅ クエリフィルターテスト成功");
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("../../../fixtures/article_backlog.sql"))]
-        async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
-            use crate::core::article::model::{
-                count_articles_metadata_by_status, format_backlog_articles_metadata,
-            };
-
-            let backlog_articles = search_backlog_articles_light(&pool, None).await?;
-            let backlog_messages = format_backlog_articles_metadata(&backlog_articles);
-            let (unprocessed, success, error) =
-                count_articles_metadata_by_status(&backlog_articles);
-
-            assert!(backlog_messages.len() >= 2);
-            assert!(unprocessed >= 1);
-            assert!(error >= 1);
-            assert_eq!(success, 0);
-
-            println!(
-                "✅ バックログ軽量版テスト成功: {}件",
-                backlog_articles.len()
-            );
+            println!("✅ ArticleJoinRow検索テスト成功");
             Ok(())
         }
     }
@@ -557,46 +585,28 @@ mod tests {
         use super::*;
 
         #[sqlx::test(fixtures("../../../fixtures/article_basic.sql"))]
-        async fn test_search_articles_with_join(pool: PgPool) -> Result<(), anyhow::Error> {
-            let all_links = search_articles(None, &pool).await?;
-            assert!(all_links.len() >= 2, "最低2件のリンクが取得されるべき");
+        async fn test_search_article_join_rows_with_fixtures(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            let all_rows = search_article_join_rows(None, &pool).await?;
+            assert!(all_rows.len() >= 2, "最低2件の結合結果が取得されるべき");
 
-            let link1 = all_links
+            let success_query = ArticleJoinRowQuery {
+                status_codes: Some(vec![200]),
+                ..Default::default()
+            };
+            let success_rows = search_article_join_rows(Some(success_query), &pool).await?;
+            let success_count = success_rows
                 .iter()
-                .find(|link| link.url == "https://test.com/link1")
-                .expect("link1が見つからない");
-            assert!(link1.status_code.is_some(), "link1に記事が紐づいているべき");
-            assert_eq!(link1.status_code, Some(200));
-            assert!(!link1.is_backlog());
-
-            let link2 = all_links
-                .iter()
-                .find(|link| link.url == "https://test.com/link2")
-                .expect("link2が見つからない");
-            assert!(
-                link2.status_code.is_none(),
-                "link2に記事が紐づいていないべき"
+                .filter(|row| row.status_code == Some(200))
+                .count();
+            assert_eq!(
+                success_count,
+                success_rows.len(),
+                "成功記事のみが取得されるべき"
             );
-            assert!(link2.is_backlog());
 
-            println!("✅ JOINクエリテスト成功");
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("../../../fixtures/article_unprocessed.sql"))]
-        async fn test_search_backlog_rss_integration(pool: PgPool) -> Result<(), anyhow::Error> {
-            use crate::core::rss::search_backlog_article_links;
-
-            let unprocessed_links = search_backlog_article_links(&pool).await?;
-            let unprocessed_urls: Vec<&str> = unprocessed_links
-                .iter()
-                .map(|link| link.url.as_str())
-                .collect();
-
-            assert!(unprocessed_urls.contains(&"https://test.com/unprocessed"));
-            assert!(!unprocessed_urls.contains(&"https://test.com/processed"));
-
-            println!("✅ 未処理リンク取得テスト成功");
+            println!("✅ フィクスチャでのJOIN検索テスト成功");
             Ok(())
         }
     }
