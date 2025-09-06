@@ -412,7 +412,7 @@ mod tests {
 
         #[sqlx::test(fixtures("../../../fixtures/article_backlog.sql"))]
         async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
-            use crate::domain::article::model::{
+            use crate::core::article::model::{
                 count_articles_metadata_by_status, format_backlog_articles_metadata,
             };
 
@@ -439,7 +439,7 @@ mod tests {
     // 複合処理・複数モジュール連携系テスト
     mod composition {
         use super::*;
-        use crate::domain::rss::search_backlog_article_links;
+        use crate::core::rss::search_backlog_article_links;
 
         // データベースJOIN機能の統合テスト
 

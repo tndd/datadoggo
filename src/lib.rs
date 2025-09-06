@@ -1,3 +1,4 @@
 pub mod app;
-pub mod domain;
+pub mod core;
 pub mod infra;
+pub mod task;
