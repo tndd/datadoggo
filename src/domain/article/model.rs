@@ -218,7 +218,7 @@ mod tests {
             println!("✅ Article状態判定テスト成功");
         }
 
-        // ArticleViewトレイトとジェネリック処理のテスト
+        // 直接フィールドアクセスのテスト
         #[test]
         fn test_direct_field_access() {
             // 完全版記事のテスト
