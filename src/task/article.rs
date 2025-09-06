@@ -1,6 +1,8 @@
 use crate::{
     core::{
-        article::{get_article_content_with_client, store_article_content, ArticleContent},
+        article::{
+            get_article_content_for_storage_with_client, store_article_content, ArticleStorageData,
+        },
         rss::search_backlog_article_links,
     },
     infra::api::firecrawl::FirecrawlClient,
@@ -22,7 +24,7 @@ pub async fn task_collect_articles<F: FirecrawlClient>(
         println!("記事処理中: {}", article_link.url);
 
         let article_result =
-            get_article_content_with_client(&article_link.url, firecrawl_client).await;
+            get_article_content_for_storage_with_client(&article_link.url, firecrawl_client).await;
 
         match article_result {
             Ok(article) => match store_article_content(&article, pool).await {
@@ -37,7 +39,7 @@ pub async fn task_collect_articles<F: FirecrawlClient>(
                 eprintln!("  記事取得エラー: {}", e);
 
                 // エラーが発生した場合も、status_codeを記録してスキップ
-                let error_article = ArticleContent {
+                let error_article = ArticleStorageData {
                     url: article_link.url,
                     timestamp: chrono::Utc::now(),
                     status_code: 500, // エラー用のステータスコード

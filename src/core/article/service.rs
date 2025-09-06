@@ -1,17 +1,8 @@
-use super::model::{Article, ArticleMetadata, ArticleStatus};
+use super::model::{Article, ArticleInfo, ArticleStatus};
 use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, PgPool};
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct ArticleContent {
-    pub url: String,
-    pub timestamp: DateTime<Utc>,
-    pub status_code: i32,
-    pub content: String,
-}
+use sqlx::PgPool;
 
 #[derive(Debug, Default)]
 pub struct ArticleQuery {
@@ -23,30 +14,40 @@ pub struct ArticleQuery {
 }
 
 #[derive(Debug, Default)]
-pub struct ArticleContentQuery {
+pub struct ArticleInfoQuery {
     pub url_pattern: Option<String>,
-    pub timestamp_from: Option<DateTime<Utc>>,
-    pub timestamp_to: Option<DateTime<Utc>>,
+    pub pub_date_from: Option<DateTime<Utc>>,
+    pub pub_date_to: Option<DateTime<Utc>>,
     pub status_code: Option<i32>,
+    pub limit: Option<i64>,
 }
 
-/// URLから記事内容を取得してArticleContent構造体に変換する（Firecrawl SDK使用）
-pub async fn get_article_content(url: &str) -> Result<ArticleContent> {
+/// 記事データをデータベースに保存するための内部構造体
+#[derive(Debug, Clone)]
+pub struct ArticleStorageData {
+    pub url: String,
+    pub timestamp: DateTime<Utc>,
+    pub status_code: i32,
+    pub content: String,
+}
+
+/// URLから記事内容を取得してデータベース保存用の構造体に変換する（Firecrawl SDK使用）
+pub async fn get_article_content_for_storage(url: &str) -> Result<ArticleStorageData> {
     let client =
         ReqwestFirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
-    get_article_content_with_client(url, &client).await
+    get_article_content_for_storage_with_client(url, &client).await
 }
 
 /// 指定されたFirecrawlクライアントを使用して記事内容を取得
 ///
 /// この関数は依存注入をサポートし、テスト時にモッククライアントを
 /// 注入することでFirecrawl APIへの実際の通信を避けることができます。
-pub async fn get_article_content_with_client(
+pub async fn get_article_content_for_storage_with_client(
     url: &str,
     client: &dyn FirecrawlClient,
-) -> Result<ArticleContent> {
+) -> Result<ArticleStorageData> {
     match client.scrape_url(url).await {
-        Ok(result) => Ok(ArticleContent {
+        Ok(result) => Ok(ArticleStorageData {
             url: url.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 200,
@@ -54,7 +55,7 @@ pub async fn get_article_content_with_client(
                 .markdown
                 .unwrap_or_else(|| "記事内容が取得できませんでした".to_string()),
         }),
-        Err(e) => Ok(ArticleContent {
+        Err(e) => Ok(ArticleStorageData {
             url: url.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 500,
@@ -65,7 +66,7 @@ pub async fn get_article_content_with_client(
 
 /// 記事内容をデータベースに保存する。
 /// 重複した場合には更新を行う。
-pub async fn store_article_content(article: &ArticleContent, pool: &PgPool) -> Result<()> {
+pub async fn store_article_content(article: &ArticleStorageData, pool: &PgPool) -> Result<()> {
     sqlx::query!(
         r#"
         INSERT INTO articles (url, status_code, content)
@@ -89,8 +90,8 @@ pub async fn store_article_content(article: &ArticleContent, pool: &PgPool) -> R
 }
 
 /// URLから記事を取得してデータベースに保存する統合関数
-pub async fn fetch_and_store_article(url: &str, pool: &PgPool) -> Result<ArticleContent> {
-    let article = get_article_content(url).await?;
+pub async fn fetch_and_store_article(url: &str, pool: &PgPool) -> Result<ArticleStorageData> {
+    let article = get_article_content_for_storage(url).await?;
     store_article_content(&article, pool).await?;
     Ok(article)
 }
@@ -100,20 +101,26 @@ pub async fn fetch_and_store_article_with_client(
     url: &str,
     client: &dyn FirecrawlClient,
     pool: &PgPool,
-) -> Result<ArticleContent> {
-    let article = get_article_content_with_client(url, client).await?;
+) -> Result<ArticleStorageData> {
+    let article = get_article_content_for_storage_with_client(url, client).await?;
     store_article_content(&article, pool).await?;
     Ok(article)
 }
 
-/// 指定されたデータベースプールからArticleContentを取得する。
-pub async fn search_article_contents(
-    query: Option<ArticleContentQuery>,
+/// 記事情報（軽量版）を取得する - URLとステータスコードのみ
+pub async fn search_article_info(
+    query: Option<ArticleInfoQuery>,
     pool: &PgPool,
-) -> Result<Vec<ArticleContent>> {
+) -> Result<Vec<ArticleInfo>> {
     let query = query.unwrap_or_default();
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        "SELECT url, timestamp, status_code, content FROM articles",
+        r#"
+        SELECT 
+            al.url,
+            a.status_code
+        FROM article_links al
+        LEFT JOIN articles a ON al.url = a.url
+        "#,
     );
 
     let mut has_where = false;
@@ -122,27 +129,27 @@ pub async fn search_article_contents(
         qb.push(" WHERE ");
         has_where = true;
         let url_query = format!("%{}%", url_pattern);
-        qb.push("url ILIKE ").push_bind(url_query);
+        qb.push("al.url ILIKE ").push_bind(url_query);
     }
 
-    if let Some(ts_from) = query.timestamp_from {
+    if let Some(date_from) = query.pub_date_from {
         if has_where {
             qb.push(" AND ");
         } else {
             qb.push(" WHERE ");
             has_where = true;
         }
-        qb.push("timestamp >= ").push_bind(ts_from);
+        qb.push("al.pub_date >= ").push_bind(date_from);
     }
 
-    if let Some(ts_to) = query.timestamp_to {
+    if let Some(date_to) = query.pub_date_to {
         if has_where {
             qb.push(" AND ");
         } else {
             qb.push(" WHERE ");
             has_where = true;
         }
-        qb.push("timestamp <= ").push_bind(ts_to);
+        qb.push("al.pub_date <= ").push_bind(date_to);
     }
 
     if let Some(status) = query.status_code {
@@ -151,21 +158,25 @@ pub async fn search_article_contents(
         } else {
             qb.push(" WHERE ");
         }
-        qb.push("status_code = ").push_bind(status);
+        qb.push("a.status_code = ").push_bind(status);
     }
 
-    qb.push(" ORDER BY timestamp DESC");
+    qb.push(" ORDER BY al.pub_date DESC");
 
-    let articles = qb
-        .build_query_as::<ArticleContent>()
-        .fetch_all(pool)
-        .await?;
+    if let Some(limit) = query.limit {
+        qb.push(" LIMIT ").push_bind(limit);
+    }
+
+    let articles = qb.build_query_as::<ArticleInfo>().fetch_all(pool).await?;
 
     Ok(articles)
 }
 
-/// RSSリンクと記事の結合情報を取得する
-pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
+/// 完全な記事データを取得する（処理済みの記事のみ）
+pub async fn search_processed_articles(
+    query: Option<ArticleQuery>,
+    pool: &PgPool,
+) -> Result<Vec<Article>> {
     let query = query.unwrap_or_default();
 
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
@@ -178,7 +189,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
             a.status_code,
             a.content
         FROM article_links al
-        LEFT JOIN articles a ON al.url = a.url
+        INNER JOIN articles a ON al.url = a.url
         "#,
     );
 
@@ -217,14 +228,15 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
         }
 
         match status {
-            ArticleStatus::Unprocessed => {
-                qb.push("a.url IS NULL");
-            }
             ArticleStatus::Success => {
                 qb.push("a.status_code = 200");
             }
             ArticleStatus::Error(code) => {
                 qb.push("a.status_code = ").push_bind(*code);
+            }
+            ArticleStatus::Unprocessed => {
+                // INNER JOINを使っているので、未処理記事は取得されない
+                qb.push("FALSE");
             }
         }
     }
@@ -243,18 +255,15 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     Ok(results)
 }
 
-/// バックログ記事の軽量版を取得する（article_contentを除外し、パフォーマンスを向上）
-pub async fn search_backlog_articles_light(
+/// バックログ記事の軽量版を取得する（URLとステータスコードのみ）
+pub async fn search_backlog_article_info(
     pool: &PgPool,
     limit: Option<i64>,
-) -> Result<Vec<ArticleMetadata>> {
+) -> Result<Vec<ArticleInfo>> {
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"
         SELECT 
             al.url,
-            al.title,
-            al.pub_date,
-            a.timestamp as updated_at,
             a.status_code
         FROM article_links al
         LEFT JOIN articles a ON al.url = a.url
@@ -267,7 +276,7 @@ pub async fn search_backlog_articles_light(
     }
 
     let results = qb
-        .build_query_as::<ArticleMetadata>()
+        .build_query_as::<ArticleInfo>()
         .fetch_all(pool)
         .await
         .context("バックログ記事の軽量版取得に失敗")?;
@@ -283,7 +292,7 @@ mod tests {
     mod helper {
         use super::*;
 
-        fn read_article_content_from_file(file_path: &str) -> Result<ArticleContent> {
+        fn read_article_storage_data_from_file(file_path: &str) -> Result<ArticleStorageData> {
             let json_value = load_json_from_file(file_path)?;
             let content = json_value
                 .get("markdown")
@@ -306,7 +315,7 @@ mod tests {
                 .ok_or_else(|| anyhow::anyhow!("statusCodeフィールドが見つかりません"))?;
             let now = Utc::now();
 
-            Ok(ArticleContent {
+            Ok(ArticleStorageData {
                 url,
                 timestamp: now,
                 status_code,
@@ -316,7 +325,7 @@ mod tests {
 
         #[test]
         fn test_read_article_from_file() {
-            let result = read_article_content_from_file("mock/fc/bbc.json");
+            let result = read_article_storage_data_from_file("mock/fc/bbc.json");
             assert!(result.is_ok(), "Firecrawl JSONファイルの読み込みに失敗");
 
             let article = result.unwrap();
@@ -343,7 +352,7 @@ mod tests {
             "#;
             let temp_file = "temp_test_missing_status_code.json";
             fs::write(temp_file, json_content).expect("テストファイルの作成に失敗");
-            let result = read_article_content_from_file(temp_file);
+            let result = read_article_storage_data_from_file(temp_file);
             assert!(
                 result.is_err(),
                 "statusCodeが存在しないのにエラーにならなかった"
@@ -370,7 +379,8 @@ mod tests {
             let test_url = "https://test.com/article";
             let mock_content = "テスト記事内容\n\nこれはモックコンテンツです。";
             let mock_client = MockFirecrawlClient::new_success(mock_content);
-            let article = get_article_content_with_client(test_url, &mock_client).await?;
+            let article =
+                get_article_content_for_storage_with_client(test_url, &mock_client).await?;
 
             assert_eq!(article.url, test_url);
             assert_eq!(article.status_code, 200);
@@ -385,7 +395,9 @@ mod tests {
             use crate::infra::api::firecrawl::MockFirecrawlClient;
 
             let error_client = MockFirecrawlClient::new_error("テストエラー");
-            let result = get_article_content_with_client("https://test.com", &error_client).await;
+            let result =
+                get_article_content_for_storage_with_client("https://test.com", &error_client)
+                    .await;
 
             assert!(result.is_ok(), "エラークライアントでも結果を返すべき");
             let article = result.unwrap();
@@ -409,7 +421,7 @@ mod tests {
         #[sqlx::test]
         async fn test_store_article_content(pool: PgPool) -> Result<(), anyhow::Error> {
             let now = Utc::now();
-            let test_article = ArticleContent {
+            let test_article = ArticleStorageData {
                 url: "https://test.example.com/firecrawl".to_string(),
                 timestamp: now,
                 status_code: 200,
@@ -428,14 +440,14 @@ mod tests {
         #[sqlx::test]
         async fn test_store_duplicate_article_contents(pool: PgPool) -> Result<(), anyhow::Error> {
             let now = Utc::now();
-            let original_article = ArticleContent {
+            let original_article = ArticleStorageData {
                 url: "https://test.example.com/duplicate".to_string(),
                 timestamp: now,
                 status_code: 200,
                 content: "Original content".to_string(),
             };
             store_article_content(&original_article, &pool).await?;
-            let duplicate_article = ArticleContent {
+            let duplicate_article = ArticleStorageData {
                 url: "https://test.example.com/duplicate".to_string(),
                 timestamp: now,
                 status_code: 404,
@@ -456,9 +468,21 @@ mod tests {
         }
 
         #[sqlx::test]
-        async fn test_search_article_contents(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_search_article_info(pool: PgPool) -> Result<(), anyhow::Error> {
             let now = Utc::now();
-            let test_article = ArticleContent {
+
+            // まず article_links にエントリを追加
+            sqlx::query!(
+                "INSERT INTO article_links (url, title, pub_date, source) VALUES ($1, $2, $3, $4)",
+                "https://search.test.com/article",
+                "検索テスト記事",
+                now,
+                "test_source"
+            )
+            .execute(&pool)
+            .await?;
+
+            let test_article = ArticleStorageData {
                 url: "https://search.test.com/article".to_string(),
                 timestamp: now,
                 status_code: 200,
@@ -466,15 +490,16 @@ mod tests {
             };
             store_article_content(&test_article, &pool).await?;
 
-            let query = ArticleContentQuery {
+            let query = ArticleInfoQuery {
                 url_pattern: Some("search.test.com".to_string()),
                 ..Default::default()
             };
-            let results = search_article_contents(Some(query), &pool).await?;
+            let results = search_article_info(Some(query), &pool).await?;
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].url, "https://search.test.com/article");
+            assert_eq!(results[0].status_code, Some(200));
 
-            println!("✅ 記事検索テスト成功");
+            println!("✅ 記事情報検索テスト成功");
             Ok(())
         }
 
@@ -507,17 +532,17 @@ mod tests {
                 link_pattern: Some("example.com".to_string()),
                 ..Default::default()
             };
-            let example_links = search_articles(Some(query), &pool).await?;
+            let example_links = search_processed_articles(Some(query), &pool).await?;
             assert_eq!(example_links.len(), 2, "example.comのリンクは2件のはず");
 
             let query = ArticleQuery {
                 article_status: Some(ArticleStatus::Success),
                 ..Default::default()
             };
-            let success_links = search_articles(Some(query), &pool).await?;
+            let success_links = search_processed_articles(Some(query), &pool).await?;
             let success_count = success_links
                 .iter()
-                .filter(|link| link.status_code == Some(200))
+                .filter(|link| link.status_code == 200)
                 .count();
             assert_eq!(
                 success_count,
@@ -530,15 +555,14 @@ mod tests {
         }
 
         #[sqlx::test(fixtures("../../../fixtures/article_backlog.sql"))]
-        async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
+        async fn test_search_backlog_article_info(pool: PgPool) -> Result<(), anyhow::Error> {
             use crate::core::article::model::{
-                count_articles_metadata_by_status, format_backlog_articles_metadata,
+                count_article_info_by_status, format_backlog_article_info,
             };
 
-            let backlog_articles = search_backlog_articles_light(&pool, None).await?;
-            let backlog_messages = format_backlog_articles_metadata(&backlog_articles);
-            let (unprocessed, success, error) =
-                count_articles_metadata_by_status(&backlog_articles);
+            let backlog_articles = search_backlog_article_info(&pool, None).await?;
+            let backlog_messages = format_backlog_article_info(&backlog_articles);
+            let (unprocessed, success, error) = count_article_info_by_status(&backlog_articles);
 
             assert!(backlog_messages.len() >= 2);
             assert!(unprocessed >= 1);
@@ -557,29 +581,23 @@ mod tests {
         use super::*;
 
         #[sqlx::test(fixtures("../../../fixtures/article_basic.sql"))]
-        async fn test_search_articles_with_join(pool: PgPool) -> Result<(), anyhow::Error> {
-            let all_links = search_articles(None, &pool).await?;
-            assert!(all_links.len() >= 2, "最低2件のリンクが取得されるべき");
+        async fn test_search_processed_articles_with_join(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            let all_links = search_processed_articles(None, &pool).await?;
+            assert!(
+                all_links.len() >= 1,
+                "最低1件の処理済み記事が取得されるべき"
+            );
 
             let link1 = all_links
                 .iter()
                 .find(|link| link.url == "https://test.com/link1")
                 .expect("link1が見つからない");
-            assert!(link1.status_code.is_some(), "link1に記事が紐づいているべき");
-            assert_eq!(link1.status_code, Some(200));
-            assert!(!link1.is_backlog());
+            assert_eq!(link1.status_code, 200);
+            assert!(!link1.is_error());
 
-            let link2 = all_links
-                .iter()
-                .find(|link| link.url == "https://test.com/link2")
-                .expect("link2が見つからない");
-            assert!(
-                link2.status_code.is_none(),
-                "link2に記事が紐づいていないべき"
-            );
-            assert!(link2.is_backlog());
-
-            println!("✅ JOINクエリテスト成功");
+            println!("✅ 処理済み記事検索テスト成功");
             Ok(())
         }
 

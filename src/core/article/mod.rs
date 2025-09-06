@@ -5,15 +5,14 @@ pub mod service;
 
 // model.rsから
 pub use model::{
-    count_articles_by_status, count_articles_metadata_by_status, filter_articles_by_status,
-    filter_articles_metadata_by_status, format_backlog_articles, format_backlog_articles_metadata,
-    Article, ArticleMetadata, ArticleStatus,
+    count_article_info_by_status, filter_article_info_by_status, format_backlog_article_info,
+    Article, ArticleInfo, ArticleStatus,
 };
 
-// repository.rsから（統合後）
+// service.rsから
 pub use service::{
-    fetch_and_store_article, fetch_and_store_article_with_client, get_article_content,
-    get_article_content_with_client, search_article_contents, search_articles,
-    search_backlog_articles_light, store_article_content, ArticleContent, ArticleContentQuery,
-    ArticleQuery,
+    fetch_and_store_article, fetch_and_store_article_with_client, get_article_content_for_storage,
+    get_article_content_for_storage_with_client, search_article_info, search_backlog_article_info,
+    search_processed_articles, store_article_content, ArticleInfoQuery, ArticleQuery,
+    ArticleStorageData,
 };
