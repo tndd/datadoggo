@@ -26,7 +26,7 @@ pub struct ArticleUrlStatus {
 #[derive(Debug, Default)]
 pub struct ArticleUrlStatusQuery {
     pub url_pattern: Option<String>,
-    pub status_codes: Option<Vec<i32>>,
+    pub statuses: Option<Vec<ArticleStatus>>,
     pub limit: Option<i64>,
 }
 
@@ -58,15 +58,30 @@ pub async fn search_article_url_statuses(
         qb.push("al.url ILIKE ").push_bind(pattern);
     }
 
-    if let Some(ref status_codes) = query.status_codes {
+    if let Some(ref statuses) = query.statuses {
         if has_where {
-            qb.push(" AND ");
+            qb.push(" AND (");
         } else {
-            qb.push(" WHERE ");
+            qb.push(" WHERE (");
         }
-        qb.push("a.status_code = ANY(")
-            .push_bind(status_codes)
-            .push(")");
+
+        for (i, status) in statuses.iter().enumerate() {
+            if i > 0 {
+                qb.push(" OR ");
+            }
+            match status {
+                ArticleStatus::Unprocessed => {
+                    qb.push("a.status_code IS NULL");
+                }
+                ArticleStatus::Success => {
+                    qb.push("a.status_code = 200");
+                }
+                ArticleStatus::Error(code) => {
+                    qb.push("a.status_code = ").push_bind(*code);
+                }
+            }
+        }
+        qb.push(")");
     }
 
     qb.push(" ORDER BY al.url");
@@ -102,7 +117,7 @@ pub struct ArticleJoinRowQuery {
     pub link_pattern: Option<String>,
     pub pub_date_from: Option<DateTime<Utc>>,
     pub pub_date_to: Option<DateTime<Utc>>,
-    pub status_codes: Option<Vec<i32>>,
+    pub statuses: Option<Vec<ArticleStatus>>,
     pub source: Option<String>,
     pub limit: Option<i64>,
 }
@@ -160,16 +175,31 @@ pub async fn search_article_join_rows(
         qb.push("al.pub_date <= ").push_bind(pub_date_to);
     }
 
-    if let Some(ref status_codes) = query.status_codes {
+    if let Some(ref statuses) = query.statuses {
         if has_where {
-            qb.push(" AND ");
+            qb.push(" AND (");
         } else {
-            qb.push(" WHERE ");
+            qb.push(" WHERE (");
             has_where = true;
         }
-        qb.push("a.status_code = ANY(")
-            .push_bind(status_codes)
-            .push(")");
+
+        for (i, status) in statuses.iter().enumerate() {
+            if i > 0 {
+                qb.push(" OR ");
+            }
+            match status {
+                ArticleStatus::Unprocessed => {
+                    qb.push("a.status_code IS NULL");
+                }
+                ArticleStatus::Success => {
+                    qb.push("a.status_code = 200");
+                }
+                ArticleStatus::Error(code) => {
+                    qb.push("a.status_code = ").push_bind(*code);
+                }
+            }
+        }
+        qb.push(")");
     }
 
     if let Some(ref source) = query.source {
@@ -595,7 +625,7 @@ mod tests {
             .await?;
 
             let query = ArticleJoinRowQuery {
-                status_codes: Some(vec![200]),
+                statuses: Some(vec![ArticleStatus::Success]),
                 ..Default::default()
             };
             let results = search_article_join_rows(Some(query), &pool).await?;
@@ -644,7 +674,7 @@ mod tests {
 
             // エラー状態のURLを検索
             let query = ArticleUrlStatusQuery {
-                status_codes: Some(vec![404]),
+                statuses: Some(vec![ArticleStatus::Error(404)]),
                 ..Default::default()
             };
             let results = search_article_url_statuses(Some(query), &pool).await?;
@@ -670,7 +700,7 @@ mod tests {
             assert!(all_rows.len() >= 2, "最低2件の結合結果が取得されるべき");
 
             let success_query = ArticleJoinRowQuery {
-                status_codes: Some(vec![200]),
+                statuses: Some(vec![ArticleStatus::Success]),
                 ..Default::default()
             };
             let success_rows = search_article_join_rows(Some(success_query), &pool).await?;

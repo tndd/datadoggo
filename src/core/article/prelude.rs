@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-use super::service::{search_article_join_rows, ArticleJoinRowQuery};
+use super::service::{search_article_join_rows, ArticleJoinRowQuery, ArticleStatus};
 
 // ユーザー側が実際に取り扱う情報モデル
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,7 +33,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
         link_pattern: query.link_pattern,
         pub_date_from: query.pub_date_from,
         pub_date_to: query.pub_date_to,
-        status_codes: Some(vec![200]), // 成功したもののみ
+        statuses: Some(vec![ArticleStatus::Success]), // 成功したもののみ
         source: None,
         limit: query.limit,
     };
