@@ -6,6 +6,7 @@
 - [x] sqlディレクトリの作成
 - [x] Article構造体がドメインとDB両方の間で板挟みになってる問題
 - [ ] search_backlog_articles_light, search_backlog_article_linksの類似
+- [ ] sqlx fixturesディレクトリの一元管理をやめる？
 
 # Summary
 Todoの内容を具体化する。
