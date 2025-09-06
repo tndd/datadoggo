@@ -81,9 +81,8 @@ mod.rsとは従属的な関係となる。
   - それはユーザー側から見てもそう
   - そしてservice側から見ても、このArticleContentはArticleLinkテーブルとjoinして使用されうるものだからだ
 
-# 追加対象
-## service.rs
-### ArticleUrlStatus
+# 追加対象(service.rs)
+## ArticleUrlStatus
 - どのurlがどういうステータスを持っているかを確認するための軽量な構造体
 - 想定している用途は、エラーや未実行のurlを割り出し取得するため
 
@@ -100,7 +99,7 @@ mod.rsとは従属的な関係となる。
 注意点:
 - このArticleUrlStatus追加に伴い、その取得のためのクエリと関数とテストの実装が必要となる
 
-### ArticleJoinRow
+## ArticleJoinRow
 - `ArticleLink`と`Article`のJOIN結果をそのまま受け取るDB用の構造体
 - 外部には公開しない
 
@@ -123,6 +122,26 @@ mod.rsとは従属的な関係となる。
 - ドメイン`Article`への変換機能が必要となる
   - timestampは`Article`における`update_at`
   - sourceは`Article`には変換されない
+
+## ArticleJoinRowQuery
+- `ArticleJoinRow` を取得する際に使用するクエリモデル
+
+---
+
+テーブル定義:
+| Field         | Type                  |
+| ------------- | --------------------- |
+| link_pattern  | Option<String>        |
+| pub_date_from | Option<DateTime<Utc>> |
+| pub_date_to   | Option<DateTime<Utc>> |
+| status_codes  | Option<Vec<i32>>      |
+| source        | Option<String>        |
+| limit         | Option<i64>           |
+
+---
+
+## search_article_join_rows()
+- `ArticleJoinRowQuery` を受け取り、`Vec<ArticleJoinRow>` を返す関数
 
 # 要望
 - 過度な抽象化は控えること
