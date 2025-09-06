@@ -37,6 +37,3 @@ WIP
 - WEF（世界経済フォーラム） - Global Risks Report、ダボス会議で議題設定
 - CFR（外交問題評議会） - Foreign Affairs誌、CFR報告書で米国外交思想を形成
 - ...
-
-# Todo
-- [ ] search_backlog_articles_light, search_backlog_article_linksの類似
