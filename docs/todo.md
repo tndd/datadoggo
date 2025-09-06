@@ -1,9 +1,10 @@
 # Issue
 - [ ] search_backlog_articles_light, search_backlog_article_linksの類似
-- [ ] Article構造体のに意図しないOption指定がある問題
-- [ ] Article構造体がArticleStatusを持っていない問題
 
 # Todo
+## Article構造体がドメインとDB両方の間で板挟みになってる問題
+- modelとserviceの分割の基準
+- article構造体のoption問題
 
 ---
 
