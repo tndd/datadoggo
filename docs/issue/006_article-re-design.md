@@ -12,13 +12,13 @@
 ---
 
 テーブル定義
-| Field      | Type                  |
-| ---------- | --------------------- |
-| url        | String                |
-| title      | String                |
-| pub_date   | DateTime<Utc>         |
-| updated_at | Option<DateTime<Utc>> |
-| content    | Option<String>        |
+| Field      | Type          |
+| ---------- | ------------- |
+| url        | String        |
+| title      | String        |
+| pub_date   | DateTime<Utc> |
+| updated_at | DateTime<Utc> |
+| content    | String        |
 
 ---
 
@@ -27,6 +27,9 @@
   - ユーザーが`Article`を取得している時点で、エラーなど情報として成立していない情報が取得されることはありえないため削除
 - optionalの削除
   - こちらについても、データの欠損はありえないためoptionalは削除
+- ドメインモデルとしての純化による影響
+  - db側では依然、joinされた結果のoptionalな結果が返ってはくるが、それはこのモデルとは全く別物であることには留意すること
+  - そういう雑多なレスポンスがフィルタリングされ純化されたものがこのArticleモデルとして使われるという想定
 
 ### ArticleQuery
 ユーザーが`Article`を取得する際に使用するクエリモデル。
@@ -65,6 +68,7 @@ mod.rsとは従属的な関係となる。
 # 削除対象
 ## ArticleMetadata
 - ユーザーがメタデータだけ欲しいという場面は今のところ考えられないため不要
+- 必要ならば代替品として後述の`ArticleUrlStatus`を使用すること
 
 ## ArticleContentQuery
 - これは`ArticleContent`というモデルの取得を目的として作られたクエリ構造体
