@@ -46,83 +46,27 @@ pub enum ArticleStatus {
     Error(i32),
 }
 
-// 記事の共通操作を定義するトレイト
-pub trait ArticleView {
-    fn get_link(&self) -> &str;
-    fn get_title(&self) -> &str;
-    fn get_pub_date(&self) -> DateTime<Utc>;
-    fn get_status_code(&self) -> Option<i32>;
-
-    // デフォルト実装を提供するメソッド
-    fn get_article_status(&self) -> ArticleStatus {
-        match self.get_status_code() {
+// 記事の処理状態を判定するメソッド
+impl Article {
+    /// 記事の処理状態を取得
+    pub fn get_article_status(&self) -> ArticleStatus {
+        match self.status_code {
             None => ArticleStatus::Unprocessed,
             Some(200) => ArticleStatus::Success,
             Some(code) => ArticleStatus::Error(code),
         }
     }
-
-    fn is_unprocessed(&self) -> bool {
-        matches!(self.get_article_status(), ArticleStatus::Unprocessed)
-    }
-
-    fn is_error(&self) -> bool {
-        matches!(self.get_article_status(), ArticleStatus::Error(_))
-    }
-
-    fn is_backlog(&self) -> bool {
-        self.is_unprocessed() || self.is_error()
-    }
-}
-
-// ArticleViewトレイトの実装
-impl ArticleView for Article {
-    fn get_link(&self) -> &str {
-        &self.url
-    }
-    fn get_title(&self) -> &str {
-        &self.title
-    }
-    fn get_pub_date(&self) -> DateTime<Utc> {
-        self.pub_date
-    }
-    fn get_status_code(&self) -> Option<i32> {
-        self.status_code
-    }
-}
-
-impl ArticleView for ArticleMetadata {
-    fn get_link(&self) -> &str {
-        &self.url
-    }
-    fn get_title(&self) -> &str {
-        &self.title
-    }
-    fn get_pub_date(&self) -> DateTime<Utc> {
-        self.pub_date
-    }
-    fn get_status_code(&self) -> Option<i32> {
-        self.status_code
-    }
-}
-
-// 既存のAPIとの互換性のため、Articleに直接メソッドも追加
-impl Article {
-    /// 記事の処理状態を取得
-    pub fn get_article_status(&self) -> ArticleStatus {
-        ArticleView::get_article_status(self)
-    }
     /// 未処理のリンクかどうかを判定
     pub fn is_unprocessed(&self) -> bool {
-        ArticleView::is_unprocessed(self)
+        matches!(self.get_article_status(), ArticleStatus::Unprocessed)
     }
     /// エラー状態のリンクかどうかを判定
     pub fn is_error(&self) -> bool {
-        ArticleView::is_error(self)
+        matches!(self.get_article_status(), ArticleStatus::Error(_))
     }
-    /// 処理が必要なリンクかどうかを判定（未処理またはエラー）
+    /// バックログ対象のリンクかどうかを判定
     pub fn is_backlog(&self) -> bool {
-        ArticleView::is_backlog(self)
+        self.is_unprocessed() || self.is_error()
     }
 }
 
@@ -365,17 +309,30 @@ pub async fn search_backlog_articles_light(
     Ok(results)
 }
 
-/// ArticleViewトレイトを使用したジェネリック処理関数
-pub fn format_backlog_articles<T: ArticleView>(articles: &[T]) -> Vec<String> {
+/// バックログ記事をフォーマットする関数（Article用）
+pub fn format_backlog_articles(articles: &[Article]) -> Vec<String> {
     articles
         .iter()
         .filter(|article| article.is_backlog())
-        .map(|article| format!("処理待ち: {} - {}", article.get_title(), article.get_link()))
+        .map(|article| format!("処理待ち: {} - {}", article.title, article.url))
         .collect()
 }
 
-/// 記事ステータスでフィルタリングするジェネリック関数
-pub fn filter_articles_by_status<T: ArticleView>(articles: &[T], status: ArticleStatus) -> Vec<&T> {
+/// バックログ記事をフォーマットする関数（ArticleMetadata用）
+pub fn format_backlog_articles_metadata(articles: &[ArticleMetadata]) -> Vec<String> {
+    articles
+        .iter()
+        .filter(|article| match article.status_code {
+            None => true,
+            Some(200) => false,
+            Some(_) => true,
+        })
+        .map(|article| format!("処理待ち: {} - {}", article.title, article.url))
+        .collect()
+}
+
+/// 記事ステータスでフィルタリングする関数（Article用）
+pub fn filter_articles_by_status(articles: &[Article], status: ArticleStatus) -> Vec<&Article> {
     articles
         .iter()
         .filter(|article| match status {
@@ -390,8 +347,32 @@ pub fn filter_articles_by_status<T: ArticleView>(articles: &[T], status: Article
         .collect()
 }
 
-/// 記事統計情報を計算するジェネリック関数
-pub fn count_articles_by_status<T: ArticleView>(articles: &[T]) -> (usize, usize, usize) {
+/// 記事ステータスでフィルタリングする関数（ArticleMetadata用）
+pub fn filter_articles_metadata_by_status(
+    articles: &[ArticleMetadata],
+    status: ArticleStatus,
+) -> Vec<&ArticleMetadata> {
+    articles
+        .iter()
+        .filter(|article| {
+            let article_status = match article.status_code {
+                None => ArticleStatus::Unprocessed,
+                Some(200) => ArticleStatus::Success,
+                Some(code) => ArticleStatus::Error(code),
+            };
+            match status {
+                ArticleStatus::Unprocessed => matches!(article_status, ArticleStatus::Unprocessed),
+                ArticleStatus::Success => matches!(article_status, ArticleStatus::Success),
+                ArticleStatus::Error(code) => {
+                    matches!(article_status, ArticleStatus::Error(c) if c == code)
+                }
+            }
+        })
+        .collect()
+}
+
+/// 記事統計情報を計算する関数（Article用）
+pub fn count_articles_by_status(articles: &[Article]) -> (usize, usize, usize) {
     let mut unprocessed = 0;
     let mut success = 0;
     let mut error = 0;
@@ -401,6 +382,23 @@ pub fn count_articles_by_status<T: ArticleView>(articles: &[T]) -> (usize, usize
             ArticleStatus::Unprocessed => unprocessed += 1,
             ArticleStatus::Success => success += 1,
             ArticleStatus::Error(_) => error += 1,
+        }
+    }
+
+    (unprocessed, success, error)
+}
+
+/// 記事統計情報を計算する関数（ArticleMetadata用）
+pub fn count_articles_metadata_by_status(articles: &[ArticleMetadata]) -> (usize, usize, usize) {
+    let mut unprocessed = 0;
+    let mut success = 0;
+    let mut error = 0;
+
+    for article in articles {
+        match article.status_code {
+            None => unprocessed += 1,
+            Some(200) => success += 1,
+            Some(_) => error += 1,
         }
     }
 
@@ -661,7 +659,7 @@ mod tests {
 
         // ArticleViewトレイトとジェネリック処理のテスト
         #[test]
-        fn test_article_view_trait_implementation() {
+        fn test_direct_field_access() {
             // 完全版記事のテスト
             let full_article = Article {
                 url: "https://test.com/full".to_string(),
@@ -679,18 +677,21 @@ mod tests {
                 updated_at: Some(Utc::now()),
                 status_code: Some(404),
             };
-            // ArticleViewトレイト経由でのアクセス
-            assert_eq!(full_article.get_link(), "https://test.com/full");
-            assert_eq!(full_article.get_title(), "完全版記事");
-            assert_eq!(full_article.get_status_code(), Some(200));
+            // 直接フィールドアクセス
+            assert_eq!(full_article.url, "https://test.com/full");
+            assert_eq!(full_article.title, "完全版記事");
+            assert_eq!(full_article.status_code, Some(200));
             assert!(!full_article.is_backlog());
 
-            assert_eq!(light_article.get_link(), "https://test.com/light");
-            assert_eq!(light_article.get_title(), "軽量版記事");
-            assert_eq!(light_article.get_status_code(), Some(404));
-            assert!(light_article.is_backlog());
+            assert_eq!(light_article.url, "https://test.com/light");
+            assert_eq!(light_article.title, "軽量版記事");
+            assert_eq!(light_article.status_code, Some(404));
+            // ArticleMetadataにはis_backlogメソッドがないため、直接判定
+            let is_backlog =
+                light_article.status_code.is_none() || light_article.status_code != Some(200);
+            assert!(is_backlog);
 
-            println!("✅ ArticleViewトレイト実装テスト成功");
+            println!("✅ 直接フィールドアクセステスト成功");
         }
 
         #[test]
@@ -730,9 +731,9 @@ mod tests {
                     status_code: Some(200),
                 },
             ];
-            // ジェネリック処理関数のテスト
+            // 処理関数のテスト
             let full_backlog = format_backlog_articles(&full_articles);
-            let light_backlog = format_backlog_articles(&light_articles);
+            let light_backlog = format_backlog_articles_metadata(&light_articles);
 
             assert_eq!(full_backlog.len(), 1);
             assert!(full_backlog[0].contains("エラー記事"));
@@ -742,29 +743,31 @@ mod tests {
             let error_articles =
                 filter_articles_by_status(&full_articles, ArticleStatus::Error(404));
             assert_eq!(error_articles.len(), 1);
-            assert_eq!(error_articles[0].get_title(), "エラー記事");
+            assert_eq!(error_articles[0].title, "エラー記事");
 
-            let success_light = filter_articles_by_status(&light_articles, ArticleStatus::Success);
+            let success_light =
+                filter_articles_metadata_by_status(&light_articles, ArticleStatus::Success);
             assert_eq!(success_light.len(), 1);
-            assert_eq!(success_light[0].get_title(), "成功軽量記事");
+            assert_eq!(success_light[0].title, "成功軽量記事");
             // 統計計算のテスト
             let (unprocessed, success, error) = count_articles_by_status(&full_articles);
             assert_eq!((unprocessed, success, error), (0, 1, 1));
 
             let (light_unprocessed, light_success, light_error) =
-                count_articles_by_status(&light_articles);
+                count_articles_metadata_by_status(&light_articles);
             assert_eq!((light_unprocessed, light_success, light_error), (1, 1, 0));
 
-            println!("✅ ジェネリック関数テスト成功");
+            println!("✅ 関数テスト成功");
         }
 
         #[sqlx::test(fixtures("../../fixtures/article_backlog.sql"))]
         async fn test_search_backlog_articles_light(pool: PgPool) -> Result<(), anyhow::Error> {
             // バックログ記事の軽量版を取得
             let backlog_articles = search_backlog_articles_light(&pool, None).await?;
-            // トレイトを使って処理
-            let backlog_messages = format_backlog_articles(&backlog_articles);
-            let (unprocessed, success, error) = count_articles_by_status(&backlog_articles);
+            // 直接フィールドアクセスで処理
+            let backlog_messages = format_backlog_articles_metadata(&backlog_articles);
+            let (unprocessed, success, error) =
+                count_articles_metadata_by_status(&backlog_articles);
             // 結果の検証
             assert!(backlog_messages.len() >= 2); // 未処理とエラーの両方
             assert!(unprocessed >= 1); // 少なくとも1つの未処理
@@ -772,7 +775,7 @@ mod tests {
             assert_eq!(success, 0); // バックログには成功記事は含まれない
 
             println!(
-                "✅ トレイトベース バックログ軽量版テスト成功: {}件",
+                "✅ バックログ軽量版テスト成功: {}件",
                 backlog_articles.len()
             );
             Ok(())
