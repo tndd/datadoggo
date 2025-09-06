@@ -88,10 +88,10 @@ mod.rsとは従属的な関係となる。
 ---
 
 テーブル定義:
-| Field       | Type   |
-| ----------- | ------ |
-| url         | String |
-| status_code | i32    |
+| Field       | Type        |
+| ----------- | ----------- |
+| url         | String      |
+| status_code | Option<i32> |
 
 ---
 
