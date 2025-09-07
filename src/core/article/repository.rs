@@ -3,7 +3,7 @@ use sea_query::{Expr, PostgresQueryBuilder, Query};
 use sea_query_binder::SqlxBinder;
 use sqlx::PgPool;
 
-use super::query::{
+use super::builders::{
     apply_date_range, apply_optional_limit, apply_source_filter, apply_status_code_filter,
     apply_status_filter, apply_url_filter, ArticleLinks, Articles,
 };

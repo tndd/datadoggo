@@ -1,5 +1,5 @@
+pub mod builders;
 pub mod prelude;
-pub mod query;
 pub mod repository;
 pub mod service;
 pub mod types;

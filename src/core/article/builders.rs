@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use sea_query::extension::postgres::PgExpr;
 use sea_query::{Cond, Expr, Iden, SelectStatement};
 
-use super::super::types::ArticleStatus;
+use super::types::ArticleStatus;
 
 // テーブル名定義
 #[derive(sea_query::Iden, Clone)]
