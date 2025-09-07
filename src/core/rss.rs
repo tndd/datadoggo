@@ -580,4 +580,296 @@ mod tests {
             Ok(())
         }
     }
+
+    // エラーシナリオテスト
+    mod error_scenarios {
+        use super::*;
+
+        #[sqlx::test(fixtures("rss_error_cases"))]
+        async fn test_store_article_links_with_special_characters(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            // 既存のfixture データを確認
+            let initial_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+
+            // 特殊文字を含む新しい記事リンクを追加
+            let special_links = vec![
+                ArticleLink {
+                    title: "SQL インジェクションテスト'; DROP TABLE articles; --".to_string(),
+                    url: "https://security-test.example.com/sql-injection-attempt".to_string(),
+                    pub_date: "2025-01-21T10:00:00Z".parse().unwrap(),
+                    source: "security-test".to_string(),
+                },
+                ArticleLink {
+                    title: "XSS テスト <script>alert('xss')</script>".to_string(),
+                    url: "https://security-test.example.com/xss-attempt".to_string(),
+                    pub_date: "2025-01-21T11:00:00Z".parse().unwrap(),
+                    source: "security-test".to_string(),
+                },
+            ];
+
+            // 特殊文字を含む記事を保存
+            let result = store_article_links(&special_links, &pool).await;
+            assert!(
+                result.is_ok(),
+                "特殊文字を含む記事の保存が失敗しました: {:?}",
+                result.err()
+            );
+
+            // 保存後の件数確認
+            let final_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+            assert_eq!(
+                final_count.unwrap_or(0),
+                initial_count.unwrap_or(0) + 2,
+                "特殊文字記事が正しく保存されませんでした"
+            );
+
+            // 実際に保存されたデータの確認
+            let saved_article: Option<String> = sqlx::query_scalar!(
+                "SELECT title FROM article_links WHERE url = $1",
+                "https://security-test.example.com/sql-injection-attempt"
+            )
+            .fetch_optional(&pool)
+            .await?;
+
+            assert!(
+                saved_article.is_some(),
+                "SQL インジェクション対策記事が見つかりません"
+            );
+            assert!(
+                saved_article
+                    .unwrap()
+                    .contains("'; DROP TABLE articles; --"),
+                "特殊文字が正しくエスケープされて保存されていません"
+            );
+
+            println!("✅ 特殊文字・セキュリティテスト完了");
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("rss_error_cases"))]
+        async fn test_upsert_with_different_source_values(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            // 同じURL、異なるsourceでの記事作成
+            let duplicate_url = "https://duplicate-source.example.com/same-article";
+            let links_with_different_sources = vec![
+                ArticleLink {
+                    title: "初回の記事".to_string(),
+                    url: duplicate_url.to_string(),
+                    pub_date: "2025-01-21T12:00:00Z".parse().unwrap(),
+                    source: "first-source".to_string(),
+                },
+                ArticleLink {
+                    title: "更新された記事".to_string(),
+                    url: duplicate_url.to_string(),
+                    pub_date: "2025-01-21T13:00:00Z".parse().unwrap(),
+                    source: "second-source".to_string(),
+                },
+            ];
+
+            // 1回目：初回保存
+            store_article_links(&links_with_different_sources[0..1], &pool).await?;
+
+            let first_save: (String, String) = sqlx::query_as!(
+                ArticleLink,
+                "SELECT url, title, pub_date, source FROM article_links WHERE url = $1",
+                duplicate_url
+            )
+            .fetch_one(&pool)
+            .await
+            .map(|link| (link.title, link.source))?;
+
+            assert_eq!(first_save.0, "初回の記事");
+            assert_eq!(first_save.1, "first-source");
+
+            // 2回目：更新（UPSERT）
+            store_article_links(&links_with_different_sources[1..2], &pool).await?;
+
+            let updated_save: (String, String) = sqlx::query_as!(
+                ArticleLink,
+                "SELECT url, title, pub_date, source FROM article_links WHERE url = $1",
+                duplicate_url
+            )
+            .fetch_one(&pool)
+            .await
+            .map(|link| (link.title, link.source))?;
+
+            assert_eq!(updated_save.0, "更新された記事");
+            assert_eq!(updated_save.1, "second-source");
+
+            // 同じURLの記事が1件のみ存在することを確認
+            let count: i64 = sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM article_links WHERE url = $1",
+                duplicate_url
+            )
+            .fetch_one(&pool)
+            .await?
+            .unwrap_or(0);
+
+            assert_eq!(count, 1, "同じURLの記事は1件のみであるべきです");
+
+            println!("✅ 異なるsource値でのUPSERTテスト完了");
+            Ok(())
+        }
+    }
+
+    // エッジケーステスト
+    mod edge_cases {
+        use super::*;
+
+        #[sqlx::test(fixtures("rss_edge_cases"))]
+        async fn test_search_article_links_boundary_conditions(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            // 空文字タイトルの検索
+            let empty_title_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: Some("empty-title".to_string()),
+                    pub_date_from: None,
+                    pub_date_to: None,
+                }),
+                &pool,
+            )
+            .await?;
+
+            assert_eq!(
+                empty_title_results.len(),
+                1,
+                "空文字タイトル記事が見つかりませんでした"
+            );
+            assert_eq!(empty_title_results[0].title, "");
+
+            // 非常に短いタイトル vs 長いURL
+            let short_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: Some("x.co".to_string()),
+                    pub_date_from: None,
+                    pub_date_to: None,
+                }),
+                &pool,
+            )
+            .await?;
+
+            assert_eq!(short_results.len(), 1, "最短URL記事が見つかりませんでした");
+            assert_eq!(short_results[0].title, "最短URL記事");
+
+            // 長いURLの検索
+            let long_url_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: Some("very-long-subdomain".to_string()),
+                    pub_date_from: None,
+                    pub_date_to: None,
+                }),
+                &pool,
+            )
+            .await?;
+
+            assert_eq!(
+                long_url_results.len(),
+                1,
+                "長いURL記事が見つかりませんでした"
+            );
+            assert_eq!(long_url_results[0].title, "長いURL記事");
+
+            println!("✅ 境界条件検索テスト完了");
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("rss_edge_cases"))]
+        async fn test_date_precision_and_boundaries(pool: PgPool) -> Result<(), anyhow::Error> {
+            // マイクロ秒精度の日付検索
+            let precise_date_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: Some("microsecond".to_string()),
+                    pub_date_from: None,
+                    pub_date_to: None,
+                }),
+                &pool,
+            )
+            .await?;
+
+            assert_eq!(
+                precise_date_results.len(),
+                1,
+                "マイクロ秒精度記事が見つかりませんでした"
+            );
+
+            // UNIX エポック境界
+            let epoch_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: None,
+                    pub_date_from: Some(parse_date("1970-01-01T00:00:00Z")?),
+                    pub_date_to: Some(parse_date("1970-01-01T00:00:02Z")?),
+                }),
+                &pool,
+            )
+            .await?;
+
+            assert_eq!(
+                epoch_results.len(),
+                1,
+                "UNIX エポック記事が見つかりませんでした"
+            );
+            assert_eq!(epoch_results[0].title, "UNIX開始日記事");
+
+            // うるう年境界（2024-02-29）
+            let leap_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: None,
+                    pub_date_from: Some(parse_date("2024-02-29T00:00:00Z")?),
+                    pub_date_to: Some(parse_date("2024-02-29T23:59:59Z")?),
+                }),
+                &pool,
+            )
+            .await?;
+
+            assert_eq!(leap_results.len(), 1, "うるう年記事が見つかりませんでした");
+            assert_eq!(leap_results[0].title, "うるう年記事");
+
+            println!("✅ 日付精度・境界テスト完了");
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("rss_edge_cases"))]
+        async fn test_case_insensitive_search(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 大文字小文字混在URLの検索（ILIKE動作確認）
+            let case_results_lower = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: Some("casesensitive".to_string()), // 小文字で検索
+                    pub_date_from: None,
+                    pub_date_to: None,
+                }),
+                &pool,
+            )
+            .await?;
+
+            // 大文字のURLも小文字のURLも両方ヒットするべき
+            assert!(
+                case_results_lower.len() >= 2,
+                "大文字小文字を含むURL検索が正しく動作していません: {}件",
+                case_results_lower.len()
+            );
+
+            let urls: Vec<&str> = case_results_lower
+                .iter()
+                .map(|link| link.url.as_str())
+                .collect();
+            assert!(
+                urls.iter().any(|url| url.contains("CaseSensitive")),
+                "大文字URL が見つかりませんでした"
+            );
+            assert!(
+                urls.iter().any(|url| url.contains("casesensitive")),
+                "小文字URL が見つかりませんでした"
+            );
+
+            println!("✅ 大文字小文字非区別検索テスト完了");
+            Ok(())
+        }
+    }
 }
