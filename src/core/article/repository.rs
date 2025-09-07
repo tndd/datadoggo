@@ -443,244 +443,415 @@ mod tests {
     mod store_article_content {
         use super::*;
 
-        #[sqlx::test]
-        async fn test_basic_storage(pool: PgPool) -> Result<()> {
-            let now = Utc::now();
-            let test_article = ArticleContent {
-                url: "https://test.example.com/basic".to_string(),
-                timestamp: now,
+        #[sqlx::test(fixtures("store_article_content_logic"))]
+        async fn test_basic_insert_and_conflict_resolution(pool: PgPool) -> Result<()> {
+            // 新規挿入の確認
+            let new_article = ArticleContent {
+                url: "https://new.example.com/article".to_string(),
+                timestamp: Utc::now(),
                 status_code: 200,
-                content: "# Basic Test Article\n\nThis is basic test content.".to_string(),
+                content: "New article content".to_string(),
             };
-            store_article_content(&test_article, &pool).await?;
+            store_article_content(&new_article, &pool).await?;
 
-            let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
-                .fetch_one(&pool)
-                .await?;
-            assert!(count.unwrap_or(0) >= 1, "記事が保存されていない");
-            Ok(())
-        }
+            let count = sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM articles WHERE url = $1",
+                "https://new.example.com/article"
+            )
+            .fetch_one(&pool)
+            .await?;
+            assert_eq!(count.unwrap_or(0), 1, "新規記事が挿入されていない");
 
-        #[sqlx::test]
-        async fn test_duplicate_handling(pool: PgPool) -> Result<()> {
-            let now = Utc::now();
-            let original_article = ArticleContent {
-                url: "https://test.example.com/duplicate".to_string(),
-                timestamp: now,
-                status_code: 200,
-                content: "Original content".to_string(),
-            };
-            store_article_content(&original_article, &pool).await?;
-
+            // ON CONFLICT時の更新確認
             let updated_article = ArticleContent {
-                url: "https://test.example.com/duplicate".to_string(),
-                timestamp: now,
-                status_code: 200,
+                url: "https://new.example.com/article".to_string(),
+                timestamp: Utc::now(),
+                status_code: 404,
                 content: "Updated content".to_string(),
             };
             store_article_content(&updated_article, &pool).await?;
 
-            let count = sqlx::query_scalar!(
+            let final_count = sqlx::query_scalar!(
                 "SELECT COUNT(*) FROM articles WHERE url = $1",
-                "https://test.example.com/duplicate"
+                "https://new.example.com/article"
             )
             .fetch_one(&pool)
             .await?;
+            assert_eq!(
+                final_count.unwrap_or(0),
+                1,
+                "UPSERT後に重複レコードが作成された"
+            );
 
-            assert_eq!(count.unwrap_or(0), 1, "重複記事が複数保存されている");
-
-            // 内容が更新されているかを確認
-            let stored_content = sqlx::query_scalar!(
-                "SELECT content FROM articles WHERE url = $1",
-                "https://test.example.com/duplicate"
+            // 更新内容の確認
+            let (stored_status, stored_content) = sqlx::query!(
+                "SELECT status_code, content FROM articles WHERE url = $1",
+                "https://new.example.com/article"
             )
             .fetch_one(&pool)
-            .await?;
+            .await
+            .map(|row| (row.status_code, row.content))?;
 
+            assert_eq!(stored_status, 404, "ステータスコードが更新されていない");
             assert_eq!(
                 stored_content, "Updated content",
-                "記事内容が更新されていない"
+                "コンテンツが更新されていない"
             );
             Ok(())
         }
 
-        #[sqlx::test]
-        async fn test_large_content_storage(pool: PgPool) -> Result<()> {
-            let large_content = "A".repeat(100000); // 100KB のコンテンツ
-            let test_article = ArticleContent {
-                url: "https://test.example.com/large".to_string(),
+        #[sqlx::test(fixtures("store_article_content_logic"))]
+        async fn test_distinct_condition_edge_cases(pool: PgPool) -> Result<()> {
+            let base_url = "https://distinct-test.example.com/article";
+
+            // ベースライン設定
+            let initial_article = ArticleContent {
+                url: base_url.to_string(),
                 timestamp: Utc::now(),
                 status_code: 200,
-                content: large_content.clone(),
+                content: "Original content".to_string(),
             };
+            store_article_content(&initial_article, &pool).await?;
 
-            store_article_content(&test_article, &pool).await?;
+            let initial_timestamp =
+                sqlx::query_scalar!("SELECT timestamp FROM articles WHERE url = $1", base_url)
+                    .fetch_one(&pool)
+                    .await?;
 
-            let stored_content = sqlx::query_scalar!(
-                "SELECT content FROM articles WHERE url = $1",
-                "https://test.example.com/large"
-            )
-            .fetch_one(&pool)
-            .await?;
+            // 完全に同じ内容での再保存（更新されないはず）
+            let same_article = ArticleContent {
+                url: base_url.to_string(),
+                timestamp: Utc::now(),
+                status_code: 200,
+                content: "Original content".to_string(),
+            };
+            store_article_content(&same_article, &pool).await?;
 
+            let timestamp_after_same =
+                sqlx::query_scalar!("SELECT timestamp FROM articles WHERE url = $1", base_url)
+                    .fetch_one(&pool)
+                    .await?;
             assert_eq!(
-                stored_content.len(),
-                100000,
-                "大容量コンテンツが正しく保存されていない"
+                initial_timestamp, timestamp_after_same,
+                "同じ内容で更新されてしまった"
             );
-            Ok(())
-        }
 
-        #[sqlx::test]
-        async fn test_special_characters(pool: PgPool) -> Result<()> {
-            let special_content = "特殊文字テスト: éñüñ, 🚀, \"quotes\", <tags>, & entities";
-            let test_article = ArticleContent {
-                url: "https://test.example.com/special-chars".to_string(),
+            // status_codeのみ異なる場合（更新されるはず）
+            let status_different = ArticleContent {
+                url: base_url.to_string(),
                 timestamp: Utc::now(),
-                status_code: 200,
-                content: special_content.to_string(),
+                status_code: 404,
+                content: "Original content".to_string(),
             };
+            store_article_content(&status_different, &pool).await?;
 
-            store_article_content(&test_article, &pool).await?;
-
-            let stored_content = sqlx::query_scalar!(
-                "SELECT content FROM articles WHERE url = $1",
-                "https://test.example.com/special-chars"
-            )
-            .fetch_one(&pool)
-            .await?;
-
+            let status_after_update =
+                sqlx::query_scalar!("SELECT status_code FROM articles WHERE url = $1", base_url)
+                    .fetch_one(&pool)
+                    .await?;
             assert_eq!(
-                stored_content, special_content,
-                "特殊文字が正しく保存されていない"
+                status_after_update, 404,
+                "ステータスコード変更が反映されていない"
             );
-            Ok(())
-        }
 
-        #[sqlx::test]
-        async fn test_no_update_when_same_content(pool: PgPool) -> Result<()> {
-            let test_article = ArticleContent {
-                url: "https://test.example.com/same".to_string(),
+            // contentのみ異なる場合（更新されるはず）
+            let content_different = ArticleContent {
+                url: base_url.to_string(),
                 timestamp: Utc::now(),
-                status_code: 200,
-                content: "Same content".to_string(),
+                status_code: 404,
+                content: "Modified content".to_string(),
             };
+            store_article_content(&content_different, &pool).await?;
 
-            // 最初の保存
-            store_article_content(&test_article, &pool).await?;
-            let first_timestamp = sqlx::query_scalar!(
-                "SELECT timestamp FROM articles WHERE url = $1",
-                "https://test.example.com/same"
-            )
-            .fetch_one(&pool)
-            .await?;
-
-            // 同じ内容で再保存（タイムスタンプは更新されないはず）
-            store_article_content(&test_article, &pool).await?;
-            let second_timestamp = sqlx::query_scalar!(
-                "SELECT timestamp FROM articles WHERE url = $1",
-                "https://test.example.com/same"
-            )
-            .fetch_one(&pool)
-            .await?;
-
+            let content_after_update =
+                sqlx::query_scalar!("SELECT content FROM articles WHERE url = $1", base_url)
+                    .fetch_one(&pool)
+                    .await?;
             assert_eq!(
-                first_timestamp, second_timestamp,
-                "同じ内容で再保存時にタイムスタンプが更新されてしまった"
+                content_after_update, "Modified content",
+                "コンテンツ変更が反映されていない"
             );
             Ok(())
         }
 
-        #[sqlx::test(fixtures("repository_edge_cases"))]
-        async fn test_extreme_content_storage(pool: PgPool) -> Result<()> {
-            // 極端に長いコンテンツの保存テスト
-            let huge_content = "Very long content: ".to_string() + &"A".repeat(500000); // 500KB
-            let huge_article = ArticleContent {
-                url: "https://test-huge.example.com/massive".to_string(),
-                timestamp: Utc::now(),
+        #[sqlx::test(fixtures("store_article_content_logic"))]
+        async fn test_timestamp_update_behavior(pool: PgPool) -> Result<()> {
+            let test_url = "https://timestamp-test.example.com/article";
+            let initial_time = Utc::now();
+
+            let initial_article = ArticleContent {
+                url: test_url.to_string(),
+                timestamp: initial_time,
                 status_code: 200,
-                content: huge_content.clone(),
+                content: "Initial content".to_string(),
             };
+            store_article_content(&initial_article, &pool).await?;
 
-            store_article_content(&huge_article, &pool).await?;
+            let db_timestamp_initial =
+                sqlx::query_scalar!("SELECT timestamp FROM articles WHERE url = $1", test_url)
+                    .fetch_one(&pool)
+                    .await?;
 
-            let stored_content = sqlx::query_scalar!(
-                "SELECT content FROM articles WHERE url = $1",
-                "https://test-huge.example.com/massive"
-            )
-            .fetch_one(&pool)
-            .await?;
+            // 少し待ってから更新（タイムスタンプが変わることを確認）
+            std::thread::sleep(std::time::Duration::from_millis(10));
 
-            assert_eq!(
-                stored_content.len(),
-                huge_content.len(),
-                "大容量コンテンツが正しく保存されていない"
+            let updated_article = ArticleContent {
+                url: test_url.to_string(),
+                timestamp: initial_time, // 入力のタイムスタンプは同じ
+                status_code: 404,
+                content: "Initial content".to_string(),
+            };
+            store_article_content(&updated_article, &pool).await?;
+
+            let db_timestamp_after_update =
+                sqlx::query_scalar!("SELECT timestamp FROM articles WHERE url = $1", test_url)
+                    .fetch_one(&pool)
+                    .await?;
+
+            assert_ne!(
+                db_timestamp_initial, db_timestamp_after_update,
+                "更新時にCURRENT_TIMESTAMPが適用されていない"
             );
-            Ok(())
-        }
-
-        #[sqlx::test]
-        async fn test_unicode_and_special_characters_storage(pool: PgPool) -> Result<()> {
-            // Unicode文字、絵文字、制御文字等のテスト（NULL文字は除外）
-            let complex_content = "🚀 Unicode test: 日本語 中文 한글 العربية\n\t改行とタブ\r\n制御文字テスト\u{1F4A9}\u{200D}\u{2642}\u{FE0F}";
-            let unicode_article = ArticleContent {
-                url: "https://unicode-test.example.com/complex".to_string(),
-                timestamp: Utc::now(),
-                status_code: 200,
-                content: complex_content.to_string(),
-            };
-
-            store_article_content(&unicode_article, &pool).await?;
-
-            let stored_content = sqlx::query_scalar!(
-                "SELECT content FROM articles WHERE url = $1",
-                "https://unicode-test.example.com/complex"
-            )
-            .fetch_one(&pool)
-            .await?;
-
-            assert_eq!(
-                stored_content, complex_content,
-                "Unicode文字が正しく保存されていない"
-            );
-            Ok(())
-        }
-
-        #[sqlx::test]
-        async fn test_sql_injection_protection(pool: PgPool) -> Result<()> {
-            // SQLインジェクション対策のテスト
-            let malicious_content = "'; DROP TABLE articles; SELECT 'hacked";
-            let malicious_url = "https://hack.test.com'; DROP TABLE articles; --";
-
-            let injection_article = ArticleContent {
-                url: malicious_url.to_string(),
-                timestamp: Utc::now(),
-                status_code: 200,
-                content: malicious_content.to_string(),
-            };
-
-            // この操作が成功し、テーブルが削除されないことを確認
-            store_article_content(&injection_article, &pool).await?;
-
-            // テーブルがまだ存在することを確認
-            let count = sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
-                .fetch_one(&pool)
-                .await?;
-
             assert!(
-                count.unwrap_or(0) > 0,
-                "SQLインジェクションが成功してしまった可能性"
+                db_timestamp_after_update > db_timestamp_initial,
+                "タイムスタンプが逆行している"
             );
 
-            // 保存されたコンテンツが正しくエスケープされていることを確認
-            let stored_content =
-                sqlx::query_scalar!("SELECT content FROM articles WHERE url = $1", malicious_url)
+            // 同じ内容での再保存ではタイムスタンプが変わらないことを確認
+            let no_change_article = ArticleContent {
+                url: test_url.to_string(),
+                timestamp: Utc::now(),
+                status_code: 404,
+                content: "Initial content".to_string(),
+            };
+            store_article_content(&no_change_article, &pool).await?;
+
+            let db_timestamp_after_no_change =
+                sqlx::query_scalar!("SELECT timestamp FROM articles WHERE url = $1", test_url)
                     .fetch_one(&pool)
                     .await?;
 
             assert_eq!(
-                stored_content, malicious_content,
-                "SQLインジェクション対策後のコンテンツが正しくない"
+                db_timestamp_after_update, db_timestamp_after_no_change,
+                "内容変更なしでタイムスタンプが更新されてしまった"
+            );
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("store_article_content_logic"))]
+        async fn test_null_value_handling(pool: PgPool) -> Result<()> {
+            // スキーマ制約を一時的に緩める（テスト用）
+            sqlx::query!("ALTER TABLE articles ALTER COLUMN status_code DROP NOT NULL")
+                .execute(&pool)
+                .await?;
+            sqlx::query!("ALTER TABLE articles ALTER COLUMN content DROP NOT NULL")
+                .execute(&pool)
+                .await?;
+
+            // 直接SQLでNULL status_codeのレコードを挿入
+            let null_status_url = "https://null-status.example.com/article";
+            sqlx::query!(
+                "INSERT INTO articles (url, timestamp, status_code, content) VALUES ($1, $2, NULL, $3)",
+                null_status_url,
+                Utc::now(),
+                "Content with null status"
+            )
+            .execute(&pool)
+            .await?;
+
+            // NULL status_codeに対して通常の記事を保存（IS DISTINCT FROMの動作確認）
+            let normal_article = ArticleContent {
+                url: null_status_url.to_string(),
+                timestamp: Utc::now(),
+                status_code: 200,
+                content: "Content with null status".to_string(),
+            };
+            store_article_content(&normal_article, &pool).await?;
+
+            let updated_status = sqlx::query_scalar!(
+                "SELECT status_code FROM articles WHERE url = $1",
+                null_status_url
+            )
+            .fetch_one(&pool)
+            .await?;
+            assert_eq!(
+                updated_status, 200,
+                "NULL status_codeが正常値で更新されていない"
+            );
+
+            // contentがNULLのケース
+            let null_content_url = "https://null-content.example.com/article";
+            sqlx::query!(
+                "INSERT INTO articles (url, timestamp, status_code, content) VALUES ($1, $2, $3, NULL)",
+                null_content_url,
+                Utc::now(),
+                404
+            )
+            .execute(&pool)
+            .await?;
+
+            let content_update_article = ArticleContent {
+                url: null_content_url.to_string(),
+                timestamp: Utc::now(),
+                status_code: 404,
+                content: "Now has content".to_string(),
+            };
+            store_article_content(&content_update_article, &pool).await?;
+
+            let updated_content = sqlx::query_scalar!(
+                "SELECT content FROM articles WHERE url = $1",
+                null_content_url
+            )
+            .fetch_one(&pool)
+            .await?;
+            assert_eq!(
+                updated_content, "Now has content",
+                "NULL contentが正常値で更新されていない"
+            );
+
+            // NULL vs NULLの場合（更新されないはず）
+            let both_null_url = "https://both-null.example.com/article";
+            sqlx::query!(
+                "INSERT INTO articles (url, timestamp, status_code, content) VALUES ($1, $2, NULL, NULL)",
+                both_null_url,
+                Utc::now()
+            )
+            .execute(&pool)
+            .await?;
+
+            let initial_timestamp = sqlx::query_scalar!(
+                "SELECT timestamp FROM articles WHERE url = $1",
+                both_null_url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            // 再度NULL値で保存を試行
+            sqlx::query!(
+                "INSERT INTO articles (url, timestamp, status_code, content) VALUES ($1, CURRENT_TIMESTAMP, NULL, NULL)
+                 ON CONFLICT (url) DO UPDATE SET 
+                     status_code = EXCLUDED.status_code,
+                     content = EXCLUDED.content,
+                     timestamp = CURRENT_TIMESTAMP
+                 WHERE (articles.status_code, articles.content)
+                     IS DISTINCT FROM (EXCLUDED.status_code, EXCLUDED.content)",
+                both_null_url
+            )
+            .execute(&pool)
+            .await?;
+
+            let final_timestamp = sqlx::query_scalar!(
+                "SELECT timestamp FROM articles WHERE url = $1",
+                both_null_url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            assert_eq!(
+                initial_timestamp, final_timestamp,
+                "NULL vs NULLで更新されてしまった"
+            );
+
+            // 先にNULL値を削除してから制約を復元
+            sqlx::query!("DELETE FROM articles WHERE status_code IS NULL OR content IS NULL")
+                .execute(&pool)
+                .await?;
+
+            // 制約を元に戻す
+            sqlx::query!("ALTER TABLE articles ALTER COLUMN status_code SET NOT NULL")
+                .execute(&pool)
+                .await?;
+            sqlx::query!("ALTER TABLE articles ALTER COLUMN content SET NOT NULL")
+                .execute(&pool)
+                .await?;
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("store_article_content_logic"))]
+        async fn test_boundary_values_and_data_integrity(pool: PgPool) -> Result<()> {
+            // 空文字列とNULLの区別テスト
+            let empty_content_article = ArticleContent {
+                url: "https://empty.example.com/article".to_string(),
+                timestamp: Utc::now(),
+                status_code: 200,
+                content: "".to_string(),
+            };
+            store_article_content(&empty_content_article, &pool).await?;
+
+            let stored_empty_content = sqlx::query_scalar!(
+                "SELECT content FROM articles WHERE url = $1",
+                "https://empty.example.com/article"
+            )
+            .fetch_one(&pool)
+            .await?;
+            assert_eq!(stored_empty_content, "", "空文字列が正しく保存されていない");
+            assert_ne!(
+                stored_empty_content, "null",
+                "空文字列がnull文字列として扱われている"
+            );
+
+            // status_codeの境界値テスト
+            let boundary_status_codes = vec![0, 100, 200, 404, 500, 599, 999];
+            for status_code in boundary_status_codes.iter() {
+                let boundary_article = ArticleContent {
+                    url: format!("https://status-{}.example.com/article", status_code),
+                    timestamp: Utc::now(),
+                    status_code: *status_code,
+                    content: format!("Content for status {}", status_code),
+                };
+                store_article_content(&boundary_article, &pool).await?;
+
+                let stored_status = sqlx::query_scalar!(
+                    "SELECT status_code FROM articles WHERE url = $1",
+                    boundary_article.url
+                )
+                .fetch_one(&pool)
+                .await?;
+                assert_eq!(
+                    stored_status, *status_code,
+                    "ステータスコード{}が正しく保存されていない",
+                    status_code
+                );
+            }
+
+            // 極端に長いURLの処理（ただし制約内）
+            let long_url = format!(
+                "https://very-long-domain-name-for-testing.example.com/{}",
+                "a".repeat(200)
+            );
+            let long_url_article = ArticleContent {
+                url: long_url.clone(),
+                timestamp: Utc::now(),
+                status_code: 200,
+                content: "Content for long URL".to_string(),
+            };
+            store_article_content(&long_url_article, &pool).await?;
+
+            let stored_url =
+                sqlx::query_scalar!("SELECT url FROM articles WHERE url = $1", long_url)
+                    .fetch_one(&pool)
+                    .await?;
+            assert_eq!(stored_url, long_url, "長いURLが正しく保存されていない");
+
+            // 特殊文字・Unicode混在コンテンツ（軽くテスト）
+            let unicode_article = ArticleContent {
+                url: "https://unicode.example.com/test".to_string(),
+                timestamp: Utc::now(),
+                status_code: 200,
+                content: "日本語🚀<script>alert('test')</script>\n\ttab".to_string(),
+            };
+            store_article_content(&unicode_article, &pool).await?;
+
+            let stored_unicode = sqlx::query_scalar!(
+                "SELECT content FROM articles WHERE url = $1",
+                "https://unicode.example.com/test"
+            )
+            .fetch_one(&pool)
+            .await?;
+            assert_eq!(
+                stored_unicode, "日本語🚀<script>alert('test')</script>\n\ttab",
+                "Unicode混在コンテンツが正しく保存されていない"
             );
             Ok(())
         }
