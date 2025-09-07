@@ -41,6 +41,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     let join_rows = search_article_join_rows(Some(join_query), pool).await?;
 
     // ArticleJoinRowからArticleに変換
+    let mut dropped_count = 0;
     let articles: Result<Vec<Article>, _> = join_rows
         .into_iter()
         .filter_map(|row| {
@@ -50,14 +51,29 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
                     url: row.url,
                     title: row.title,
                     pub_date: row.pub_date,
-                    updated_at: row.timestamp.unwrap(),
-                    content: row.content.unwrap(),
+                    updated_at: row.timestamp.expect("フィルタ条件で確認済みのtimestampがNone"),
+                    content: row.content.expect("フィルタ条件で確認済みのcontentがNone"),
                 }))
             } else {
+                // 無効なレコードを記録（デバッグ時に有用）
+                dropped_count += 1;
+                if cfg!(debug_assertions) {
+                    eprintln!(
+                        "記事レコードをスキップ: url={}, status_code={:?}, content_exists={}, timestamp_exists={}",
+                        row.url,
+                        row.status_code,
+                        row.content.is_some(),
+                        row.timestamp.is_some()
+                    );
+                }
                 None
             }
         })
         .collect();
+
+    if dropped_count > 0 {
+        println!("{}件の無効な記事レコードをスキップしました", dropped_count);
+    }
 
     articles
 }

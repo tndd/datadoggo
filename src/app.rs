@@ -161,9 +161,11 @@ mod tests {
         assert!(first_article_content.is_some(), "記事内容が見つかりません");
         assert!(
             first_article_content
-                .unwrap()
-                .contains("BBC統合テスト記事の内容です"),
-            "記事内容が期待されるモック内容を含んでいません"
+                .as_ref()
+                .map_or(false, |content| content
+                    .contains("BBC統合テスト記事の内容です")),
+            "記事内容が期待されるモック内容を含んでいません: {:?}",
+            first_article_content
         );
 
         println!("✅ execute_rss_workflow BBC統合テスト完了");
@@ -224,7 +226,7 @@ mod tests {
 
     #[sqlx::test]
     async fn test_execute_rss_workflow_firecrawl_error(pool: PgPool) -> Result<(), anyhow::Error> {
-        // エラーシナリオ: RSS取得成功 + Firecrawl取得エラー
+        // エラーシナリオ: RSS取得成功 + 記事取得エラー
         let success_http_client = MockHttpClient::new_success();
         let error_firecrawl_client = MockFirecrawlClient::new_error("記事取得API障害");
 
@@ -244,7 +246,7 @@ mod tests {
         // ワークフロー全体は成功する（エラーハンドリングにより継続処理）
         assert!(
             result_firecrawl_error.is_ok(),
-            "Firecrawl取得エラー時もワークフローは成功するべきです"
+            "記事取得エラー時もワークフローは成功するべきです"
         );
 
         // RSS収集は成功するため、article_linksにデータあり
@@ -288,11 +290,14 @@ mod tests {
                 .fetch_optional(&pool)
                 .await?;
         assert!(
-            error_content.is_some() && error_content.unwrap().contains("Firecrawl API エラー:"),
-            "エラー記事の内容にFirecrawl API エラーメッセージが含まれるべきです"
+            error_content
+                .as_ref()
+                .map_or(false, |content| content.contains("記事取得APIエラー:")),
+            "エラー記事の内容に記事取得APIエラーメッセージが含まれるべきです: {:?}",
+            error_content
         );
 
-        println!("✅ execute_rss_workflow Firecrawlエラーテスト完了");
+        println!("✅ execute_rss_workflow 記事取得エラーテスト完了");
         println!("  BBCフィード数: {}", expected_bbc_feed_count);
         println!(
             "  RSS収集成功: {}件のリンク",
@@ -302,7 +307,7 @@ mod tests {
             "  エラー記事保存: {}件",
             article_count_after_firecrawl_error.unwrap_or(0)
         );
-        println!("  Firecrawlエラー時の適切な処理: 確認済み");
+        println!("  記事取得エラー時の適切な処理: 確認済み");
 
         Ok(())
     }

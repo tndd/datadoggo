@@ -4,6 +4,119 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 
+// クエリビルダーヘルパー構造体
+struct QueryBuilder {
+    query_builder: sqlx::QueryBuilder<'static, sqlx::Postgres>,
+    has_where: bool,
+}
+
+impl QueryBuilder {
+    fn new(base_query: &'static str) -> Self {
+        Self {
+            query_builder: sqlx::QueryBuilder::<sqlx::Postgres>::new(base_query),
+            has_where: false,
+        }
+    }
+
+    // WHERE句または AND句を適切に追加
+    fn add_condition(&mut self) -> &mut sqlx::QueryBuilder<'static, sqlx::Postgres> {
+        if self.has_where {
+            self.query_builder.push(" AND ");
+        } else {
+            self.query_builder.push(" WHERE ");
+            self.has_where = true;
+        }
+        &mut self.query_builder
+    }
+
+    // OR条件グループを開始
+    fn start_or_group(&mut self) -> &mut sqlx::QueryBuilder<'static, sqlx::Postgres> {
+        if self.has_where {
+            self.query_builder.push(" AND (");
+        } else {
+            self.query_builder.push(" WHERE (");
+            self.has_where = true;
+        }
+        &mut self.query_builder
+    }
+
+    // URLパターンマッチング条件を追加
+    fn add_url_pattern_condition(&mut self, table_alias: &str, url_pattern: &str) {
+        let pattern = format!("%{}%", url_pattern);
+        self.add_condition()
+            .push(format!("{}.url ILIKE ", table_alias))
+            .push_bind(pattern);
+    }
+
+    // ステータス条件を追加
+    fn add_status_conditions(&mut self, statuses: &[ArticleStatus]) {
+        self.start_or_group();
+        for (i, status) in statuses.iter().enumerate() {
+            if i > 0 {
+                self.query_builder.push(" OR ");
+            }
+            match status {
+                ArticleStatus::Unprocessed => {
+                    self.query_builder.push("a.status_code IS NULL");
+                }
+                ArticleStatus::Success => {
+                    self.query_builder.push("a.status_code = 200");
+                }
+                ArticleStatus::Error(code) => {
+                    self.query_builder.push("a.status_code = ").push_bind(*code);
+                }
+            }
+        }
+        self.query_builder.push(")");
+    }
+
+    // 日付範囲条件を追加
+    fn add_date_range_condition(
+        &mut self,
+        field: &str,
+        from: Option<DateTime<Utc>>,
+        to: Option<DateTime<Utc>>,
+    ) {
+        if let Some(date_from) = from {
+            self.add_condition()
+                .push(format!("{} >= ", field))
+                .push_bind(date_from);
+        }
+        if let Some(date_to) = to {
+            self.add_condition()
+                .push(format!("{} <= ", field))
+                .push_bind(date_to);
+        }
+    }
+
+    // ソース条件を追加
+    fn add_source_condition(&mut self, source: String) {
+        self.add_condition().push("al.source = ").push_bind(source);
+    }
+
+    // ステータスコード条件を追加
+    fn add_status_code_condition(&mut self, status_code: i32) {
+        self.add_condition()
+            .push("status_code = ")
+            .push_bind(status_code);
+    }
+
+    // ORDER BY句を追加
+    fn add_order_by(&mut self, order_clause: &str) {
+        self.query_builder.push(" ORDER BY ").push(order_clause);
+    }
+
+    // LIMIT句を追加
+    fn add_limit(&mut self, limit: i64) {
+        self.query_builder.push(" LIMIT ").push_bind(limit);
+    }
+
+    // QueryBuilderを取得
+    fn build(self) -> sqlx::QueryBuilder<'static, sqlx::Postgres> {
+        self.query_builder
+    }
+}
+
 // 記事の処理状態を表現するenum（model.rsから移動）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ArticleStatus {
@@ -37,7 +150,7 @@ pub async fn search_article_url_statuses(
 ) -> Result<Vec<ArticleUrlStatus>> {
     let query = query.unwrap_or_default();
 
-    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+    let mut qb = QueryBuilder::new(
         r#"
         SELECT 
             al.url,
@@ -47,54 +160,30 @@ pub async fn search_article_url_statuses(
         "#,
     );
 
-    let mut has_where = false;
-
+    // URL パターン条件
     if let Some(ref url_pattern) = query.url_pattern {
-        if !has_where {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        let pattern = format!("%{}%", url_pattern);
-        qb.push("al.url ILIKE ").push_bind(pattern);
+        qb.add_url_pattern_condition("al", url_pattern);
     }
 
+    // ステータス条件
     if let Some(ref statuses) = query.statuses {
-        if has_where {
-            qb.push(" AND (");
-        } else {
-            qb.push(" WHERE (");
-        }
-
-        for (i, status) in statuses.iter().enumerate() {
-            if i > 0 {
-                qb.push(" OR ");
-            }
-            match status {
-                ArticleStatus::Unprocessed => {
-                    qb.push("a.status_code IS NULL");
-                }
-                ArticleStatus::Success => {
-                    qb.push("a.status_code = 200");
-                }
-                ArticleStatus::Error(code) => {
-                    qb.push("a.status_code = ").push_bind(*code);
-                }
-            }
-        }
-        qb.push(")");
+        qb.add_status_conditions(statuses);
     }
 
-    qb.push(" ORDER BY al.url");
+    // ソート条件
+    qb.add_order_by("al.url");
 
+    // LIMIT条件
     if let Some(limit) = query.limit {
-        qb.push(" LIMIT ").push_bind(limit);
+        qb.add_limit(limit);
     }
 
     let results = qb
+        .build()
         .build_query_as::<ArticleUrlStatus>()
         .fetch_all(pool)
         .await
-        .context("ArticleUrlStatus情報の取得に失敗")?;
+        .context("記事URL状態情報の取得に失敗")?;
 
     Ok(results)
 }
@@ -129,7 +218,7 @@ pub async fn search_article_join_rows(
 ) -> Result<Vec<ArticleJoinRow>> {
     let query = query.unwrap_or_default();
 
-    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+    let mut qb = QueryBuilder::new(
         r#"
         SELECT 
             al.url,
@@ -144,80 +233,34 @@ pub async fn search_article_join_rows(
         "#,
     );
 
-    let mut has_where = false;
-
+    // URL パターン条件
     if let Some(ref link_pattern) = query.link_pattern {
-        if !has_where {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        let pattern = format!("%{}%", link_pattern);
-        qb.push("al.url ILIKE ").push_bind(pattern);
+        qb.add_url_pattern_condition("al", link_pattern);
     }
 
-    if let Some(pub_date_from) = query.pub_date_from {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        qb.push("al.pub_date >= ").push_bind(pub_date_from);
-    }
+    // 日付範囲条件
+    qb.add_date_range_condition("al.pub_date", query.pub_date_from, query.pub_date_to);
 
-    if let Some(pub_date_to) = query.pub_date_to {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        qb.push("al.pub_date <= ").push_bind(pub_date_to);
-    }
-
+    // ステータス条件
     if let Some(ref statuses) = query.statuses {
-        if has_where {
-            qb.push(" AND (");
-        } else {
-            qb.push(" WHERE (");
-            has_where = true;
-        }
-
-        for (i, status) in statuses.iter().enumerate() {
-            if i > 0 {
-                qb.push(" OR ");
-            }
-            match status {
-                ArticleStatus::Unprocessed => {
-                    qb.push("a.status_code IS NULL");
-                }
-                ArticleStatus::Success => {
-                    qb.push("a.status_code = 200");
-                }
-                ArticleStatus::Error(code) => {
-                    qb.push("a.status_code = ").push_bind(*code);
-                }
-            }
-        }
-        qb.push(")");
+        qb.add_status_conditions(statuses);
     }
 
-    if let Some(ref source) = query.source {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-        }
-        qb.push("al.source = ").push_bind(source);
+    // ソース条件
+    if let Some(source) = query.source {
+        qb.add_source_condition(source);
     }
 
-    qb.push(" ORDER BY al.pub_date DESC");
+    // ソート条件
+    qb.add_order_by("al.pub_date DESC");
 
+    // LIMIT条件
     if let Some(limit) = query.limit {
-        qb.push(" LIMIT ").push_bind(limit);
+        qb.add_limit(limit);
     }
 
     let results = qb
+        .build()
         .build_query_as::<ArticleJoinRow>()
         .fetch_all(pool)
         .await
@@ -244,8 +287,7 @@ pub struct ArticleContentQuery {
 
 /// URLから記事内容を取得してArticleContent構造体に変換する（Firecrawl SDK使用）
 pub async fn get_article_content(url: &str) -> Result<ArticleContent> {
-    let client =
-        ReqwestFirecrawlClient::new().context("実際のFirecrawlクライアントの初期化に失敗")?;
+    let client = ReqwestFirecrawlClient::new().context("記事取得クライアントの初期化に失敗")?;
     get_article_content_with_client(url, &client).await
 }
 
@@ -270,7 +312,7 @@ pub async fn get_article_content_with_client(
             url: url.to_string(),
             timestamp: chrono::Utc::now(),
             status_code: 500,
-            content: format!("Firecrawl API エラー: {}", e),
+            content: format!("記事取得APIエラー: {}", e),
         }),
     }
 }
@@ -295,7 +337,7 @@ pub async fn store_article_content(article: &ArticleContent, pool: &PgPool) -> R
     )
     .execute(pool)
     .await
-    .context("Firecrawl記事のデータベースへの挿入に失敗しました")?;
+    .context("記事データのデータベース保存に失敗")?;
 
     Ok(())
 }
@@ -324,51 +366,29 @@ pub async fn search_article_contents(
     pool: &PgPool,
 ) -> Result<Vec<ArticleContent>> {
     let query = query.unwrap_or_default();
-    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        "SELECT url, timestamp, status_code, content FROM articles",
-    );
 
-    let mut has_where = false;
+    let mut qb = QueryBuilder::new("SELECT url, timestamp, status_code, content FROM articles");
 
+    // URL パターン条件
     if let Some(ref url_pattern) = query.url_pattern {
-        qb.push(" WHERE ");
-        has_where = true;
-        let url_query = format!("%{}%", url_pattern);
-        qb.push("url ILIKE ").push_bind(url_query);
+        // articles テーブルなのでテーブル名なし
+        let pattern = format!("%{}%", url_pattern);
+        qb.add_condition().push("url ILIKE ").push_bind(pattern);
     }
 
-    if let Some(ts_from) = query.timestamp_from {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        qb.push("timestamp >= ").push_bind(ts_from);
-    }
+    // 日付範囲条件
+    qb.add_date_range_condition("timestamp", query.timestamp_from, query.timestamp_to);
 
-    if let Some(ts_to) = query.timestamp_to {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-            has_where = true;
-        }
-        qb.push("timestamp <= ").push_bind(ts_to);
-    }
-
+    // ステータスコード条件
     if let Some(status) = query.status_code {
-        if has_where {
-            qb.push(" AND ");
-        } else {
-            qb.push(" WHERE ");
-        }
-        qb.push("status_code = ").push_bind(status);
+        qb.add_status_code_condition(status);
     }
 
-    qb.push(" ORDER BY timestamp DESC");
+    // ソート条件
+    qb.add_order_by("timestamp DESC");
 
     let articles = qb
+        .build()
         .build_query_as::<ArticleContent>()
         .fetch_all(pool)
         .await?;
@@ -523,7 +543,7 @@ mod tests {
 
             // 正常なファイル読み込みテスト
             let result = read_article_content_from_file("mock/fc/bbc.json");
-            assert!(result.is_ok(), "Firecrawl JSONファイルの読み込みに失敗");
+            assert!(result.is_ok(), "記事データJSONファイルの読み込みに失敗");
 
             let article = result.unwrap();
             assert!(!article.content.is_empty(), "contentが空です");
@@ -640,7 +660,7 @@ mod tests {
                 "エラー時はstatus_code=500になるべき"
             );
             assert!(
-                article.content.contains("Firecrawl API エラー"),
+                article.content.contains("記事取得APIエラー"),
                 "エラー内容が記録されるべき"
             );
             assert!(
