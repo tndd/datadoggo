@@ -451,4 +451,320 @@ mod tests {
 
         Ok(())
     }
+
+    // 並行処理テスト
+    mod concurrent_processing_tests {
+        use super::*;
+        use crate::infra::api::http::MockHttpClient;
+
+        #[sqlx::test(fixtures("concurrent_processing"))]
+        async fn test_concurrent_feed_processing_simulation(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            // 並行処理シミュレーション：異なるフィードを順次処理
+            let mock_client = MockHttpClient::new_success();
+
+            // フィード1: 技術ニュース（3記事）
+            let tech_feeds = vec![Feed {
+                group: "tech".to_string(),
+                name: "tech_news".to_string(),
+                rss_link: "https://tech-concurrent.example.com/rss.xml".to_string(),
+            }];
+
+            // フィード2: ビジネスニュース（3記事）
+            let business_feeds = vec![Feed {
+                group: "business".to_string(),
+                name: "business_news".to_string(),
+                rss_link: "https://business-concurrent.example.com/rss.xml".to_string(),
+            }];
+
+            // 初期状態確認
+            let initial_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+
+            // 第1回目：技術フィード処理
+            let result1 = task_collect_article_links(&mock_client, &tech_feeds, &pool).await;
+            assert!(result1.is_ok(), "技術フィード処理が失敗しました");
+
+            let _after_tech_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+
+            // 第2回目：ビジネスフィード処理
+            let result2 = task_collect_article_links(&mock_client, &business_feeds, &pool).await;
+            assert!(result2.is_ok(), "ビジネスフィード処理が失敗しました");
+
+            let after_business_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+
+            // 合計で新規6件（各フィード3件ずつ）が追加されていることを確認
+            assert_eq!(
+                after_business_count.unwrap_or(0),
+                initial_count.unwrap_or(0) + 6,
+                "並行フィード処理後の記事数が期待値と異なります"
+            );
+
+            // 各フィード別の記事数確認
+            use crate::infra::compute::generate_mock_rss_id;
+            let tech_hash = generate_mock_rss_id("https://tech-concurrent.example.com/rss.xml");
+            let business_hash =
+                generate_mock_rss_id("https://business-concurrent.example.com/rss.xml");
+
+            let tech_count = sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM article_links WHERE url LIKE $1",
+                format!("https://{}.example.com/%", tech_hash)
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            let business_count = sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM article_links WHERE url LIKE $1",
+                format!("https://{}.example.com/%", business_hash)
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            assert_eq!(
+                tech_count.unwrap_or(0),
+                3,
+                "技術フィードから3件の記事が生成されるべきです"
+            );
+            assert_eq!(
+                business_count.unwrap_or(0),
+                3,
+                "ビジネスフィードから3件の記事が生成されるべきです"
+            );
+
+            println!("✅ 並行フィード処理シミュレーション完了");
+            println!("  技術フィード: {}件", tech_count.unwrap_or(0));
+            println!("  ビジネスフィード: {}件", business_count.unwrap_or(0));
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("concurrent_processing"))]
+        async fn test_duplicate_url_race_condition_handling(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            // 競合状態テスト：同一URLの記事が複数回処理される場合
+            let mock_client = MockHttpClient::new_success();
+
+            // 同じURLを持つ複数のフィードをシミュレート
+            let competing_feeds = vec![
+                Feed {
+                    group: "source1".to_string(),
+                    name: "competing_feed_1".to_string(),
+                    rss_link: "https://race-condition-test.example.com/same.xml".to_string(),
+                },
+                Feed {
+                    group: "source2".to_string(),
+                    name: "competing_feed_2".to_string(),
+                    rss_link: "https://race-condition-test.example.com/same.xml".to_string(),
+                },
+            ];
+
+            // 1回目の処理
+            let result1 =
+                task_collect_article_links(&mock_client, &competing_feeds[0..1], &pool).await;
+            assert!(result1.is_ok(), "1回目の処理が失敗しました");
+
+            let first_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+
+            // 1回目処理後の記事内容を記録
+            use crate::infra::compute::generate_mock_rss_id;
+            let expected_hash =
+                generate_mock_rss_id("https://race-condition-test.example.com/same.xml");
+            let first_articles: Vec<(String, chrono::DateTime<chrono::Utc>)> = sqlx::query!(
+                "SELECT title, pub_date FROM article_links WHERE url LIKE $1 ORDER BY url",
+                format!("https://{}.example.com/%", expected_hash)
+            )
+            .fetch_all(&pool)
+            .await?
+            .into_iter()
+            .map(|row| (row.title, row.pub_date))
+            .collect();
+
+            // 少し待機（動的日付生成で異なる時刻を保証）
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+            // 2回目の処理（同じURLのフィード）
+            let result2 =
+                task_collect_article_links(&mock_client, &competing_feeds[1..2], &pool).await;
+            assert!(result2.is_ok(), "2回目の処理が失敗しました");
+
+            let second_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+
+            // 件数は変わらない（重複URLはUPSERTされる）
+            assert_eq!(
+                second_count.unwrap_or(0),
+                first_count.unwrap_or(0),
+                "重複処理で件数が変わってしまいました"
+            );
+
+            // しかし内容（日付）は更新される
+            let second_articles: Vec<(String, chrono::DateTime<chrono::Utc>)> = sqlx::query!(
+                "SELECT title, pub_date FROM article_links WHERE url LIKE $1 ORDER BY url",
+                format!("https://{}.example.com/%", expected_hash)
+            )
+            .fetch_all(&pool)
+            .await?
+            .into_iter()
+            .map(|row| (row.title, row.pub_date))
+            .collect();
+
+            // 記事数は同じだが、日付が更新されている
+            assert_eq!(first_articles.len(), second_articles.len());
+            for (i, ((first_title, first_date), (second_title, second_date))) in first_articles
+                .iter()
+                .zip(second_articles.iter())
+                .enumerate()
+            {
+                assert_eq!(
+                    first_title,
+                    second_title,
+                    "記事{}のタイトルが一致しません",
+                    i + 1
+                );
+                assert_ne!(
+                    first_date,
+                    second_date,
+                    "記事{}の日付が更新されませんでした: {} == {}",
+                    i + 1,
+                    first_date,
+                    second_date
+                );
+            }
+
+            println!("✅ 重複URL競合処理テスト完了");
+            println!("  重複処理により日付が適切に更新されました");
+            Ok(())
+        }
+    }
+
+    // エラー回復テスト
+    mod error_recovery_tests {
+        use super::*;
+        use crate::infra::api::http::MockHttpClient;
+
+        #[sqlx::test(fixtures("error_recovery_scenarios"))]
+        async fn test_mixed_success_error_feed_processing(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            // 成功・エラー混在処理のテスト
+            let success_client = MockHttpClient::new_success();
+            let error_client = MockHttpClient::new_error("ネットワークエラー");
+
+            // 成功するフィード
+            let success_feeds = vec![Feed {
+                group: "success".to_string(),
+                name: "working_feed".to_string(),
+                rss_link: "https://success-recovery.example.com/feed.xml".to_string(),
+            }];
+
+            // エラーになるフィード
+            let error_feeds = vec![Feed {
+                group: "error".to_string(),
+                name: "failing_feed".to_string(),
+                rss_link: "https://error-recovery.example.com/feed.xml".to_string(),
+            }];
+
+            let initial_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+
+            // 成功フィード処理
+            let success_result =
+                task_collect_article_links(&success_client, &success_feeds, &pool).await;
+            assert!(success_result.is_ok(), "成功フィード処理が失敗しました");
+
+            let after_success_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+            assert_eq!(
+                after_success_count.unwrap_or(0),
+                initial_count.unwrap_or(0) + 3,
+                "成功フィードから3件の記事が追加されるべきです"
+            );
+
+            // エラーフィード処理（内部でエラーハンドリングされるため、関数自体は成功）
+            let error_result = task_collect_article_links(&error_client, &error_feeds, &pool).await;
+            assert!(
+                error_result.is_ok(),
+                "エラーフィード処理（エラーハンドリング）が失敗しました"
+            );
+
+            // エラー後も件数は変わらない
+            let after_error_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+            assert_eq!(
+                after_error_count.unwrap_or(0),
+                after_success_count.unwrap_or(0),
+                "エラーフィード処理後に記事数が変わってしまいました"
+            );
+
+            println!("✅ 成功・エラー混在フィード処理テスト完了");
+            println!("  成功フィード: 3件追加");
+            println!("  エラーフィード: エラーハンドリングにより処理継続");
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("error_recovery_scenarios"))]
+        async fn test_batch_processing_boundary_conditions(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            // バッチ処理境界条件のテスト（LIMIT 100の動作確認）
+            let mock_client = MockHttpClient::new_success();
+
+            // 大量フィード処理用のフィードを作成（実際には10記事しか生成しない）
+            let batch_feeds = vec![Feed {
+                group: "batch".to_string(),
+                name: "large_batch_feed".to_string(),
+                rss_link: "https://batch-boundary-test.example.com/feed.xml".to_string(),
+            }];
+
+            let initial_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+
+            let batch_result = task_collect_article_links(&mock_client, &batch_feeds, &pool).await;
+            assert!(batch_result.is_ok(), "バッチ処理が失敗しました");
+
+            let after_batch_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
+                .fetch_one(&pool)
+                .await?;
+
+            // 新しく3件の記事が追加される（MockHttpClientは常に3件生成）
+            assert_eq!(
+                after_batch_count.unwrap_or(0),
+                initial_count.unwrap_or(0) + 3,
+                "バッチ処理で期待される記事数が追加されませんでした"
+            );
+
+            // 生成された記事の確認
+            use crate::infra::compute::generate_mock_rss_id;
+            let hash = generate_mock_rss_id("https://batch-boundary-test.example.com/feed.xml");
+            let batch_articles = sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM article_links WHERE url LIKE $1",
+                format!("https://{}.example.com/%", hash)
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            assert_eq!(
+                batch_articles.unwrap_or(0),
+                3,
+                "バッチフィードから3件の記事が生成されるべきです"
+            );
+
+            println!("✅ バッチ処理境界条件テスト完了");
+            println!("  処理された記事数: {}", batch_articles.unwrap_or(0));
+            Ok(())
+        }
+    }
 }

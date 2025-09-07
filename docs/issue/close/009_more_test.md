@@ -77,7 +77,7 @@ src/core/article/fixtures/
    ├── workflow_error_cases.sql    # エラーケース
    ├── workflow_boundary.sql       # 境界値テスト
    ├── workflow_large_data.sql     # 大量データ処理
-   └── workflow_mixed.sql          # 複合シナリオ
+   └── article_mixed.sql          # 複合シナリオ
    ```
 
 2. **app/workflow.rs のテスト拡充**
@@ -102,7 +102,7 @@ src/core/article/fixtures/
    ```
    src/task/fixtures/
    ├── workflow.sql (既存)
-   ├── workflow_mixed.sql (既存)
+   ├── article_mixed.sql (既存)
    ├── article_processing.sql      # 新規
    ├── rss_fetch_scenarios.sql     # 新規
    └── error_recovery.sql          # 新規
