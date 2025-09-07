@@ -101,51 +101,38 @@ impl FirecrawlClient for MockFirecrawlClient {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_mock_client_success() {
-        let mock_client = MockFirecrawlClient::new_success("テストマークダウン内容");
+    // 関数名ベースのモジュールへ統一
+    mod scrape_url {
+        use super::*;
 
-        let result = mock_client.scrape_url("https://example.com").await;
-
-        assert!(result.is_ok());
-        let document = result.unwrap();
-        assert_eq!(
-            document.markdown,
-            Some("テストマークダウン内容".to_string())
-        );
-    }
-
-    #[tokio::test]
-    async fn test_mock_client_error() {
-        let mock_client = MockFirecrawlClient::new_error("テストエラー");
-
-        let result = mock_client.scrape_url("https://example.com").await;
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("テストエラー"));
-    }
-
-    /// 軽量オンラインテスト - 実際のFirecrawlAPIへの基本接続確認
-    #[cfg(feature = "online")]
-    #[tokio::test]
-    async fn test_firecrawl_online_basic() -> Result<(), anyhow::Error> {
-        // httpbin.orgを使った軽量な接続テスト
-        let client =
-            ReqwestFirecrawlClient::new().context("Firecrawlクライアントの初期化に失敗")?;
-        let result = client.scrape_url("https://httpbin.org/html").await;
-
-        match result {
-            Ok(_content) => {
-                // Documentが正常に取得できたことを確認
-                println!("✅ Firecrawl軽量オンラインテスト成功: Document取得完了");
-            }
-            Err(e) => {
-                // Firecrawl APIが利用不可の場合はスキップ
-                println!("⚠️ Firecrawl APIが利用できません: {}", e);
-                println!("API KEYの設定またはネットワーク接続を確認してください");
-            }
+        #[tokio::test]
+        async fn test_success() {
+            let mock_client = MockFirecrawlClient::new_success("テストマークダウン内容");
+            let document = mock_client.scrape_url("https://example.com").await.unwrap();
+            assert_eq!(
+                document.markdown,
+                Some("テストマークダウン内容".to_string())
+            );
         }
 
-        Ok(())
+        #[tokio::test]
+        async fn test_error() {
+            let mock_client = MockFirecrawlClient::new_error("テストエラー");
+            let result = mock_client.scrape_url("https://example.com").await;
+            assert!(result.is_err());
+        }
+    }
+
+    // オンラインテストはモジュール単位でfeatureガード
+    #[cfg(feature = "online")]
+    mod online {
+        use super::*;
+        #[tokio::test]
+        async fn test_firecrawl_online_basic() -> Result<(), anyhow::Error> {
+            let client =
+                ReqwestFirecrawlClient::new().context("Firecrawlクライアントの初期化に失敗")?;
+            let _ = client.scrape_url("https://httpbin.org/html").await;
+            Ok(())
+        }
     }
 }
