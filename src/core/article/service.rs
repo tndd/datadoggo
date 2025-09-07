@@ -1,120 +1,29 @@
 use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use sea_query::extension::postgres::PgExpr;
+use sea_query::{Cond, Expr, PostgresQueryBuilder, Query};
+use sea_query_binder::SqlxBinder;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 
-// クエリビルダーヘルパー構造体
-struct QueryBuilder {
-    query_builder: sqlx::QueryBuilder<'static, sqlx::Postgres>,
-    has_where: bool,
+// テーブル名定義
+#[derive(sea_query::Iden)]
+enum ArticleLinks {
+    Table,
+    Url,
+    Title,
+    PubDate,
+    Source,
 }
 
-impl QueryBuilder {
-    fn new(base_query: &'static str) -> Self {
-        Self {
-            query_builder: sqlx::QueryBuilder::<sqlx::Postgres>::new(base_query),
-            has_where: false,
-        }
-    }
-
-    // WHERE句または AND句を適切に追加
-    fn add_condition(&mut self) -> &mut sqlx::QueryBuilder<'static, sqlx::Postgres> {
-        if self.has_where {
-            self.query_builder.push(" AND ");
-        } else {
-            self.query_builder.push(" WHERE ");
-            self.has_where = true;
-        }
-        &mut self.query_builder
-    }
-
-    // OR条件グループを開始
-    fn start_or_group(&mut self) -> &mut sqlx::QueryBuilder<'static, sqlx::Postgres> {
-        if self.has_where {
-            self.query_builder.push(" AND (");
-        } else {
-            self.query_builder.push(" WHERE (");
-            self.has_where = true;
-        }
-        &mut self.query_builder
-    }
-
-    // URLパターンマッチング条件を追加
-    fn add_url_pattern_condition(&mut self, table_alias: &str, url_pattern: &str) {
-        let pattern = format!("%{}%", url_pattern);
-        self.add_condition()
-            .push(format!("{}.url ILIKE ", table_alias))
-            .push_bind(pattern);
-    }
-
-    // ステータス条件を追加
-    fn add_status_conditions(&mut self, statuses: &[ArticleStatus]) {
-        self.start_or_group();
-        for (i, status) in statuses.iter().enumerate() {
-            if i > 0 {
-                self.query_builder.push(" OR ");
-            }
-            match status {
-                ArticleStatus::Unprocessed => {
-                    self.query_builder.push("a.status_code IS NULL");
-                }
-                ArticleStatus::Success => {
-                    self.query_builder.push("a.status_code = 200");
-                }
-                ArticleStatus::Error(code) => {
-                    self.query_builder.push("a.status_code = ").push_bind(*code);
-                }
-            }
-        }
-        self.query_builder.push(")");
-    }
-
-    // 日付範囲条件を追加
-    fn add_date_range_condition(
-        &mut self,
-        field: &str,
-        from: Option<DateTime<Utc>>,
-        to: Option<DateTime<Utc>>,
-    ) {
-        if let Some(date_from) = from {
-            self.add_condition()
-                .push(format!("{} >= ", field))
-                .push_bind(date_from);
-        }
-        if let Some(date_to) = to {
-            self.add_condition()
-                .push(format!("{} <= ", field))
-                .push_bind(date_to);
-        }
-    }
-
-    // ソース条件を追加
-    fn add_source_condition(&mut self, source: String) {
-        self.add_condition().push("al.source = ").push_bind(source);
-    }
-
-    // ステータスコード条件を追加
-    fn add_status_code_condition(&mut self, status_code: i32) {
-        self.add_condition()
-            .push("status_code = ")
-            .push_bind(status_code);
-    }
-
-    // ORDER BY句を追加
-    fn add_order_by(&mut self, order_clause: &str) {
-        self.query_builder.push(" ORDER BY ").push(order_clause);
-    }
-
-    // LIMIT句を追加
-    fn add_limit(&mut self, limit: i64) {
-        self.query_builder.push(" LIMIT ").push_bind(limit);
-    }
-
-    // QueryBuilderを取得
-    fn build(self) -> sqlx::QueryBuilder<'static, sqlx::Postgres> {
-        self.query_builder
-    }
+#[derive(sea_query::Iden)]
+enum Articles {
+    Table,
+    Url,
+    Timestamp,
+    StatusCode,
+    Content,
 }
 
 // 記事の処理状態を表現するenum（model.rsから移動）
@@ -150,37 +59,62 @@ pub async fn search_article_url_statuses(
 ) -> Result<Vec<ArticleUrlStatus>> {
     let query = query.unwrap_or_default();
 
-    let mut qb = QueryBuilder::new(
-        r#"
-        SELECT 
-            al.url,
-            a.status_code
-        FROM article_links al
-        LEFT JOIN articles a ON al.url = a.url
-        "#,
-    );
+    let mut select = Query::select()
+        .column((ArticleLinks::Table, ArticleLinks::Url))
+        .column((Articles::Table, Articles::StatusCode))
+        .from(ArticleLinks::Table)
+        .left_join(
+            Articles::Table,
+            Expr::col((ArticleLinks::Table, ArticleLinks::Url))
+                .equals((Articles::Table, Articles::Url)),
+        )
+        .to_owned();
 
     // URL パターン条件
     if let Some(ref url_pattern) = query.url_pattern {
-        qb.add_url_pattern_condition("al", url_pattern);
+        let pattern = format!("%{}%", url_pattern);
+        select = select
+            .and_where(Expr::col((ArticleLinks::Table, ArticleLinks::Url)).ilike(pattern))
+            .to_owned();
     }
 
     // ステータス条件
     if let Some(ref statuses) = query.statuses {
-        qb.add_status_conditions(statuses);
+        let mut status_cond = Cond::any();
+        for status in statuses {
+            match status {
+                ArticleStatus::Unprocessed => {
+                    status_cond = status_cond
+                        .add(Expr::col((Articles::Table, Articles::StatusCode)).is_null());
+                }
+                ArticleStatus::Success => {
+                    status_cond =
+                        status_cond.add(Expr::col((Articles::Table, Articles::StatusCode)).eq(200));
+                }
+                ArticleStatus::Error(code) => {
+                    status_cond = status_cond
+                        .add(Expr::col((Articles::Table, Articles::StatusCode)).eq(*code));
+                }
+            }
+        }
+        select = select.cond_where(status_cond).to_owned();
     }
 
     // ソート条件
-    qb.add_order_by("al.url");
+    select = select
+        .order_by(
+            (ArticleLinks::Table, ArticleLinks::Url),
+            sea_query::Order::Asc,
+        )
+        .to_owned();
 
     // LIMIT条件
     if let Some(limit) = query.limit {
-        qb.add_limit(limit);
+        select = select.limit(limit as u64).to_owned();
     }
 
-    let results = qb
-        .build()
-        .build_query_as::<ArticleUrlStatus>()
+    let (sql, values) = select.build_sqlx(PostgresQueryBuilder);
+    let results = sqlx::query_as_with::<_, ArticleUrlStatus, _>(&sql, values)
         .fetch_all(pool)
         .await
         .context("記事URL状態情報の取得に失敗")?;
@@ -218,50 +152,86 @@ pub async fn search_article_join_rows(
 ) -> Result<Vec<ArticleJoinRow>> {
     let query = query.unwrap_or_default();
 
-    let mut qb = QueryBuilder::new(
-        r#"
-        SELECT 
-            al.url,
-            al.title,
-            al.pub_date,
-            al.source,
-            a.timestamp,
-            a.status_code,
-            a.content
-        FROM article_links al
-        LEFT JOIN articles a ON al.url = a.url
-        "#,
-    );
+    let mut select = Query::select()
+        .column((ArticleLinks::Table, ArticleLinks::Url))
+        .column((ArticleLinks::Table, ArticleLinks::Title))
+        .column((ArticleLinks::Table, ArticleLinks::PubDate))
+        .column((ArticleLinks::Table, ArticleLinks::Source))
+        .column((Articles::Table, Articles::Timestamp))
+        .column((Articles::Table, Articles::StatusCode))
+        .column((Articles::Table, Articles::Content))
+        .from(ArticleLinks::Table)
+        .left_join(
+            Articles::Table,
+            Expr::col((ArticleLinks::Table, ArticleLinks::Url))
+                .equals((Articles::Table, Articles::Url)),
+        )
+        .to_owned();
 
     // URL パターン条件
     if let Some(ref link_pattern) = query.link_pattern {
-        qb.add_url_pattern_condition("al", link_pattern);
+        let pattern = format!("%{}%", link_pattern);
+        select = select
+            .and_where(Expr::col((ArticleLinks::Table, ArticleLinks::Url)).ilike(pattern))
+            .to_owned();
     }
 
     // 日付範囲条件
-    qb.add_date_range_condition("al.pub_date", query.pub_date_from, query.pub_date_to);
+    if let Some(pub_date_from) = query.pub_date_from {
+        select = select
+            .and_where(Expr::col((ArticleLinks::Table, ArticleLinks::PubDate)).gte(pub_date_from))
+            .to_owned();
+    }
+    if let Some(pub_date_to) = query.pub_date_to {
+        select = select
+            .and_where(Expr::col((ArticleLinks::Table, ArticleLinks::PubDate)).lte(pub_date_to))
+            .to_owned();
+    }
 
     // ステータス条件
     if let Some(ref statuses) = query.statuses {
-        qb.add_status_conditions(statuses);
+        let mut status_cond = Cond::any();
+        for status in statuses {
+            match status {
+                ArticleStatus::Unprocessed => {
+                    status_cond = status_cond
+                        .add(Expr::col((Articles::Table, Articles::StatusCode)).is_null());
+                }
+                ArticleStatus::Success => {
+                    status_cond =
+                        status_cond.add(Expr::col((Articles::Table, Articles::StatusCode)).eq(200));
+                }
+                ArticleStatus::Error(code) => {
+                    status_cond = status_cond
+                        .add(Expr::col((Articles::Table, Articles::StatusCode)).eq(*code));
+                }
+            }
+        }
+        select = select.cond_where(status_cond).to_owned();
     }
 
     // ソース条件
-    if let Some(source) = query.source {
-        qb.add_source_condition(source);
+    if let Some(ref source) = query.source {
+        select = select
+            .and_where(Expr::col((ArticleLinks::Table, ArticleLinks::Source)).eq(source))
+            .to_owned();
     }
 
     // ソート条件
-    qb.add_order_by("al.pub_date DESC");
+    select = select
+        .order_by(
+            (ArticleLinks::Table, ArticleLinks::PubDate),
+            sea_query::Order::Desc,
+        )
+        .to_owned();
 
     // LIMIT条件
     if let Some(limit) = query.limit {
-        qb.add_limit(limit);
+        select = select.limit(limit as u64).to_owned();
     }
 
-    let results = qb
-        .build()
-        .build_query_as::<ArticleJoinRow>()
+    let (sql, values) = select.build_sqlx(PostgresQueryBuilder);
+    let results = sqlx::query_as_with::<_, ArticleJoinRow, _>(&sql, values)
         .fetch_all(pool)
         .await
         .context("記事結合情報の取得に失敗")?;
@@ -367,29 +337,48 @@ pub async fn search_article_contents(
 ) -> Result<Vec<ArticleContent>> {
     let query = query.unwrap_or_default();
 
-    let mut qb = QueryBuilder::new("SELECT url, timestamp, status_code, content FROM articles");
+    let mut select = Query::select()
+        .column(Articles::Url)
+        .column(Articles::Timestamp)
+        .column(Articles::StatusCode)
+        .column(Articles::Content)
+        .from(Articles::Table)
+        .to_owned();
 
     // URL パターン条件
     if let Some(ref url_pattern) = query.url_pattern {
-        // articles テーブルなのでテーブル名なし
         let pattern = format!("%{}%", url_pattern);
-        qb.add_condition().push("url ILIKE ").push_bind(pattern);
+        select = select
+            .and_where(Expr::col(Articles::Url).ilike(pattern))
+            .to_owned();
     }
 
     // 日付範囲条件
-    qb.add_date_range_condition("timestamp", query.timestamp_from, query.timestamp_to);
+    if let Some(timestamp_from) = query.timestamp_from {
+        select = select
+            .and_where(Expr::col(Articles::Timestamp).gte(timestamp_from))
+            .to_owned();
+    }
+    if let Some(timestamp_to) = query.timestamp_to {
+        select = select
+            .and_where(Expr::col(Articles::Timestamp).lte(timestamp_to))
+            .to_owned();
+    }
 
     // ステータスコード条件
-    if let Some(status) = query.status_code {
-        qb.add_status_code_condition(status);
+    if let Some(status_code) = query.status_code {
+        select = select
+            .and_where(Expr::col(Articles::StatusCode).eq(status_code))
+            .to_owned();
     }
 
     // ソート条件
-    qb.add_order_by("timestamp DESC");
+    select = select
+        .order_by(Articles::Timestamp, sea_query::Order::Desc)
+        .to_owned();
 
-    let articles = qb
-        .build()
-        .build_query_as::<ArticleContent>()
+    let (sql, values) = select.build_sqlx(PostgresQueryBuilder);
+    let articles = sqlx::query_as_with::<_, ArticleContent, _>(&sql, values)
         .fetch_all(pool)
         .await?;
 
