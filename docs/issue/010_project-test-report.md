@@ -4,14 +4,13 @@
 
 ---
 
-## 評価基準（抜粋）
-- testsモジュール配下での一元管理と区分
-  - tests直下に helper / online / {関数名} / それ以外（tests）で分類
-  - 外部通信が走るものは feature flag "online" で通常実行から除外
-- テスト件数上限
-  - 1つの関数/構造体/トレイトにつき最大5件
+## 評価基準（本プロジェクトの最終方針を反映）
+- テスト配置は「各ファイル内の `#[cfg(test)] mod tests` マクロ方式」を維持する
+- `#[sqlx::test(fixtures(...))]` は「同階層の fixtures からのみ」参照する（簡素な相対指定）
+- 外部通信が走るものは feature flag "online" で通常実行から除外
+- テスト件数上限: 1つの関数/構造体/トレイトにつき最大5件
 - 価値の高いテストを優先（境界・内部仕様に依存する壊れやすい箇所）
-- フロントエンドは playwright mcp（本プロジェクトでは該当なし）
+- feeds.yaml の実ファイル依存は現状維持（今は変更しない）
 
 ---
 
@@ -33,61 +32,53 @@
 
 ---
 
-## 乖離点（ファイル別）
+## 乖離点（ファイル別・プロジェクト方針に即した観点）
 
-以下では「どのファイルの、どの対象が、どのように基準に違反/未準拠か」を列挙します。
-
-- `src/app/workflow.rs`
-  - 対象: `execute_rss_workflow`
-  - 乖離: tests配下ではなくインライン。testsモジュール階層（{関数名}サブモジュール）不使用。
-  - 備考: 実ファイル `config/feeds.yaml` に依存しており、外部I/Oの影響を受けやすい。fixtures化推奨。
+以下では「どのファイルの、どの対象が、どのように基準に違反/未準拠か」を、
+“インラインテスト維持・fixturesは同階層参照” を前提に列挙します。
 
 - `src/task/rss.rs`
   - 対象: `task_collect_article_links`
-  - 乖離: インラインテスト。複数テストがあるが `{関数名}` モジュール名によるグルーピング不徹底（一部 `concurrent_processing_tests` など任意名）。
+  - 乖離: テストサブモジュール名が `{関数名}` ベースで統一されていない（例: `concurrent_processing_tests`）。
+  - 提案: `mod task_collect_article_links { ... }` 配下に「成功/エラー/重複/並行」の4テストを整理し、名前規約を統一。
 
 - `src/task/article.rs`
   - 対象: `task_collect_articles`
-  - 乖離: インラインテスト。`error_recovery_tests` など任意名でのネスト。tests配下への集約未実施。
-  - 件数: 5件（上限内）
+  - 乖離: `error_recovery_tests` のような任意名の中間モジュールがあり、関数名ベースの粒度とずれている。
+  - 提案: `mod task_collect_articles { basic, mixed, error_reprocessing, partial_failure, mixed_result }` のようにフラット化。
 
 - `src/core/rss.rs`
   - 対象: `get_article_links_from_channel`, `get_article_links_from_feed`, `store_article_links`, `search_article_links`
-  - 乖離: インラインテスト。サブモジュール名は機能別（xml_parsing_tests / save_tests / retrieval_tests）であり `{関数名}` 厳密準拠でない。
-  - 件数: `search_article_links` は5件（上限ギリギリ）
-  - 補足: モックXML/HTTPの使い分けは良好。フィクスチャは `src/core/fixtures/` などに分散。
+  - 乖離1: サブモジュール名が機能カテゴリ（`xml_parsing_tests` / `save_tests` / `retrieval_tests`）であり、{関数名} 基準と乖離。
+  - 乖離2: `search_article_links` のテスト数が5件を超過（境界/精度/大文字小文字/エッジなど多数）。
+  - 提案: {関数名} ごとに `mod get_article_links_from_channel { … }` 等へ再編し、`search_article_links` は価値の高い5件に厳選（例: 基本, パターン, 日付境界, 大文字小文字, 代表エッジ）。
 
 - `src/core/article/repository.rs`
   - 対象: `search_article_url_statuses`, `search_article_join_rows`, `search_article_contents`, `store_article_content`
-  - 乖離: インラインテスト。testsモジュール外。
-  - 備考: テストは機能名モジュールで良く分割されているが、配置が基準外。
+  - 乖離: 概ね良好だが、関数名ベースのモジュール名に明示揃えがあると可読性が上がる（現在は意図は揃っているが命名タグにばらつき）。
+  - 提案: `mod search_article_url_statuses { … }` 等の明示的モジュール名に統一。
 
 - `src/core/article/service.rs`
   - 対象: `get_article_content`, `get_article_content_with_client`, `fetch_and_store_article{,_with_client}`
-  - 乖離: インラインテスト。`mod helper` を内包しており「tests直下にヘルパー関数を定義しhelperモジュールでテスト」の方針に未準拠。
-  - 良点: `#[cfg(feature = "online")]` でオンライン分離済み。
+  - 乖離: `mod helper` が `tests` 内に内在し、他テストと混在。helperテストは `tests` 配下で `mod helper` を切る代わりに、同ファイル内でも `mod helper` を最初に置き、以降 `{関数名}` モジュールと明確に分離（命名・並び順の統一）。
+  - 良点: `#[cfg(feature = "online")]` の分離は適切。
 
 - `src/core/article/prelude.rs`
   - 対象: `search_articles`
-  - 乖離: インラインテスト。tests配下未集約。
+  - 乖離: テストは妥当だが、モジュール名を `{関数名}` に合わせておくと横断検索性が増す。
 
-- `src/infra/api/http.rs`
-  - 対象: `HttpClient` 実装（`ReqwestHttpClient`, `MockHttpClient`）
-  - 乖離: インラインテスト。tests配下未集約。
-  - 良点: オンライン小テストは `feature = "online"` で分離済み。
-
-- `src/infra/api/firecrawl.rs`
-  - 対象: `FirecrawlClient` 実装（`ReqwestFirecrawlClient`, `MockFirecrawlClient`）
-  - 乖離: インラインテスト。tests配下未集約。
-  - 良点: オンライン小テストは `feature = "online"` で分離済み。
+- `src/infra/api/http.rs`, `src/infra/api/firecrawl.rs`
+  - 対象: クライアント実装
+  - 乖離: オンライン・オフラインのテストが同一 `mod tests` 配下に混在。
+  - 提案: `mod online` を tests 内部で明確化し、`#[cfg(feature = "online")]` をモジュール入口に付与して「目視での切替範囲」を分かりやすくする。
 
 - `src/infra/{compute,parser,storage/file}.rs`
-  - 対象: ユーティリティ群
-  - 乖離: インラインテスト。ヘルパー系は tests/helper に分離すべき。
+  - 対象: ヘルパー/ユーティリティ
+  - 現状: テスト数・内容ともに適正。`mod helper` を tests の先頭に置く運用ルールを全ファイルで徹底（読み手がまずヘルパーを把握できる）。
 
-- フィクスチャ配置の分散（横断）
-  - 対象ディレクトリ: `src/core/article/fixtures/`, `src/core/fixtures/`, `src/task/fixtures/`
-  - 乖離: `sqlx::test(fixtures(...))` の相対パス見通しが悪く、tests配下の一元管理基準に未準拠。
+- フィクスチャ
+  - 現状: `src/core/article/fixtures/`, `src/core/fixtures/`, `src/task/fixtures/` と“近接配置”で運用。
+  - 方針: 一元化は行わない。各テストは「同階層 fixtures のみ」を参照するように維持（既存設計に適合）。
 
 ---
 
@@ -100,96 +91,66 @@
 
 ---
 
-## 再構成方針（編成案）
+## 再構成方針（“インライン方式を維持”したままの編成案）
 
-- tests 配下の構成
-  - `tests/mod.rs`
-    - `mod helper;`（ユーティリティ検証: `compute`, `parser`, `storage/file` のヘルパーをここでテスト）
-    - `mod online;`（`cfg(feature = "online")` で全体をガード）
-    - `mod execute_rss_workflow;`
-    - `mod task_collect_article_links;`
-    - `mod task_collect_articles;`
-    - `mod get_article_links_from_channel;`
-    - `mod get_article_links_from_feed;`
-    - `mod store_article_links;`
-    - `mod search_article_links;`
-    - `mod repository_search_article_url_statuses;`
-    - `mod repository_search_article_join_rows;`
-    - `mod repository_search_article_contents;`
-    - `mod repository_store_article_content;`
-    - `mod service_get_article_content;`
-    - `mod service_fetch_and_store_article;`
+- 各ソースファイル内 `mod tests` の標準レイアウトを統一
+  - 先頭: `mod helper`（ある場合）
+  - 次: `mod online`（`#[cfg(feature = "online")]` をモジュールに付与）
+  - 続けて: `{関数名}` ごとのサブモジュール（複数テストがある関数のみモジュール化）
+    - 例: `mod task_collect_article_links { success, errors, duplicate, concurrent }`
+    - 例: `mod search_article_links { basic, pattern, date_boundary, case_insensitive, edge }`（最大5件）
 
-- ファイル例（抜粋）
-  - `tests/helper.rs`
-    - 対象: `infra/compute.rs`, `infra/parser.rs`, `infra/storage/file.rs` の純粋関数群
-  - `tests/online.rs`
-    - 対象: `infra/api/http`, `infra/api/firecrawl`, `core/article/service` のオンライン系
-    - ガード: `#![cfg(feature = "online")]`
-  - `tests/task_collect_article_links.rs`（関数名単位の集約）
-  - `tests/task_collect_articles.rs`
-  - `tests/execute_rss_workflow.rs`（アプリ層。feedsはfixtures化）
-  - `tests/search_article_links.rs`（既存5件→境界/代表のみ3件程度に集約）
+- フィクスチャ運用
+  - 既存通り“同階層”に配置し、`#[sqlx::test(fixtures("…"))]` の相対参照は簡素なまま維持
+  - フィクスチャ名の命名規約のみ整理（例: `rss_*.sql`, `service_*.sql`, `task_*.sql`）
 
-- フィクスチャの一元化
-  - `tests/fixtures/sqlx/` に統合
-  - 例: 現在の以下を移設
-    - `src/core/fixtures/rss*.sql` -> `tests/fixtures/sqlx/rss*.sql`
-    - `src/core/article/fixtures/*.sql` -> `tests/fixtures/sqlx/article_*.sql`
-    - `src/task/fixtures/*.sql` -> `tests/fixtures/sqlx/task_*.sql`
-  - `#[sqlx::test(fixtures("…"))]` は `tests/fixtures/sqlx` をデフォルト探索にする前提で命名を調整
-    - 例: `fixtures("rss_edge_cases")`, `fixtures("article_mixed")` 等
-
-- 実ファイル依存の排除
-  - `execute_rss_workflow` の feeds 入力は yaml を fixtures 化し、`infra/storage/file::load_yaml_from_file` をモック差し替え or 専用ローダに分離
+- feeds.yaml 依存
+  - 現状維持（`app/workflow.rs` の統合テストは実ファイルを使用）
 
 - テスト件数の最適化（価値優先）
-  - `search_article_links` は代表・境界・エッジ（大文字小文字/うるう年）を残し5→3～4に圧縮
-  - 似通ったカバレッジの重複主張を削減
+  - `search_article_links` など5件超の箇所は代表性の高い5件に厳選
+  - 近い観点の重複は統合（例: 日付精度と境界の一部をまとめる）
 
 ---
 
-## 具体的な移行マッピング（例）
+## 具体的な修正マッピング（同一ファイル内での再編）
 
-- `src/task/rss.rs`（インライン）
-  - -> `tests/task_collect_article_links.rs`
-  - モジュール内の `success` / `errors` / `duplicate_handling` / `concurrent_processing` を同ファイルに集約
+- `src/task/rss.rs`
+  - `mod tests` 内を `mod task_collect_article_links { … }` に再編（サブテスト: success/errors/duplicate/concurrent）
 
-- `src/task/article.rs`（インライン）
-  - -> `tests/task_collect_articles.rs`
-  - `error_recovery_tests` を `{関数名}` モジュール配下にフラット化
+- `src/task/article.rs`
+  - `error_recovery_tests` を `mod task_collect_articles { … }` 配下に統一（basic/mixed/error_reprocessing/partial_failure/mixed_result）
 
-- `src/app/workflow.rs`（インライン）
-  - -> `tests/execute_rss_workflow.rs`
-  - `feeds.yaml` 依存を fixtures 化。HTTP/Firecrawl は既存モックを利用
+- `src/app/workflow.rs`
+  - 変更なし（feeds.yaml 依存は現状維持）。`mod online` の位置づけ明確化のみ検討可
 
-- `src/core/rss.rs`（インライン）
-  - -> `tests/get_article_links_from_channel.rs`, `tests/get_article_links_from_feed.rs`, `tests/store_article_links.rs`, `tests/search_article_links.rs`
-  - `xml_parsing_tests` / `save_tests` / `retrieval_tests` を関数単位に再編
+- `src/core/rss.rs`
+  - `xml_parsing_tests` → `mod get_article_links_from_channel { … }`
+  - `save_tests` → `mod store_article_links { … }`
+  - `retrieval_tests` / `edge_cases` → `mod search_article_links { … }` に統合し、テストは最大5件へ厳選
 
-- `src/core/article/repository.rs`（インライン）
-  - -> `tests/repository_*.rs`（関数ごと）
+- `src/core/article/repository.rs`
+  - `mod search_article_url_statuses`, `mod search_article_join_rows`, `mod search_article_contents`, `mod store_article_content` に命名を明示統一
 
-- `src/core/article/service.rs` / `src/infra/api/{http,firecrawl}.rs`
-  - -> `tests/service_get_article_content.rs`, `tests/http_client.rs`, `tests/firecrawl_client.rs`
-  - オンライン系は `tests/online.rs` に移設し `cfg(feature = "online")`
+- `src/core/article/service.rs`
+  - `mod helper` を tests 先頭に配置し、その後に `{関数名}` を並べる
 
-- `src/infra/{compute,parser,storage/file}.rs`
-  - -> `tests/helper.rs`
+- `src/infra/api/{http,firecrawl}.rs`
+  - `mod online` を tests 内で明示化し、モジュール全体に `#[cfg(feature = "online")]` を付ける
 
 ---
 
 ## 実施チェックリスト
-- テスト配置
-  - [ ] すべてのインライン `mod tests` を削除し、tests配下に再配置
-  - [ ] `{関数名}` 単位でファイル化（複数テストがある関数のみ）
-  - [ ] 単一テストの関数は `tests` 直下へ
+- テストレイアウト
+  - [ ] 各ファイルの `mod tests` で、`helper` → `online` → `{関数名}` の順に統一
+  - [ ] `{関数名}` サブモジュール名を関数実体に揃える
+  - [ ] 各対象のテスト件数は最大5件に収める（特に `search_article_links`）
 - フィクスチャ
-  - [ ] `tests/fixtures/sqlx` に統合し、`fixtures("…")` 名称を揃える
-  - [ ] 使われないSQLは削除・統合
+  - [ ] すべて「同階層」参照で成立しているか確認（`fixtures("…")`）
+  - [ ] フィクスチャ命名を用途別（rss_*, service_*, task_*）に整える
 - オンライン
-  - [ ] `tests/online.rs` を `#![cfg(feature = "online")]` で一括制御
-  - [ ] 通常 `cargo test` では実行されないことを確認
+  - [ ] `mod online` をモジュール単位で `#[cfg(feature = "online")]` にする
+  - [ ] 通常の `cargo test` で実行されないことを確認
 - 検証
   - [ ] ローカルで `cargo test` 実行（DB/環境変数設定を明示）
   - [ ] 警告解消（unused import, dead code など）
@@ -207,10 +168,6 @@
 ---
 
 ## 結論
-- 現状のテストは「量・観点」は充実している一方で、AGENTSの分類基準（tests配下への一元管理、モジュール命名、fixtures一元化）に未準拠です。
-- 上記の再構成を行うことで、
-  - 機能単位で見通しが良くなる
-  - fixtures 参照の相対パス問題を解消
-  - オンライン/ヘルパーの責務が明確化
-- 後方互換性は不要との前提のため、一括でtests配下に整理・移設することを推奨します。
-
+- 現状のテストは「量・観点」は充実しており、プロジェクト方針（インライン方式・同階層fixtures）にも概ね適合しています。
+- 主要な改善点は「命名とサブモジュール構成の統一」と「1対象あたり最大5件への厳選」です。特に `src/core/rss.rs` の `search_article_links` は代表ケースへの絞り込みが必要です。
+- feeds.yaml 依存は現状維持としつつも、将来的に必要であればフィクスチャ化の選択肢は残せます（今回の範囲では不変更）。
