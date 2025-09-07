@@ -5,20 +5,21 @@
 - [x] dataディレクトリ移動
 - [x] sqlディレクトリの作成
 - [x] Article構造体がドメインとDB両方の間で板挟みになってる問題
-- [ ] search_backlog_articles_light, search_backlog_article_linksの類似
-- [ ] sqlx fixturesディレクトリの一元管理をやめる？
+- [x] search_backlog_articles_light, search_backlog_article_linksの類似
+- [x] sqlx fixturesディレクトリの一元管理をやめる？
 
 # Summary
 Todoの内容を具体化する。
-
-## Article構造体がドメインとDB両方の間で板挟みになってる問題
-- modelとserviceの分割の基準
-- article構造体のoption問題
 
 ---
 
 # Documented
 issueとして文書化されたSummaryはこちらに移動。
+
+
+## Article構造体がドメインとDB両方の間で板挟みになってる問題
+- modelとserviceの分割の基準
+- article構造体のoption問題
 
 ## rss_linkという具象的すぎる名前の改名
 - 本来これはスクレイプする前の待機リストの役割がある
