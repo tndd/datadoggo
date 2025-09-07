@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Datelike, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -65,7 +65,7 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, Utc};
+    use chrono::{Datelike, TimeZone, Utc};
 
     #[test]
     fn test_article_creation() {
