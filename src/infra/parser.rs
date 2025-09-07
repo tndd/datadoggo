@@ -47,86 +47,91 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
 
-    // `parse_date_string`関数の基本的なテスト
-    #[test]
-    fn test_parse_common_date_formats() {
-        // ISO 8601 / RFC 3339
-        let rfc3339 = "2025-08-10T12:30:00Z";
-        let expected_rfc3339 = Utc.with_ymd_and_hms(2025, 8, 10, 12, 30, 0).unwrap();
-        assert_eq!(parse_date(rfc3339).unwrap(), expected_rfc3339);
+    // ヘルパー群はhelperモジュールでテスト
+    mod helper {
+        use super::*;
 
-        // RFC 2822 (RSSで一般的)
-        let rfc2822 = "Sun, 10 Aug 2025 12:30:00 +0000";
-        assert_eq!(parse_date(rfc2822).unwrap(), expected_rfc3339);
+        // `parse_date_string`関数の基本的なテスト
+        #[test]
+        fn test_parse_common_date_formats() {
+            // ISO 8601 / RFC 3339
+            let rfc3339 = "2025-08-10T12:30:00Z";
+            let expected_rfc3339 = Utc.with_ymd_and_hms(2025, 8, 10, 12, 30, 0).unwrap();
+            assert_eq!(parse_date(rfc3339).unwrap(), expected_rfc3339);
 
-        // YYYY-MM-DD 00:00:00 UTC（より明確な時刻指定）
-        let ymd_utc = "2025-08-10T00:00:00Z";
-        let expected_ymd_utc = Utc.with_ymd_and_hms(2025, 8, 10, 0, 0, 0).unwrap();
-        assert_eq!(parse_date(ymd_utc).unwrap(), expected_ymd_utc);
-    }
+            // RFC 2822 (RSSで一般的)
+            let rfc2822 = "Sun, 10 Aug 2025 12:30:00 +0000";
+            assert_eq!(parse_date(rfc2822).unwrap(), expected_rfc3339);
 
-    // タイムゾーン付きの日付文字列のテスト
-    #[test]
-    fn test_parse_with_timezones() {
-        // JST (+09:00)
-        let jst_str = "2025-08-10T21:30:00+09:00";
-        let expected_utc = Utc.with_ymd_and_hms(2025, 8, 10, 12, 30, 0).unwrap();
-        assert_eq!(parse_date(jst_str).unwrap(), expected_utc);
+            // YYYY-MM-DD 00:00:00 UTC（より明確な時刻指定）
+            let ymd_utc = "2025-08-10T00:00:00Z";
+            let expected_ymd_utc = Utc.with_ymd_and_hms(2025, 8, 10, 0, 0, 0).unwrap();
+            assert_eq!(parse_date(ymd_utc).unwrap(), expected_ymd_utc);
+        }
 
-        // PST (-08:00)
-        let pst_str = "2025-08-10T04:30:00-08:00";
-        assert_eq!(parse_date(pst_str).unwrap(), expected_utc);
-    }
+        // タイムゾーン付きの日付文字列のテスト
+        #[test]
+        fn test_parse_with_timezones() {
+            // JST (+09:00)
+            let jst_str = "2025-08-10T21:30:00+09:00";
+            let expected_utc = Utc.with_ymd_and_hms(2025, 8, 10, 12, 30, 0).unwrap();
+            assert_eq!(parse_date(jst_str).unwrap(), expected_utc);
 
-    // 不正な日付形式のテスト
-    #[test]
-    fn test_parse_invalid_formats() {
-        assert!(parse_date("invalid-date").is_err());
-        assert!(parse_date("2025-13-40").is_err()); // 不正な月日
-        assert!(parse_date("").is_err()); // 空文字列
-    }
+            // PST (-08:00)
+            let pst_str = "2025-08-10T04:30:00-08:00";
+            assert_eq!(parse_date(pst_str).unwrap(), expected_utc);
+        }
 
-    // mock/rss/*.rss ファイルの日付形式を模倣したテスト
-    #[test]
-    fn test_parse_from_mock_rss_files() {
-        // bbc.rss: "Sun, 27 Jul 2025 07:36:19 GMT"の形式
-        let bbc_date = "Sun, 27 Jul 2025 07:36:19 GMT";
-        let expected_bbc = Utc.with_ymd_and_hms(2025, 7, 27, 7, 36, 19).unwrap();
-        assert_eq!(parse_date(bbc_date).unwrap(), expected_bbc);
+        // 不正な日付形式のテスト
+        #[test]
+        fn test_parse_invalid_formats() {
+            assert!(parse_date("invalid-date").is_err());
+            assert!(parse_date("2025-13-40").is_err());
+            assert!(parse_date("").is_err());
+        }
 
-        // cbs.rss: "Sun, 27 Jul 2025 03:25:12 -0400"の形式（タイムゾーンオフセット付き）
-        let cbs_date = "Sun, 27 Jul 2025 03:25:12 -0400";
-        let expected_cbs = Utc.with_ymd_and_hms(2025, 7, 27, 7, 25, 12).unwrap(); // -0400 = UTC+4時間
-        assert_eq!(parse_date(cbs_date).unwrap(), expected_cbs);
+        // mock/rss/*.rss ファイルの日付形式を模倣したテスト
+        #[test]
+        fn test_parse_from_mock_rss_files() {
+            // bbc.rss: "Sun, 27 Jul 2025 07:36:19 GMT"の形式
+            let bbc_date = "Sun, 27 Jul 2025 07:36:19 GMT";
+            let expected_bbc = Utc.with_ymd_and_hms(2025, 7, 27, 7, 36, 19).unwrap();
+            assert_eq!(parse_date(bbc_date).unwrap(), expected_bbc);
 
-        // guardian.rss: "Wed, 23 Jul 2025 04:00:42 GMT"の形式
-        let guardian_date = "Wed, 23 Jul 2025 04:00:42 GMT";
-        let expected_guardian = Utc.with_ymd_and_hms(2025, 7, 23, 4, 0, 42).unwrap();
-        assert_eq!(parse_date(guardian_date).unwrap(), expected_guardian);
+            // cbs.rss: "Sun, 27 Jul 2025 03:25:12 -0400"の形式（タイムゾーンオフセット付き）
+            let cbs_date = "Sun, 27 Jul 2025 03:25:12 -0400";
+            let expected_cbs = Utc.with_ymd_and_hms(2025, 7, 27, 7, 25, 12).unwrap(); // -0400 = UTC+4時間
+            assert_eq!(parse_date(cbs_date).unwrap(), expected_cbs);
 
-        // その他のRFC 2822形式パターンもテスト
-        let rfc2822_variations = [
-            (
-                "Sat, 26 Jul 2025 18:02:24 GMT",
-                Utc.with_ymd_and_hms(2025, 7, 26, 18, 2, 24).unwrap(),
-            ),
-            (
-                "Sun, 27 Jul 2025 03:38:00 -0400",
-                Utc.with_ymd_and_hms(2025, 7, 27, 7, 38, 0).unwrap(),
-            ),
-            (
-                "Sun, 27 Jul 2025 02:01:14 GMT",
-                Utc.with_ymd_and_hms(2025, 7, 27, 2, 1, 14).unwrap(),
-            ),
-        ];
+            // guardian.rss: "Wed, 23 Jul 2025 04:00:42 GMT"の形式
+            let guardian_date = "Wed, 23 Jul 2025 04:00:42 GMT";
+            let expected_guardian = Utc.with_ymd_and_hms(2025, 7, 23, 4, 0, 42).unwrap();
+            assert_eq!(parse_date(guardian_date).unwrap(), expected_guardian);
 
-        for (date_str, expected) in &rfc2822_variations {
-            assert_eq!(
-                parse_date(date_str).unwrap(),
-                *expected,
-                "日付文字列 '{}' のパースが期待と異なります",
-                date_str
-            );
+            // その他のRFC 2822形式パターンもテスト
+            let rfc2822_variations = [
+                (
+                    "Sat, 26 Jul 2025 18:02:24 GMT",
+                    Utc.with_ymd_and_hms(2025, 7, 26, 18, 2, 24).unwrap(),
+                ),
+                (
+                    "Sun, 27 Jul 2025 03:38:00 -0400",
+                    Utc.with_ymd_and_hms(2025, 7, 27, 7, 38, 0).unwrap(),
+                ),
+                (
+                    "Sun, 27 Jul 2025 02:01:14 GMT",
+                    Utc.with_ymd_and_hms(2025, 7, 27, 2, 1, 14).unwrap(),
+                ),
+            ];
+
+            for (date_str, expected) in &rfc2822_variations {
+                assert_eq!(
+                    parse_date(date_str).unwrap(),
+                    *expected,
+                    "日付のパース不一致: {}",
+                    date_str
+                );
+            }
         }
     }
 }

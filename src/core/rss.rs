@@ -181,8 +181,8 @@ mod tests {
         }
     }
 
-    // XML解析関数のテスト
-    mod xml_parsing_tests {
+    // XML解析関数のテスト（関数名ベースに統一）
+    mod get_article_links_from_channel {
         use super::*;
 
         #[test]
@@ -246,8 +246,8 @@ mod tests {
         }
     }
 
-    // データベース保存機能のテスト
-    mod save_tests {
+    // データベース保存機能のテスト（関数名ベースに統一）
+    mod store_article_links {
         use super::*;
 
         #[sqlx::test]
@@ -358,8 +358,8 @@ mod tests {
         }
     }
 
-    // HTTPクライアントを使用したフィード取得テスト
-    mod feed_fetch_tests {
+    // HTTPクライアントを使用したフィード取得テスト（関数名ベースに統一）
+    mod get_article_links_from_feed {
         use super::*;
         use crate::infra::api::http::MockHttpClient;
 
@@ -448,8 +448,8 @@ mod tests {
         }
     }
 
-    // データベース取得機能のテスト
-    mod retrieval_tests {
+    // データベース取得機能のテスト（関数名ベースに統一）
+    mod search_article_links {
         use super::*;
 
         #[sqlx::test(fixtures("rss"))]
@@ -522,43 +522,155 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("rss_backlog"))]
-        async fn test_search_backlog_article_links(pool: PgPool) -> Result<(), anyhow::Error> {
-            // バックログのRSSリンクを取得
-            let backlog_links = search_backlog_article_links(&pool).await?;
+        // ここに edge_cases 由来の3テストを統合
+        #[sqlx::test(fixtures("rss_edge_cases"))]
+        async fn test_search_article_links_boundary_conditions(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            // 空文字タイトルの検索
+            let empty_title_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: Some("empty-title".to_string()),
+                    pub_date_from: None,
+                    pub_date_to: None,
+                }),
+                &pool,
+            )
+            .await?;
 
-            // 未処理リンク2件 + エラーリンク4件 = 6件が返されることを確認
             assert_eq!(
-                backlog_links.len(),
-                6,
-                "バックログRSSリンクの件数が期待値と異なります"
+                empty_title_results.len(),
+                1,
+                "空文字タイトル記事が見つかりませんでした"
+            );
+            assert_eq!(empty_title_results[0].title, "");
+
+            // 非常に短いURL
+            let short_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: Some("x.co".to_string()),
+                    pub_date_from: None,
+                    pub_date_to: None,
+                }),
+                &pool,
+            )
+            .await?;
+            assert_eq!(short_results.len(), 1, "最短URL記事が見つかりませんでした");
+            assert_eq!(short_results[0].title, "最短URL記事");
+
+            // 長いURL
+            let long_url_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: Some("very-long-subdomain".to_string()),
+                    pub_date_from: None,
+                    pub_date_to: None,
+                }),
+                &pool,
+            )
+            .await?;
+            assert_eq!(
+                long_url_results.len(),
+                1,
+                "長いURL記事が見つかりませんでした"
+            );
+            assert_eq!(long_url_results[0].title, "長いURL記事");
+
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("rss_edge_cases"))]
+        async fn test_date_precision_and_boundaries(pool: PgPool) -> Result<(), anyhow::Error> {
+            // マイクロ秒精度の日付検索
+            let precise_date_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: Some("microsecond".to_string()),
+                    pub_date_from: None,
+                    pub_date_to: None,
+                }),
+                &pool,
+            )
+            .await?;
+            assert_eq!(
+                precise_date_results.len(),
+                1,
+                "マイクロ秒精度記事が見つかりませんでした"
             );
 
-            // 日付の降順ソートを確認
-            validate_date_sort_desc(&backlog_links);
+            // UNIX エポック境界
+            let epoch_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: None,
+                    pub_date_from: Some(parse_date("1970-01-01T00:00:00Z")?),
+                    pub_date_to: Some(parse_date("1970-01-01T00:00:02Z")?),
+                }),
+                &pool,
+            )
+            .await?;
+            assert_eq!(
+                epoch_results.len(),
+                1,
+                "UNIX エポック記事が見つかりませんでした"
+            );
+            assert_eq!(epoch_results[0].title, "UNIX開始日記事");
 
-            // 各リンクの詳細確認
+            // うるう年境界（2024-02-29）
+            let leap_results = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: None,
+                    pub_date_from: Some(parse_date("2024-02-29T00:00:00Z")?),
+                    pub_date_to: Some(parse_date("2024-02-29T23:59:59Z")?),
+                }),
+                &pool,
+            )
+            .await?;
+            assert_eq!(leap_results.len(), 1, "うるう年記事が見つかりませんでした");
+            assert_eq!(leap_results[0].title, "うるう年記事");
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("rss_edge_cases"))]
+        async fn test_case_insensitive_search(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 大文字小文字混在URLの検索（ILIKE動作確認）
+            let case_results_lower = search_article_links(
+                Some(ArticleLinkQuery {
+                    link_pattern: Some("casesensitive".to_string()), // 小文字で検索
+                    pub_date_from: None,
+                    pub_date_to: None,
+                }),
+                &pool,
+            )
+            .await?;
+            assert!(
+                case_results_lower.len() >= 2,
+                "大文字小文字を含むURL検索が正しく動作していません: {}件",
+                case_results_lower.len()
+            );
+            let urls: Vec<&str> = case_results_lower
+                .iter()
+                .map(|link| link.url.as_str())
+                .collect();
+            assert!(urls.iter().any(|url| url.contains("CaseSensitive")));
+            assert!(urls.iter().any(|url| url.contains("casesensitive")));
+            Ok(())
+        }
+    }
+
+    // バックログ取得のテストを独立モジュール化
+    mod search_backlog_article_links {
+        use super::*;
+
+        #[sqlx::test(fixtures("rss_backlog"))]
+        async fn test_search_backlog_article_links(pool: PgPool) -> Result<(), anyhow::Error> {
+            let backlog_links = search_backlog_article_links(&pool).await?;
+            assert_eq!(backlog_links.len(), 6);
+            super::validate_date_sort_desc(&backlog_links);
             let links: Vec<&str> = backlog_links.iter().map(|l| l.url.as_str()).collect();
-
-            // 未処理リンクが含まれることを確認
             assert!(links.contains(&"https://example.com/unprocessed-article-1"));
             assert!(links.contains(&"https://example.com/unprocessed-article-2"));
-
-            // エラーリンクが含まれることを確認
             assert!(links.contains(&"https://example.com/error-article-1"));
             assert!(links.contains(&"https://example.com/error-article-2"));
             assert!(links.contains(&"https://example.com/timeout-article"));
             assert!(links.contains(&"https://example.com/notfound-article"));
-
-            // 正常処理済みリンクが含まれないことを確認
-            assert!(!links.contains(&"https://example.com/success-article-1"));
-            assert!(!links.contains(&"https://example.com/success-article-2"));
-
-            println!(
-                "✅ バックログRSSリンク取得テスト成功: {}件",
-                backlog_links.len()
-            );
-
             Ok(())
         }
 
@@ -566,23 +678,14 @@ mod tests {
         async fn test_search_backlog_article_links_empty(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
-            // 空のデータベースでテスト
             let backlog_links = search_backlog_article_links(&pool).await?;
-
-            assert_eq!(
-                backlog_links.len(),
-                0,
-                "空のデータベースでは0件が返されることを期待"
-            );
-
-            println!("✅ バックログRSSリンク空データベーステスト成功");
-
+            assert_eq!(backlog_links.len(), 0);
             Ok(())
         }
     }
 
-    // エラーシナリオテスト
-    mod error_scenarios {
+    // store_article_links のエッジケース
+    mod store_article_links_edge_cases {
         use super::*;
 
         #[sqlx::test(fixtures("rss_error_cases"))]
@@ -714,161 +817,6 @@ mod tests {
             assert_eq!(count, 1, "同じURLの記事は1件のみであるべきです");
 
             println!("✅ 異なるsource値でのUPSERTテスト完了");
-            Ok(())
-        }
-    }
-
-    // エッジケーステスト
-    mod edge_cases {
-        use super::*;
-
-        #[sqlx::test(fixtures("rss_edge_cases"))]
-        async fn test_search_article_links_boundary_conditions(
-            pool: PgPool,
-        ) -> Result<(), anyhow::Error> {
-            // 空文字タイトルの検索
-            let empty_title_results = search_article_links(
-                Some(ArticleLinkQuery {
-                    link_pattern: Some("empty-title".to_string()),
-                    pub_date_from: None,
-                    pub_date_to: None,
-                }),
-                &pool,
-            )
-            .await?;
-
-            assert_eq!(
-                empty_title_results.len(),
-                1,
-                "空文字タイトル記事が見つかりませんでした"
-            );
-            assert_eq!(empty_title_results[0].title, "");
-
-            // 非常に短いタイトル vs 長いURL
-            let short_results = search_article_links(
-                Some(ArticleLinkQuery {
-                    link_pattern: Some("x.co".to_string()),
-                    pub_date_from: None,
-                    pub_date_to: None,
-                }),
-                &pool,
-            )
-            .await?;
-
-            assert_eq!(short_results.len(), 1, "最短URL記事が見つかりませんでした");
-            assert_eq!(short_results[0].title, "最短URL記事");
-
-            // 長いURLの検索
-            let long_url_results = search_article_links(
-                Some(ArticleLinkQuery {
-                    link_pattern: Some("very-long-subdomain".to_string()),
-                    pub_date_from: None,
-                    pub_date_to: None,
-                }),
-                &pool,
-            )
-            .await?;
-
-            assert_eq!(
-                long_url_results.len(),
-                1,
-                "長いURL記事が見つかりませんでした"
-            );
-            assert_eq!(long_url_results[0].title, "長いURL記事");
-
-            println!("✅ 境界条件検索テスト完了");
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("rss_edge_cases"))]
-        async fn test_date_precision_and_boundaries(pool: PgPool) -> Result<(), anyhow::Error> {
-            // マイクロ秒精度の日付検索
-            let precise_date_results = search_article_links(
-                Some(ArticleLinkQuery {
-                    link_pattern: Some("microsecond".to_string()),
-                    pub_date_from: None,
-                    pub_date_to: None,
-                }),
-                &pool,
-            )
-            .await?;
-
-            assert_eq!(
-                precise_date_results.len(),
-                1,
-                "マイクロ秒精度記事が見つかりませんでした"
-            );
-
-            // UNIX エポック境界
-            let epoch_results = search_article_links(
-                Some(ArticleLinkQuery {
-                    link_pattern: None,
-                    pub_date_from: Some(parse_date("1970-01-01T00:00:00Z")?),
-                    pub_date_to: Some(parse_date("1970-01-01T00:00:02Z")?),
-                }),
-                &pool,
-            )
-            .await?;
-
-            assert_eq!(
-                epoch_results.len(),
-                1,
-                "UNIX エポック記事が見つかりませんでした"
-            );
-            assert_eq!(epoch_results[0].title, "UNIX開始日記事");
-
-            // うるう年境界（2024-02-29）
-            let leap_results = search_article_links(
-                Some(ArticleLinkQuery {
-                    link_pattern: None,
-                    pub_date_from: Some(parse_date("2024-02-29T00:00:00Z")?),
-                    pub_date_to: Some(parse_date("2024-02-29T23:59:59Z")?),
-                }),
-                &pool,
-            )
-            .await?;
-
-            assert_eq!(leap_results.len(), 1, "うるう年記事が見つかりませんでした");
-            assert_eq!(leap_results[0].title, "うるう年記事");
-
-            println!("✅ 日付精度・境界テスト完了");
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("rss_edge_cases"))]
-        async fn test_case_insensitive_search(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 大文字小文字混在URLの検索（ILIKE動作確認）
-            let case_results_lower = search_article_links(
-                Some(ArticleLinkQuery {
-                    link_pattern: Some("casesensitive".to_string()), // 小文字で検索
-                    pub_date_from: None,
-                    pub_date_to: None,
-                }),
-                &pool,
-            )
-            .await?;
-
-            // 大文字のURLも小文字のURLも両方ヒットするべき
-            assert!(
-                case_results_lower.len() >= 2,
-                "大文字小文字を含むURL検索が正しく動作していません: {}件",
-                case_results_lower.len()
-            );
-
-            let urls: Vec<&str> = case_results_lower
-                .iter()
-                .map(|link| link.url.as_str())
-                .collect();
-            assert!(
-                urls.iter().any(|url| url.contains("CaseSensitive")),
-                "大文字URL が見つかりませんでした"
-            );
-            assert!(
-                urls.iter().any(|url| url.contains("casesensitive")),
-                "小文字URL が見つかりませんでした"
-            );
-
-            println!("✅ 大文字小文字非区別検索テスト完了");
             Ok(())
         }
     }

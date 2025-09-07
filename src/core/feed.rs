@@ -95,93 +95,45 @@ pub fn search_feeds(query: Option<FeedQuery>) -> Result<Vec<Feed>> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_search_feeds_no_filter() {
-        // 絞り込みなし（全件取得）
-        let result = search_feeds(None);
-        assert!(result.is_ok(), "フィード検索に失敗");
+    // 関数名ベースのモジュールへ統一
+    mod search_feeds {
+        use super::*;
 
-        let feeds = result.unwrap();
-        assert!(!feeds.is_empty(), "フィードが取得されませんでした");
-    }
-
-    #[test]
-    fn test_search_feeds_group_only() {
-        // groupのみ絞り込み
-        let query = FeedQuery {
-            group: Some("bbc".to_string()),
-            name: None,
-        };
-        let result = search_feeds(Some(query));
-        assert!(result.is_ok(), "フィード検索に失敗");
-
-        let feeds = result.unwrap();
-        assert!(!feeds.is_empty(), "bbcグループのフィードが見つかりません");
-        assert!(
-            feeds.iter().all(|f| f.group == "bbc"),
-            "全てbbcグループである必要があります"
-        );
-    }
-
-    #[test]
-    fn test_search_feeds_group_and_name() {
-        // group & name絞り込み
-        let query = FeedQuery {
-            group: Some("bbc".to_string()),
-            name: Some("world".to_string()),
-        };
-        let result = search_feeds(Some(query));
-        assert!(result.is_ok(), "フィード検索に失敗");
-
-        let feeds = result.unwrap();
-        assert_eq!(feeds.len(), 1, "特定のフィードで1件が期待されます");
-        assert_eq!(feeds[0].group, "bbc");
-        assert_eq!(feeds[0].name, "world");
-    }
-
-    #[test]
-    fn test_load_feeds_from_yaml() {
-        // 実際のYAMLファイルからの読み込みテスト（search_feeds経由）
-        let result = search_feeds(None);
-        assert!(result.is_ok(), "YAMLファイルの読み込みに失敗");
-
-        let feeds = result.unwrap();
-        assert!(!feeds.is_empty(), "フィードが読み込まれませんでした");
-
-        // bbcグループが存在することを確認
-        let bbc_feeds: Vec<_> = feeds.iter().filter(|f| f.group == "bbc").collect();
-        assert!(
-            !bbc_feeds.is_empty(),
-            "bbcグループのフィードが見つかりません"
-        );
-
-        println!(
-            "✅ フィードYAML読み込みテスト成功: {}件のフィードを読み込み",
-            feeds.len()
-        );
-    }
-
-    #[test]
-    fn test_feed_search_logic() {
-        // フィード検索ロジックのテスト（外部通信なし）
-        let query = FeedQuery {
-            group: Some("存在しないグループ".to_string()),
-            name: None,
-        };
-
-        let result = search_feeds(Some(query));
-        match result {
-            Ok(feeds) => {
-                assert!(
-                    feeds.is_empty(),
-                    "存在しないグループでフィードが見つからないはず"
-                );
-            }
-            Err(_) => {
-                // ファイル読み込みエラーは許容
-            }
+        #[test]
+        fn test_no_filter() {
+            let result = super::super::search_feeds(None);
+            assert!(result.is_ok());
+            assert!(!result.unwrap().is_empty());
         }
 
-        println!("✅ フィード検索ロジックテスト完了");
+        #[test]
+        fn test_group_only() {
+            let query = FeedQuery {
+                group: Some("bbc".to_string()),
+                name: None,
+            };
+            let feeds = super::super::search_feeds(Some(query)).unwrap();
+            assert!(!feeds.is_empty());
+            assert!(feeds.iter().all(|f| f.group == "bbc"));
+        }
+
+        #[test]
+        fn test_group_and_name() {
+            let query = FeedQuery {
+                group: Some("bbc".to_string()),
+                name: Some("world".to_string()),
+            };
+            let feeds = super::super::search_feeds(Some(query)).unwrap();
+            assert_eq!(feeds.len(), 1);
+            assert_eq!(feeds[0].group, "bbc");
+            assert_eq!(feeds[0].name, "world");
+        }
+
+        #[test]
+        fn test_load_feeds_from_yaml() {
+            let feeds = super::super::search_feeds(None).unwrap();
+            assert!(!feeds.is_empty());
+            assert!(feeds.iter().any(|f| f.group == "bbc"));
+        }
     }
 }

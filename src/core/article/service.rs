@@ -141,6 +141,7 @@ mod tests {
         }
     }
 
+    // オンラインテストはモジュール単位でfeatureガード
     #[cfg(feature = "online")]
     mod online {
         use super::*;
@@ -174,13 +175,5 @@ mod tests {
         assert!(article.content.contains("Gaza"));
     }
 
-    #[cfg(feature = "online")]
-    #[tokio::test]
-    async fn test_get_article_content_success() {
-        let result = get_article_content("https://httpbin.org/get").await;
-        assert!(result.is_ok());
-        let article = result.unwrap();
-        assert_eq!(article.status_code, 200);
-        assert!(!article.content.is_empty());
-    }
+    // 上記onlineモジュールに集約済み
 }
