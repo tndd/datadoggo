@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-use super::service::{search_article_join_rows, ArticleJoinRowQuery, ArticleStatus};
+use super::{search_article_join_rows, ArticleJoinRowQuery, ArticleStatus};
 
 // ユーザー側が実際に取り扱う情報モデル
 #[derive(Debug, Clone, Serialize, Deserialize)]
