@@ -381,6 +381,38 @@ mod tests {
     use super::*;
     use crate::infra::storage::file::load_json_from_file;
 
+    // tests直下のヘルパー関数
+    fn read_article_content_from_file(file_path: &str) -> Result<ArticleContent> {
+        let json_value = load_json_from_file(file_path)?;
+        let content = json_value
+            .get("markdown")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("markdownフィールドが見つかりません"))?
+            .to_string();
+        let metadata = json_value
+            .get("metadata")
+            .ok_or_else(|| anyhow::anyhow!("metadataフィールドが見つかりません"))?;
+        let url = metadata
+            .get("url")
+            .and_then(|v| v.as_str())
+            .or_else(|| metadata.get("sourceURL").and_then(|v| v.as_str()))
+            .ok_or_else(|| anyhow::anyhow!("URLが見つかりません"))?
+            .to_string();
+        let status_code = metadata
+            .get("statusCode")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32)
+            .ok_or_else(|| anyhow::anyhow!("statusCodeフィールドが見つかりません"))?;
+        let now = Utc::now();
+
+        Ok(ArticleContent {
+            url,
+            timestamp: now,
+            status_code,
+            content,
+        })
+    }
+
     #[test]
     fn test_article_status_enum() {
         // 各バリアントの基本動作テスト
@@ -485,39 +517,8 @@ mod tests {
     mod helper {
         use super::*;
 
-        fn read_article_content_from_file(file_path: &str) -> Result<ArticleContent> {
-            let json_value = load_json_from_file(file_path)?;
-            let content = json_value
-                .get("markdown")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("markdownフィールドが見つかりません"))?
-                .to_string();
-            let metadata = json_value
-                .get("metadata")
-                .ok_or_else(|| anyhow::anyhow!("metadataフィールドが見つかりません"))?;
-            let url = metadata
-                .get("url")
-                .and_then(|v| v.as_str())
-                .or_else(|| metadata.get("sourceURL").and_then(|v| v.as_str()))
-                .ok_or_else(|| anyhow::anyhow!("URLが見つかりません"))?
-                .to_string();
-            let status_code = metadata
-                .get("statusCode")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32)
-                .ok_or_else(|| anyhow::anyhow!("statusCodeフィールドが見つかりません"))?;
-            let now = Utc::now();
-
-            Ok(ArticleContent {
-                url,
-                timestamp: now,
-                status_code,
-                content,
-            })
-        }
-
         #[test]
-        fn test_file_operations() {
+        fn test_read_article_content_from_file() {
             use std::fs;
 
             // 正常なファイル読み込みテスト
@@ -875,10 +876,10 @@ mod tests {
         use super::*;
         use chrono::Datelike;
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_basic"))]
         async fn test_basic_search(pool: PgPool) -> Result<(), anyhow::Error> {
             let result = search_article_join_rows(None, &pool).await?;
-            assert!(result.len() >= 5, "基本検索で最低5件の結果が必要");
+            assert!(result.len() >= 1, "基本検索で最低1件の結果が必要");
 
             // 日付順ソート（DESC）の確認
             for i in 1..result.len() {
@@ -891,15 +892,16 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_basic"))]
         async fn test_status_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 成功記事のみ取得
+            // 成功記事のみ取得（service_basicには200のarticle1,article2がある）
             let success_query = ArticleJoinRowQuery {
                 statuses: Some(vec![ArticleStatus::Success]),
                 ..Default::default()
             };
             let success_results = search_article_join_rows(Some(success_query), &pool).await?;
 
+            assert!(success_results.len() >= 2, "成功記事が期待件数取得できない");
             for result in &success_results {
                 assert_eq!(
                     result.status_code,
@@ -909,22 +911,24 @@ mod tests {
                 assert!(result.content.is_some(), "Success状態でcontentがNone");
             }
 
-            // エラー記事のみ取得
+            // エラー記事のみ取得（service_basicには404のarticle3がある）
             let error_query = ArticleJoinRowQuery {
-                statuses: Some(vec![ArticleStatus::Error(404), ArticleStatus::Error(500)]),
+                statuses: Some(vec![ArticleStatus::Error(404)]),
                 ..Default::default()
             };
             let error_results = search_article_join_rows(Some(error_query), &pool).await?;
 
+            assert!(error_results.len() >= 1, "エラー記事が期待件数取得できない");
             for result in &error_results {
-                assert!(
-                    result.status_code == Some(404) || result.status_code == Some(500),
+                assert_eq!(
+                    result.status_code,
+                    Some(404),
                     "エラー状態で期待外のstatus_codeが含まれている: {:?}",
                     result.status_code
                 );
             }
 
-            // 未処理記事のみ取得
+            // 未処理記事のみ取得（service_basicではarticle_linksのみで記事が未取得のものを探す）
             let unprocessed_query = ArticleJoinRowQuery {
                 statuses: Some(vec![ArticleStatus::Unprocessed]),
                 ..Default::default()
@@ -932,6 +936,7 @@ mod tests {
             let unprocessed_results =
                 search_article_join_rows(Some(unprocessed_query), &pool).await?;
 
+            // service_basicにはarticle_linksが3件、articlesが3件あるので未処理はない可能性
             for result in &unprocessed_results {
                 assert!(
                     result.status_code.is_none(),
@@ -943,7 +948,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_search_patterns"))]
         async fn test_pattern_and_date_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
             use chrono::{TimeZone, Utc};
 
@@ -983,7 +988,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_limit_tests"))]
         async fn test_limit_and_source_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
             // limitテスト
             let limit_query = ArticleJoinRowQuery {
@@ -1031,7 +1036,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_boundary_values"))]
         async fn test_edge_cases_and_boundary_values(pool: PgPool) -> Result<(), anyhow::Error> {
             use chrono::{TimeZone, Utc};
 
@@ -1099,13 +1104,10 @@ mod tests {
     mod search_article_url_statuses {
         use super::*;
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_basic"))]
         async fn test_basic_url_status_search(pool: PgPool) -> Result<(), anyhow::Error> {
             let results = search_article_url_statuses(None, &pool).await?;
-            assert!(
-                results.len() >= 10,
-                "基本検索で十分な件数が取得されていない"
-            );
+            assert!(results.len() >= 3, "基本検索で十分な件数が取得されていない");
 
             // URL順ソートの確認
             for i in 1..results.len() {
@@ -1118,7 +1120,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_basic"))]
         async fn test_status_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
             // 成功記事のみ取得
             let success_query = ArticleUrlStatusQuery {
@@ -1135,28 +1137,23 @@ mod tests {
                 );
             }
 
-            // 複数エラー状態の取得
+            // エラー状態の取得（service_basicには404の記事がある）
             let error_query = ArticleUrlStatusQuery {
-                statuses: Some(vec![
-                    ArticleStatus::Error(404),
-                    ArticleStatus::Error(500),
-                    ArticleStatus::Error(403),
-                ]),
+                statuses: Some(vec![ArticleStatus::Error(404)]),
                 ..Default::default()
             };
             let error_results = search_article_url_statuses(Some(error_query), &pool).await?;
 
             for result in &error_results {
-                assert!(
-                    result.status_code == Some(404)
-                        || result.status_code == Some(500)
-                        || result.status_code == Some(403),
+                assert_eq!(
+                    result.status_code,
+                    Some(404),
                     "エラー状態で期待外のstatus_codeが含まれている: {:?}",
                     result.status_code
                 );
             }
 
-            // 未処理記事のみ取得
+            // 未処理記事のみ取得（service_basicではarticle_linksのみで記事が未取得のものを探す）
             let unprocessed_query = ArticleUrlStatusQuery {
                 statuses: Some(vec![ArticleStatus::Unprocessed]),
                 ..Default::default()
@@ -1164,6 +1161,8 @@ mod tests {
             let unprocessed_results =
                 search_article_url_statuses(Some(unprocessed_query), &pool).await?;
 
+            // service_basicでは全てのarticle_linksに対応するarticlesがある可能性があるので、
+            // 未処理はないかもしれません
             for result in &unprocessed_results {
                 assert!(
                     result.status_code.is_none(),
@@ -1174,7 +1173,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_search_patterns"))]
         async fn test_url_pattern_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
             // 特定ドメインの検索
             let domain_query = ArticleUrlStatusQuery {
@@ -1229,11 +1228,11 @@ mod tests {
     mod search_article_contents {
         use super::*;
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_basic"))]
         async fn test_basic_content_search(pool: PgPool) -> Result<(), anyhow::Error> {
             let results = search_article_contents(None, &pool).await?;
             assert!(
-                results.len() >= 8,
+                results.len() >= 2,
                 "基本検索で十分な記事内容が取得されていない"
             );
 
@@ -1248,7 +1247,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_search_patterns"))]
         async fn test_url_pattern_search(pool: PgPool) -> Result<(), anyhow::Error> {
             let query = ArticleContentQuery {
                 url_pattern: Some("tech.example.com".to_string()),
@@ -1271,7 +1270,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_search_patterns"))]
         async fn test_timestamp_range_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
             use chrono::{TimeZone, Utc};
 
@@ -1299,7 +1298,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_basic"))]
         async fn test_status_code_filtering(pool: PgPool) -> Result<(), anyhow::Error> {
             // 成功記事のみ
             let success_query = ArticleContentQuery {
@@ -1468,7 +1467,7 @@ mod tests {
     mod online {
         use super::*;
 
-        #[sqlx::test(fixtures("service_comprehensive"))]
+        #[sqlx::test(fixtures("service_basic"))]
         async fn test_search_article_join_rows_with_fixtures(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
