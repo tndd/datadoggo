@@ -79,7 +79,7 @@ async fn main() {
 
     // Firecrawl処理（簡易確認）
     println!("\n=== Firecrawl処理を開始 ===");
-    match load_json_from_file("mock/fc/bbc.json") {
+    match load_json_from_file("mock/firecrawl/bbc.json") {
         Ok(json_value) => {
             println!("BBCのFirecrawlデータを読み込みました。");
             if let Some(metadata) = json_value.get("metadata") {

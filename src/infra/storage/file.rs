@@ -45,7 +45,7 @@ mod tests {
 
         #[test]
         fn test_load_existing_file() {
-            let result = load_file("mock/fc/bbc.json");
+            let result = load_file("mock/firecrawl/bbc.json");
             assert!(result.is_ok());
         }
 

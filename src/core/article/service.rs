@@ -133,7 +133,7 @@ mod tests {
 
         #[test]
         fn test_read_article_content_from_file() {
-            let result = read_article_content_from_file("mock/fc/bbc.json");
+            let result = read_article_content_from_file("mock/firecrawl/bbc.json");
             assert!(result.is_ok());
             let article = result.unwrap();
             assert!(!article.url.is_empty());
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_article_content_from_file() {
-        let article_result = read_article_content_from_file("mock/fc/bbc.json");
+        let article_result = read_article_content_from_file("mock/firecrawl/bbc.json");
         assert!(article_result.is_ok());
         let article = article_result.unwrap();
         assert!(!article.content.is_empty());
