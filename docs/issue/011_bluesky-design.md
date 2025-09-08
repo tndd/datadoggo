@@ -1,16 +1,19 @@
-# 011: Bluesky RSS → article_links 実装計画 (2025-09-08)
-
-**目的**
+# 目的
 - Blueskyの「RSS表示」からポストを取得し、各ポスト本文の`<description>`内に含まれる「記事URL」を抽出してDBに保存する。
 - 保存先は`migrations/001_create_article_links.sql`の`article_links`テーブル。`source`は`"bluesky"`をセットする。
 - フィードの論理グループは`bluesky`とする（`config/feeds.yaml`に追加予定）。
 
-**対象スキーマ（格納先）**
+# 対象スキーマ（格納先）
 - テーブル: `article_links`
-  - `url TEXT PRIMARY KEY`
-  - `title TEXT NOT NULL`
-  - `pub_date TIMESTAMPTZ NOT NULL`
-  - `source TEXT NOT NULL`
+
+  | 列名       | 型          | 制約        |
+  | ---------- | ----------- | ----------- |
+  | `url`      | TEXT        | PRIMARY KEY |
+  | `title`    | TEXT        | NOT NULL    |
+  | `pub_date` | TIMESTAMPTZ | NOT NULL    |
+  | `source`   | TEXT        | NOT NULL    |
+
+
 - 本機能では以下で投入:
   - `url`: `<description>`から抽出した「記事」URL（短縮URL可）
   - `title`: `<description>`からURLを除去したテキストを整形・短縮したもの（後述の規則）
@@ -19,7 +22,7 @@
 
 ---
 
-## 入力データの想定
+# 入力データの想定
 - 形式: RSS 2.0
 - 例: `mock/bluesky/bloomberg.rss` / `mock/bluesky/reuter.rss`
   - `<item><link>`はポスト（`https://bsky.app/profile/.../post/...`）へのリンク
@@ -29,7 +32,7 @@
 
 ---
 
-## 仕様: 抽出・正規化
+# 仕様: 抽出・正規化
 - URL抽出（`<description>`）
   - 手順: テキストから`https?://[^\s<>"']+`を正規表現で抽出
   - フィルタ: `bsky.app`ドメインは除外（ポスト自身のURLは不要）
@@ -53,10 +56,12 @@
 
 ## モジュール設計（プロジェクトの一方向ルール順守）
 
+```mermaid
 graph LR
     infra --> core
     core --> task
     task --> app
+```
 
 ### infra
 - `src/infra/extract.rs`（新規）
@@ -93,17 +98,17 @@ graph LR
 
 ---
 
-## テスト方針（cargo testで完結）
+# テスト方針（cargo testで完結）
 
 優先度の高い検証観点のみ厳選（各関数/構造体あたり最大5件）。
 
-### helper
+## helper
 - `infra/extract.rs`（tests/helper）
   - URL抽出: 単一/複数/重複/無し
   - 末尾選択: 先頭が記事URLでない場合でも最後を選べること
   - URL除去: テキスト整形（改行・空白圧縮）
 
-### get_article_links_from_bluesky_channel
+## get_article_links_from_bluesky_channel
 - `mock/bluesky/bloomberg.rss`
   - すべての抽出結果が`bsky.app`以外のURLであること
   - `source == "bluesky"`
@@ -112,10 +117,10 @@ graph LR
   - ハッシュタグのみ等、URLが無い`<item>`はスキップされること
   - 重複URL行でも1件として扱うこと
 
-### store_article_links
+## store_article_links
 - `source = "bluesky"`でUPSERTできること（既存実装の再利用。重複時はタイトル/日付/ソースが更新）
 
-### online（任意・通常無効, `--features online`）
+## online（任意・通常無効, `--features online`）
 - 実際のRSS化エンドポイントに対する疎通試験（安定供給元が決まった後に追加）
 
 ---
@@ -132,7 +137,7 @@ graph LR
 
 ---
 
-## 実装タスク
+# 実装タスク
 1) `infra/extract.rs`新規: URL抽出/整形ヘルパーの実装 + 単体テスト
 2) `core/bluesky.rs`新規: Channel→ArticleLink変換 + フィード取得関数 + 単体テスト
 3) `task/bluesky.rs`新規: フィード反復→DB保存（`store_article_links`再利用）
@@ -157,7 +162,7 @@ graph LR
 
 ---
 
-## メモ
+# メモ
 - 今日の日付は2025-09-08（絶対日付で明記）。
 - Rustは最終的に`cargo test`での確認を必須（`cargo check`のみは禁止）。
 - ネーミング規約: API取得は`fetch_*`、ファイルは`load_*`、DB検索は`search_*`、計算/変換は`get_*`に準拠。
