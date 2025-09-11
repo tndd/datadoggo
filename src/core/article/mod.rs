@@ -1,8 +1,8 @@
 pub mod builders;
+pub mod model;
 pub mod prelude;
 pub mod repository;
 pub mod service;
-pub mod types;
 
 // prelude.rsから（ユーザー向けAPI）
 pub use prelude::{search_articles, Article, ArticleQuery};
@@ -18,7 +18,7 @@ pub use service::{
 pub use repository::store_article_content;
 
 // types.rsから（型定義）
-pub use types::{
+pub use model::{
     ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery, ArticleStatus,
     ArticleUrlStatus, ArticleUrlStatusQuery,
 };

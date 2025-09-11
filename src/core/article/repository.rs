@@ -7,7 +7,7 @@ use super::builders::{
     apply_date_range, apply_optional_limit, apply_source_filter, apply_status_code_filter,
     apply_status_filter, apply_url_filter, ArticleLinks, Articles,
 };
-use super::types::{
+use super::model::{
     ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery, ArticleUrlStatus,
     ArticleUrlStatusQuery,
 };
@@ -188,7 +188,7 @@ mod tests {
 
     mod search_article_url_statuses {
         use super::*;
-        use crate::core::article::types::ArticleStatus;
+        use crate::core::article::model::ArticleStatus;
 
         #[sqlx::test(fixtures("service_basic"))]
         async fn test_basic_search(pool: PgPool) -> Result<()> {
@@ -257,7 +257,7 @@ mod tests {
 
     mod search_article_join_rows {
         use super::*;
-        use crate::core::article::types::ArticleStatus;
+        use crate::core::article::model::ArticleStatus;
 
         #[sqlx::test(fixtures("service_basic"))]
         async fn test_basic_search(pool: PgPool) -> Result<()> {

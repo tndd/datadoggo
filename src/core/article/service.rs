@@ -2,11 +2,11 @@ use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
 use anyhow::{Context, Result};
 use sqlx::PgPool;
 
-use super::repository;
-use super::types::{
+use super::model::{
     ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery, ArticleUrlStatus,
     ArticleUrlStatusQuery,
 };
+use super::repository;
 
 // ==============================
 // ビジネスロジック層の公開API
@@ -153,7 +153,7 @@ mod tests {
         }
     }
 
-    use super::super::types::ArticleStatus;
+    use super::super::model::ArticleStatus;
 
     #[test]
     fn test_article_status_enum() {
