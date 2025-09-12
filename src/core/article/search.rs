@@ -27,7 +27,7 @@ pub async fn search_article_url_statuses(
                 )
           )
         ORDER BY l.url ASC
-        LIMIT COALESCE($6, NULL)
+        LIMIT $6
     "#;
 
     let results = sqlx::query_as::<_, ArticleUrlStatus>(sql)
@@ -127,7 +127,7 @@ async fn search_article_join_rows(
           )
           AND ($8::text IS NULL OR l.source = $8)
         ORDER BY l.pub_date DESC
-        LIMIT COALESCE($9, NULL)
+        LIMIT $9
     "#;
 
     let results = sqlx::query_as::<_, ArticleJoinRow>(sql)
