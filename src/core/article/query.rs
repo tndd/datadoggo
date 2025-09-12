@@ -6,7 +6,32 @@ use super::model::{
     ArticleUrlStatusQuery,
 };
 
-use super::service::normalize_statuses;
+// 内部実装：statuses指定の正規化（このモジュール内のみで使用する）
+// queryのSQLバインド補助。記事検索系クエリだけで使うためprivateにする。
+fn normalize_statuses(statuses: Option<&[ArticleStatus]>) -> (bool, bool, bool, Option<Vec<i32>>) {
+    let mut apply = false;
+    let mut has_unprocessed = false;
+    let mut has_success = false;
+    let mut errors: Vec<i32> = Vec::new();
+
+    if let Some(list) = statuses {
+        for s in list {
+            apply = true;
+            match s {
+                ArticleStatus::Unprocessed => has_unprocessed = true,
+                ArticleStatus::Success => has_success = true,
+                ArticleStatus::Error(code) => errors.push(*code),
+            }
+        }
+    }
+
+    let error_codes = if errors.is_empty() {
+        None
+    } else {
+        Some(errors)
+    };
+    (apply, has_unprocessed, has_success, error_codes)
+}
 
 /// ArticleUrlStatusを取得する（読み取り）
 pub async fn search_article_url_statuses(
@@ -152,6 +177,29 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
     use sqlx::PgPool;
+
+    // normalize_statusesの単体テスト
+    // 目的: ステータス指定の正規化ロジックが期待通りであることを確認
+    // 検証観点:
+    // - applyフラグが指定時にtrueになること
+    // - 未処理/成功/エラーコードの各フラグ・配列が正しく反映されること
+    mod normalize_statuses {
+        use super::*;
+
+        #[test]
+        fn test_normalize_statuses_basic() {
+            let (apply, unp, ok, errs) = normalize_statuses(Some(&[
+                ArticleStatus::Unprocessed,
+                ArticleStatus::Success,
+                ArticleStatus::Error(404),
+                ArticleStatus::Error(500),
+            ]));
+            assert!(apply);
+            assert!(unp);
+            assert!(ok);
+            assert_eq!(errs.unwrap(), vec![404, 500]);
+        }
+    }
 
     mod search_article_url_statuses {
         use super::*;
