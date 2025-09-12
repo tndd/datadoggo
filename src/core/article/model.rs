@@ -70,15 +70,6 @@ pub struct ArticleContent {
     pub content: String,
 }
 
-// ArticleContentを取得する際に使用するクエリモデル
-#[derive(Debug, Default)]
-pub struct ArticleContentQuery {
-    pub url_pattern: Option<String>,
-    pub timestamp_from: Option<DateTime<Utc>>,
-    pub timestamp_to: Option<DateTime<Utc>>,
-    pub status_code: Option<i32>,
-}
-
 // ユーザーがArticleを取得する際に使用するクエリモデル（ドメイン向け）
 #[derive(Debug, Default)]
 pub struct ArticleQuery {
@@ -217,16 +208,6 @@ mod tests {
         }
 
         #[test]
-        fn test_article_content_query_default() {
-            let query = ArticleContentQuery::default();
-
-            assert!(query.url_pattern.is_none());
-            assert!(query.timestamp_from.is_none());
-            assert!(query.timestamp_to.is_none());
-            assert!(query.status_code.is_none());
-        }
-
-        #[test]
         fn test_query_creation_with_values() {
             let now = Utc::now();
             let statuses = vec![ArticleStatus::Success, ArticleStatus::Error(404)];
@@ -246,13 +227,6 @@ mod tests {
                 limit: Some(5),
             };
 
-            let content_query = ArticleContentQuery {
-                url_pattern: Some("news.example.com".to_string()),
-                timestamp_from: Some(now),
-                timestamp_to: Some(now),
-                status_code: Some(200),
-            };
-
             // 値が正しく設定されているか確認
             assert_eq!(url_query.url_pattern.unwrap(), "example.com");
             assert_eq!(url_query.limit.unwrap(), 10);
@@ -261,9 +235,6 @@ mod tests {
             assert_eq!(join_query.link_pattern.unwrap(), "tech.example.com");
             assert_eq!(join_query.source.unwrap(), "tech");
             assert_eq!(join_query.limit.unwrap(), 5);
-
-            assert_eq!(content_query.url_pattern.unwrap(), "news.example.com");
-            assert_eq!(content_query.status_code.unwrap(), 200);
         }
     }
 
@@ -336,93 +307,6 @@ mod tests {
             assert_eq!(deserialized.title, row.title);
             assert_eq!(deserialized.pub_date, row.pub_date);
             assert_eq!(deserialized.source, row.source);
-        }
-    }
-
-    mod article_content {
-        use super::*;
-
-        #[test]
-        fn test_creation() {
-            let now = Utc::now();
-
-            let content = ArticleContent {
-                url: "https://example.com/article".to_string(),
-                timestamp: now,
-                status_code: 200,
-                content: "Article content goes here".to_string(),
-            };
-
-            assert_eq!(content.url, "https://example.com/article");
-            assert_eq!(content.timestamp, now);
-            assert_eq!(content.status_code, 200);
-            assert_eq!(content.content, "Article content goes here");
-        }
-
-        #[test]
-        fn test_with_error_status() {
-            let now = Utc::now();
-
-            let content = ArticleContent {
-                url: "https://example.com/not-found".to_string(),
-                timestamp: now,
-                status_code: 404,
-                content: "Page not found".to_string(),
-            };
-
-            assert_eq!(content.status_code, 404);
-            assert_eq!(content.content, "Page not found");
-        }
-
-        #[test]
-        fn test_with_empty_content() {
-            let now = Utc::now();
-
-            let content = ArticleContent {
-                url: "https://example.com/empty".to_string(),
-                timestamp: now,
-                status_code: 200,
-                content: String::new(),
-            };
-
-            assert_eq!(content.status_code, 200);
-            assert!(content.content.is_empty());
-        }
-
-        #[test]
-        fn test_with_large_content() {
-            let now = Utc::now();
-            let large_content = "A".repeat(10000); // 10KB
-
-            let content = ArticleContent {
-                url: "https://example.com/large".to_string(),
-                timestamp: now,
-                status_code: 200,
-                content: large_content.clone(),
-            };
-
-            assert_eq!(content.content.len(), 10000);
-            assert_eq!(content.content, large_content);
-        }
-
-        #[test]
-        fn test_serde_serialization() {
-            let now = Utc::now();
-
-            let content = ArticleContent {
-                url: "https://example.com/article".to_string(),
-                timestamp: now,
-                status_code: 200,
-                content: "Content".to_string(),
-            };
-
-            let json = serde_json::to_string(&content).unwrap();
-            let deserialized: ArticleContent = serde_json::from_str(&json).unwrap();
-
-            assert_eq!(deserialized.url, content.url);
-            assert_eq!(deserialized.timestamp, content.timestamp);
-            assert_eq!(deserialized.status_code, content.status_code);
-            assert_eq!(deserialized.content, content.content);
         }
     }
 }

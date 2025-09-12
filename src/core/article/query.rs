@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use sqlx::PgPool;
 
 use super::model::{
-    Article, ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery,
-    ArticleQuery, ArticleStatus, ArticleUrlStatus, ArticleUrlStatusQuery,
+    Article, ArticleJoinRow, ArticleJoinRowQuery, ArticleQuery, ArticleStatus, ArticleUrlStatus,
+    ArticleUrlStatusQuery,
 };
 
 use super::service::normalize_statuses;
@@ -93,34 +93,6 @@ pub async fn search_article_join_rows(
         .context("記事結合情報の取得に失敗")?;
 
     Ok(results)
-}
-
-/// ArticleContentを取得する（読み取り）
-pub async fn search_article_contents(
-    query: Option<ArticleContentQuery>,
-    pool: &PgPool,
-) -> Result<Vec<ArticleContent>> {
-    let query = query.unwrap_or_default();
-
-    let sql = r#"
-        SELECT url, timestamp, status_code, content
-        FROM articles
-        WHERE ($1::text IS NULL OR url ILIKE '%' || $1 || '%')
-          AND ($2::timestamptz IS NULL OR timestamp >= $2)
-          AND ($3::timestamptz IS NULL OR timestamp <= $3)
-          AND ($4::int IS NULL OR status_code = $4)
-        ORDER BY timestamp DESC
-    "#;
-
-    let articles = sqlx::query_as::<_, ArticleContent>(sql)
-        .bind(query.url_pattern)
-        .bind(query.timestamp_from)
-        .bind(query.timestamp_to)
-        .bind(query.status_code)
-        .fetch_all(pool)
-        .await?;
-
-    Ok(articles)
 }
 
 /// ドメイン向けArticleを取得（status_code=200のみ、結合行から変換）
@@ -321,64 +293,6 @@ mod tests {
         }
     }
 
-    // 関数名モジュール: search_article_contents
-    mod search_article_contents {
-        use super::*;
-
-        #[sqlx::test(fixtures("query_basic"))]
-        async fn test_basic_content_search(pool: PgPool) -> Result<()> {
-            let results = super::super::search_article_contents(None, &pool).await?;
-            assert!(results.len() >= 2);
-            for i in 1..results.len() {
-                assert!(results[i - 1].timestamp >= results[i].timestamp);
-            }
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("query_search_patterns"))]
-        async fn test_url_pattern_search(pool: PgPool) -> Result<()> {
-            let query = ArticleContentQuery {
-                url_pattern: Some("tech.example.com".to_string()),
-                ..Default::default()
-            };
-            let results = super::super::search_article_contents(Some(query), &pool).await?;
-            for result in &results {
-                assert!(result.url.contains("tech.example.com"));
-            }
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("query_search_patterns"))]
-        async fn test_timestamp_range_filtering(pool: PgPool) -> Result<()> {
-            let timestamp_from = Utc.with_ymd_and_hms(2025, 1, 10, 0, 0, 0).unwrap();
-            let timestamp_to = Utc.with_ymd_and_hms(2025, 1, 12, 23, 59, 59).unwrap();
-            let query = ArticleContentQuery {
-                timestamp_from: Some(timestamp_from),
-                timestamp_to: Some(timestamp_to),
-                ..Default::default()
-            };
-            let results = super::super::search_article_contents(Some(query), &pool).await?;
-            for result in &results {
-                assert!(result.timestamp >= timestamp_from && result.timestamp <= timestamp_to);
-            }
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("query_basic"))]
-        async fn test_status_code_filtering(pool: PgPool) -> Result<()> {
-            let success_query = ArticleContentQuery {
-                status_code: Some(200),
-                ..Default::default()
-            };
-            let success_results =
-                super::super::search_article_contents(Some(success_query), &pool).await?;
-            for result in &success_results {
-                assert_eq!(result.status_code, 200);
-            }
-            Ok(())
-        }
-    }
-
     // 包括テスト
     mod search_article_join_rows_comprehensive {
         use super::*;
@@ -405,73 +319,6 @@ mod tests {
             assert!(news_results.len() >= 2);
             for result in &news_results {
                 assert_eq!(result.source, "news");
-            }
-            Ok(())
-        }
-    }
-
-    mod search_article_contents_comprehensive {
-        use super::*;
-
-        #[sqlx::test(fixtures("query_comprehensive"))]
-        async fn test_comprehensive_content_search(pool: PgPool) -> Result<()> {
-            let domain_query = ArticleContentQuery {
-                url_pattern: Some("tech-news.com".to_string()),
-                ..Default::default()
-            };
-            let domain_results =
-                super::super::search_article_contents(Some(domain_query), &pool).await?;
-            assert!(domain_results.len() >= 2);
-            for result in &domain_results {
-                assert!(result.url.contains("tech-news.com"));
-                assert_eq!(result.status_code, 200);
-            }
-
-            let error_query = ArticleContentQuery {
-                status_code: Some(404),
-                ..Default::default()
-            };
-            let error_results =
-                super::super::search_article_contents(Some(error_query), &pool).await?;
-            for result in &error_results {
-                assert_eq!(result.status_code, 404);
-            }
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("query_edge_cases"))]
-        async fn test_content_edge_cases(pool: PgPool) -> Result<()> {
-            let long_content_query = ArticleContentQuery {
-                url_pattern: Some("extremely-long-domain-name".to_string()),
-                ..Default::default()
-            };
-            let long_results =
-                super::super::search_article_contents(Some(long_content_query), &pool).await?;
-            assert!(long_results.len() >= 1);
-            for result in &long_results {
-                assert!(result.content.len() > 10000);
-            }
-
-            let special_query = ArticleContentQuery {
-                url_pattern: Some("unicode.test.com".to_string()),
-                ..Default::default()
-            };
-            let special_results =
-                super::super::search_article_contents(Some(special_query), &pool).await?;
-            assert!(special_results.len() >= 1);
-            for result in &special_results {
-                assert!(result.content.contains("SQL injection"));
-            }
-
-            let empty_content_query = ArticleContentQuery {
-                url_pattern: Some("minimal.test.com".to_string()),
-                ..Default::default()
-            };
-            let empty_results =
-                super::super::search_article_contents(Some(empty_content_query), &pool).await?;
-            assert!(empty_results.len() >= 1);
-            for result in &empty_results {
-                assert!(result.content.is_empty());
             }
             Ok(())
         }
