@@ -2,7 +2,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 use super::model::ArticleContent;
-use super::service::fetch_article_content;
+use super::service::fetch_article_content_via_firecrawl;
 use crate::infra::api::firecrawl::FirecrawlClient;
 
 /// 記事内容をDBに保存（UPSERT）。
@@ -35,7 +35,7 @@ pub async fn fetch_and_store_article(
     client: &dyn FirecrawlClient,
     pool: &PgPool,
 ) -> Result<ArticleContent> {
-    let article = fetch_article_content(url, client).await?;
+    let article = fetch_article_content_via_firecrawl(url, client).await?;
     store_article_content(&article, pool).await?;
     Ok(article)
 }

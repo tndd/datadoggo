@@ -1,6 +1,6 @@
 use crate::{
     core::{
-        article::{fetch_article_content, store_article_content, ArticleContent},
+        article::{fetch_article_content_via_firecrawl, store_article_content, ArticleContent},
         link::search_backlog_article_links,
     },
     infra::api::firecrawl::FirecrawlClient,
@@ -21,7 +21,8 @@ pub async fn task_collect_articles<F: FirecrawlClient>(
     for article_link in unprocessed_links {
         println!("記事処理中: {}", article_link.url);
 
-        let article_result = fetch_article_content(&article_link.url, firecrawl_client).await;
+        let article_result =
+            fetch_article_content_via_firecrawl(&article_link.url, firecrawl_client).await;
 
         match article_result {
             Ok(article) => match store_article_content(&article, pool).await {
