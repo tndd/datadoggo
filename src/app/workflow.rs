@@ -166,8 +166,7 @@ mod tests {
             assert!(
                 first_article_content
                     .as_ref()
-                    .map_or(false, |content| content
-                        .contains("BBC統合テスト記事の内容です")),
+                    .is_some_and(|content| content.contains("BBC統合テスト記事の内容です")),
                 "記事内容が期待されるモック内容を含んでいません: {:?}",
                 first_article_content
             );
@@ -298,7 +297,7 @@ mod tests {
             assert!(
                 error_content
                     .as_ref()
-                    .map_or(false, |content| content.contains("記事取得APIエラー:")),
+                    .is_some_and(|content| content.contains("記事取得APIエラー:")),
                 "エラー記事の内容に記事取得APIエラーメッセージが含まれるべきです: {:?}",
                 error_content
             );

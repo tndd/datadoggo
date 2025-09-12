@@ -79,10 +79,10 @@ mod tests {
             assert!(hash_10.len() <= 10);
 
             // 空でないことを確認
-            assert!(hash_default.len() > 0);
-            assert!(hash_3.len() > 0);
-            assert!(hash_6.len() > 0);
-            assert!(hash_10.len() > 0);
+            assert!(!hash_default.is_empty());
+            assert!(!hash_3.is_empty());
+            assert!(!hash_6.is_empty());
+            assert!(!hash_10.is_empty());
 
             // 異なる入力は異なるハッシュを生成
             let hash1_6 = calc_hash(input1, 6);

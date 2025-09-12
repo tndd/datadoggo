@@ -323,7 +323,7 @@ mod tests {
 
                 // エラー記事は再処理対象として残る（status_code != 200）
                 assert!(
-                    final_backlog.len() > 0,
+                    !final_backlog.is_empty(),
                     "エラー記事は再処理対象として残るべきです"
                 );
 

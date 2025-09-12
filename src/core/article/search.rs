@@ -36,7 +36,7 @@ pub async fn search_article_url_statuses(
         .bind(has_unprocessed)
         .bind(has_success)
         .bind(error_codes)
-        .bind(query.limit.map(|v| v as i64))
+        .bind(query.limit)
         .fetch_all(pool)
         .await
         .context("記事URL状態情報の取得に失敗")?;
@@ -65,7 +65,11 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     let articles: Result<Vec<Article>, _> = join_rows
         .into_iter()
         .filter_map(|row| {
-            if row.status_code == Some(200) && row.content.as_ref().map_or(false, |c| !c.is_empty()) && row.timestamp.is_some() {
+            // contentが存在し、かつ空でないことを is_some_and で簡潔に表現
+            if row.status_code == Some(200)
+                && row.content.as_ref().is_some_and(|c| !c.is_empty())
+                && row.timestamp.is_some()
+            {
                 Some(Ok(Article {
                     url: row.url,
                     title: row.title,
@@ -135,7 +139,7 @@ async fn search_article_join_rows(
         .bind(has_success)
         .bind(error_codes)
         .bind(query.source)
-        .bind(query.limit.map(|v| v as i64))
+        .bind(query.limit)
         .fetch_all(pool)
         .await
         .context("記事結合情報の取得に失敗")?;
@@ -372,7 +376,7 @@ mod tests {
                 limit: None,
             };
             let results = search_articles(Some(q), &pool).await?;
-            assert!(results.len() >= 1);
+            assert!(!results.is_empty());
             assert!(results[0].url.contains("another.com/path/ok"));
             Ok(())
         }

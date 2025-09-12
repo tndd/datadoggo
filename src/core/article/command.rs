@@ -223,7 +223,8 @@ mod tests {
         }
     }
 
-    mod fetch_and_store_article {
+    // 関数名に合わせてテストモジュール名も更新
+    mod fetch_via_firecrawl_and_store_article_content {
         use super::*;
         use crate::infra::api::firecrawl::MockFirecrawlClient;
 
@@ -336,7 +337,8 @@ mod tests {
         use super::*;
         use crate::infra::api::firecrawl::ReqwestFirecrawlClient;
 
-        mod fetch_and_store_article {
+        // 関数名に合わせてテストモジュール名も更新
+        mod fetch_via_firecrawl_and_store_article_content {
             use super::*;
 
             /// 実際のHTTP通信での記事取得テスト
@@ -348,7 +350,8 @@ mod tests {
                 let url = "https://httpbin.org/html";
 
                 let client = ReqwestFirecrawlClient::new()?;
-                let result = fetch_and_store_article(url, &client, &pool).await?;
+                let result =
+                    fetch_via_firecrawl_and_store_article_content(url, &client, &pool).await?;
 
                 // 基本的な確認のみ（内容は不安定なため）
                 assert_eq!(result.url, url);
