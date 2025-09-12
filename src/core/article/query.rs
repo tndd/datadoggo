@@ -158,7 +158,7 @@ mod tests {
 
         /// 基本的なURL状態検索テスト
         /// 目的: 基本的なクエリの動作とURLソートを確認
-        #[sqlx::test(fixtures("query_url_status_basic"))]
+        #[sqlx::test(fixtures("query_base"))]
         async fn test_basic_search(pool: PgPool) -> Result<()> {
             let result = search_article_url_statuses(None, &pool).await?;
 
@@ -232,7 +232,7 @@ mod tests {
 
         /// 制限フィルタリングテスト
         /// 目的: LIMIT句の正常動作を確認
-        #[sqlx::test(fixtures("query_url_status_basic"))]
+        #[sqlx::test(fixtures("query_base"))]
         async fn test_limit_filtering(pool: PgPool) -> Result<()> {
             let query = ArticleUrlStatusQuery {
                 limit: Some(2),
