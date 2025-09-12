@@ -3,7 +3,22 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-use super::{search_article_join_rows, ArticleJoinRowQuery, ArticleStatus};
+// このモジュール配下の下位モジュールを明示的に公開する
+// - model: データ構造とクエリモデル
+// - repository: DB入出力
+// - service: 外部API呼び出し等
+pub mod model;
+pub mod repository;
+pub mod service;
+
+// 外部から呼び出され得る関数/型はここで再エクスポートして集約
+pub use self::model::ArticleContent;
+pub use self::repository::store_article_content;
+pub use self::service::get_article_content_with_client;
+
+// 内部利用のためのuse（モジュール境界を明確化）
+use self::model::{ArticleJoinRowQuery, ArticleStatus};
+use self::repository::search_article_join_rows;
 
 // ユーザー側が実際に取り扱う情報モデル
 #[derive(Debug, Clone, Serialize, Deserialize)]
