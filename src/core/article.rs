@@ -14,8 +14,6 @@ pub use self::command::{
     fetch_and_store_article, fetch_and_store_article_with_client, store_article_content,
 };
 pub use self::fetch::{fetch_article_content, fetch_article_content_with_client};
-#[allow(deprecated)]
-pub use self::fetch::{get_article_content, get_article_content_with_client};
 pub use self::model::{
     Article, ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery,
     ArticleStatus, ArticleUrlStatus, ArticleUrlStatusQuery,

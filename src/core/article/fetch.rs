@@ -32,23 +32,11 @@ pub async fn fetch_article_content_with_client(
     }
 }
 
-// 互換エイリアス（段階移行用）
-#[deprecated(note = "fetch_* へ移行してください")]
-pub async fn get_article_content(url: &str) -> Result<ArticleContent> {
-    fetch_article_content(url).await
-}
-
-#[deprecated(note = "fetch_* へ移行してください")]
-pub async fn get_article_content_with_client(
-    url: &str,
-    client: &dyn FirecrawlClient,
-) -> Result<ArticleContent> {
-    fetch_article_content_with_client(url, client).await
-}
+// 互換エイリアスは段階移行完了につき削除済み
 
 #[cfg(test)]
 mod tests {
-    use crate::infra::storage::file::load_json_from_file;
+    use crate::infra::{api::firecrawl::MockFirecrawlClient, storage::file::load_json_from_file};
 
     // helper: モックJSONからArticleContentをざっくり検証
     #[test]
@@ -66,6 +54,32 @@ mod tests {
         async fn test_fetch_article_content() {
             let result = fetch_article_content("https://httpbin.org/html").await;
             assert!(result.is_ok());
+        }
+    }
+
+    // モックを使った成功・失敗分岐の単体テスト
+    mod fetch_with_client {
+        use super::*;
+        use crate::core::article::fetch_article_content_with_client;
+
+        #[tokio::test]
+        async fn test_success() {
+            let client = MockFirecrawlClient::new_success("モック成功内容");
+            let result = fetch_article_content_with_client("https://example.com", &client)
+                .await
+                .unwrap();
+            assert_eq!(result.status_code, 200);
+            assert!(result.content.contains("モック成功内容"));
+        }
+
+        #[tokio::test]
+        async fn test_error() {
+            let client = MockFirecrawlClient::new_error("モック失敗");
+            let result = fetch_article_content_with_client("https://example.com", &client)
+                .await
+                .unwrap();
+            assert_eq!(result.status_code, 500);
+            assert!(result.content.contains("記事取得APIエラー:"));
         }
     }
 }
