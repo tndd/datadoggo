@@ -79,6 +79,15 @@ pub struct ArticleContentQuery {
     pub status_code: Option<i32>,
 }
 
+// ユーザーがArticleを取得する際に使用するクエリモデル（ドメイン向け）
+#[derive(Debug, Default)]
+pub struct ArticleQuery {
+    pub link_pattern: Option<String>,
+    pub pub_date_from: Option<DateTime<Utc>>,
+    pub pub_date_to: Option<DateTime<Utc>>,
+    pub limit: Option<i64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

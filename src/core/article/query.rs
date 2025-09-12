@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use sqlx::PgPool;
 
 use super::model::{
-    ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery, ArticleUrlStatus,
-    ArticleUrlStatusQuery,
+    Article, ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery,
+    ArticleQuery, ArticleStatus, ArticleUrlStatus, ArticleUrlStatusQuery,
 };
 
 use super::service::normalize_statuses;
@@ -121,6 +121,58 @@ pub async fn search_article_contents(
         .await?;
 
     Ok(articles)
+}
+
+/// ドメイン向けArticleを取得（status_code=200のみ、結合行から変換）
+pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
+    let query = query.unwrap_or_default();
+
+    // 低レベルのJOIN検索クエリに変換
+    let join_query = ArticleJoinRowQuery {
+        link_pattern: query.link_pattern,
+        pub_date_from: query.pub_date_from,
+        pub_date_to: query.pub_date_to,
+        statuses: Some(vec![ArticleStatus::Success]), // 成功したもののみ
+        source: None,
+        limit: query.limit,
+    };
+
+    let join_rows = search_article_join_rows(Some(join_query), pool).await?;
+
+    // ArticleJoinRowからArticleに変換
+    let mut dropped_count = 0;
+    let articles: Result<Vec<Article>, _> = join_rows
+        .into_iter()
+        .filter_map(|row| {
+            if row.status_code == Some(200) && row.content.is_some() && row.timestamp.is_some() {
+                Some(Ok(Article {
+                    url: row.url,
+                    title: row.title,
+                    pub_date: row.pub_date,
+                    updated_at: row.timestamp.expect("フィルタ条件で確認済みのtimestampがNone"),
+                    content: row.content.expect("フィルタ条件で確認済みのcontentがNone"),
+                }))
+            } else {
+                dropped_count += 1;
+                if cfg!(debug_assertions) {
+                    eprintln!(
+                        "記事レコードをスキップ: url={}, status_code={:?}, content_exists={}, timestamp_exists={}",
+                        row.url,
+                        row.status_code,
+                        row.content.is_some(),
+                        row.timestamp.is_some()
+                    );
+                }
+                None
+            }
+        })
+        .collect();
+
+    if dropped_count > 0 {
+        println!("{}件の無効な記事レコードをスキップしました", dropped_count);
+    }
+
+    articles
 }
 
 #[cfg(test)]
@@ -420,6 +472,85 @@ mod tests {
             assert!(empty_results.len() >= 1);
             for result in &empty_results {
                 assert!(result.content.is_empty());
+            }
+            Ok(())
+        }
+    }
+
+    // 関数名モジュール: search_articles（ドメイン向け）
+    mod search_articles {
+        use super::*;
+        use chrono::{Datelike, TimeZone, Utc};
+
+        #[sqlx::test(fixtures("article_basic"))]
+        async fn test_basic(pool: PgPool) -> Result<()> {
+            let result = super::super::search_articles(None, &pool).await?;
+            assert_eq!(result.len(), 6);
+            let urls: Vec<&str> = result.iter().map(|a| a.url.as_str()).collect();
+            assert!(urls.contains(&"https://example.com/article1"));
+            assert!(urls.contains(&"https://example.com/article2"));
+            assert!(urls.contains(&"https://example.com/article4"));
+            assert!(urls.contains(&"https://example.com/special-chars"));
+            assert!(urls.contains(&"https://example.com/empty-title"));
+            assert!(urls.contains(&"https://very-long-domain-name-for-testing-url-limits.example.com/very/long/path/to/article"));
+            for article in &result {
+                assert!(article.updated_at >= article.pub_date);
+            }
+            Ok(())
+        }
+
+        #[sqlx::test(fixtures("article_filter"))]
+        async fn test_with_filters(pool: PgPool) -> Result<()> {
+            let pub_date_from = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
+            let pub_date_to = Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap();
+
+            let query = Some(ArticleQuery {
+                link_pattern: Some("tech.example.com".to_string()),
+                pub_date_from: Some(pub_date_from),
+                pub_date_to: Some(pub_date_to),
+                limit: Some(5),
+            });
+            let articles = super::super::search_articles(query, &pool).await?;
+            assert!(articles.len() <= 5);
+            assert!(articles.len() >= 1);
+            for article in &articles {
+                assert!(article.url.contains("tech.example.com"));
+                assert!(article.pub_date >= pub_date_from);
+                assert!(article.pub_date <= pub_date_to);
+            }
+
+            let boundary_query = Some(ArticleQuery {
+                link_pattern: Some("tech.example.com".to_string()),
+                pub_date_from: Some(pub_date_from),
+                pub_date_to: Some(pub_date_to),
+                limit: None,
+            });
+            let boundary_articles = super::super::search_articles(boundary_query, &pool).await?;
+            let has_year_start = boundary_articles.iter().any(|a| {
+                a.pub_date.year() == 2025 && a.pub_date.month() == 1 && a.pub_date.day() == 1
+            });
+            let has_year_end = boundary_articles.iter().any(|a| {
+                a.pub_date.year() == 2025 && a.pub_date.month() == 12 && a.pub_date.day() == 31
+            });
+            assert!(has_year_start);
+            assert!(has_year_end);
+
+            // limitテスト
+            let limit_cases = [Some(0i64), Some(1i64), Some(100i64)];
+            for limit in limit_cases {
+                let q = Some(ArticleQuery {
+                    link_pattern: Some("tech.example.com".to_string()),
+                    pub_date_from: None,
+                    pub_date_to: None,
+                    limit,
+                });
+                let res = super::super::search_articles(q, &pool).await?;
+                match limit.unwrap() {
+                    0 => assert_eq!(res.len(), 0),
+                    1 => assert!(res.len() <= 1),
+                    100 => assert!(res.len() <= 100),
+                    _ => unreachable!(),
+                }
             }
             Ok(())
         }
