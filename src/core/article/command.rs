@@ -1,8 +1,8 @@
 use anyhow::Result;
 use sqlx::PgPool;
 
-use super::fetch::{fetch_article_content, fetch_article_content_with_client};
 use super::model::ArticleContent;
+use super::service::{fetch_article_content, fetch_article_content_with_client};
 use crate::infra::api::firecrawl::FirecrawlClient;
 
 /// 記事内容をDBに保存（UPSERT）。

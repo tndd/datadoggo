@@ -1,6 +1,5 @@
 // フラット構造の下位モジュール
 mod command;
-mod fetch;
 mod model;
 mod query;
 mod service; // 内部ユーティリティ
@@ -9,7 +8,6 @@ mod service; // 内部ユーティリティ
 pub use self::command::{
     fetch_and_store_article, fetch_and_store_article_with_client, store_article_content,
 };
-pub use self::fetch::{fetch_article_content, fetch_article_content_with_client};
 pub use self::model::{
     Article, ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery,
     ArticleQuery, ArticleStatus, ArticleUrlStatus, ArticleUrlStatusQuery,
@@ -17,4 +15,5 @@ pub use self::model::{
 pub use self::query::{
     search_article_contents, search_article_join_rows, search_article_url_statuses, search_articles,
 };
+pub use self::service::{fetch_article_content, fetch_article_content_with_client};
 // article.rs はファサードのみ（実装・テストは下位モジュールへ配置）
