@@ -49,7 +49,7 @@ pub async fn search_article_url_statuses(
 }
 
 /// ArticleJoinRowを取得する（読み取り）
-pub async fn search_article_join_rows(
+async fn search_article_join_rows(
     query: Option<ArticleJoinRowQuery>,
     pool: &PgPool,
 ) -> Result<Vec<ArticleJoinRow>> {
