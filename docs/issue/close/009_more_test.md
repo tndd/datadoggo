@@ -42,8 +42,8 @@
 
 ```
 src/core/article/fixtures/
-├── prelude_basic.sql
-├── prelude_filter.sql
+├── article_basic.sql
+├── article_filter.sql
 ├── service_basic.sql
 ├── service_boundary_values.sql
 ├── service_comprehensive.sql

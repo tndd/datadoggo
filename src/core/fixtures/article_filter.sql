@@ -1,4 +1,4 @@
--- NOTE: src/core/article.rs からの #[sqlx::test(fixtures("prelude_filter"))] 向け
+-- NOTE: src/core/article.rs からの #[sqlx::test(fixtures("article_filter"))] 向け
 -- フィルタリングテスト用のデータ
 INSERT INTO article_links (url, title, pub_date, source) VALUES
 ('https://tech.example.com/rust-tutorial', 'Rust チュートリアル', '2025-01-10 14:00:00+00', 'tech-feed'),

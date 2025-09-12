@@ -102,7 +102,7 @@ mod tests {
     mod search_articles {
         use super::*;
 
-        #[sqlx::test(fixtures("prelude_basic"))]
+        #[sqlx::test(fixtures("article_basic"))]
         async fn test_basic(pool: PgPool) {
             let result = search_articles(None, &pool).await;
             assert!(result.is_ok());
@@ -155,7 +155,7 @@ mod tests {
             }
         }
 
-        #[sqlx::test(fixtures("prelude_filter"))]
+        #[sqlx::test(fixtures("article_filter"))]
         async fn test_with_filters(pool: PgPool) {
             let pub_date_from = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
             let pub_date_to = Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap();

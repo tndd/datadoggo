@@ -1,4 +1,4 @@
--- NOTE: src/core/article.rs からの #[sqlx::test(fixtures("prelude_basic"))] 向け
+-- NOTE: src/core/article.rs からの #[sqlx::test(fixtures("article_basic"))] 向け
 -- テスト用のarticle_linksデータ
 INSERT INTO article_links (url, title, pub_date, source) VALUES
 ('https://example.com/article1', 'テスト記事1', '2025-01-01 10:00:00+00', 'test-feed'),
