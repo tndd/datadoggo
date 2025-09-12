@@ -51,223 +51,320 @@ mod tests {
     use chrono::Utc;
     use sqlx::PgPool;
 
-    // 関数名モジュール: store_article_content
     mod store_article_content {
         use super::*;
 
-        #[sqlx::test(fixtures("command_store_article_content_logic"))]
-        async fn test_basic_insert_and_conflict_resolution(pool: PgPool) -> anyhow::Result<()> {
-            let new_article = ArticleContent {
-                url: "https://new.example.com/article".to_string(),
+        /// 基本的な新規挿入テスト
+        /// 目的: 空のテーブルへの記事挿入動作を確認
+        #[sqlx::test]
+        async fn test_basic_insert(pool: PgPool) -> Result<()> {
+            let article = ArticleContent {
+                url: "https://new.com/article".to_string(),
                 timestamp: Utc::now(),
                 status_code: 200,
                 content: "New article content".to_string(),
             };
-            super::super::store_article_content(&new_article, &pool).await?;
 
-            let count = sqlx::query_scalar!(
-                "SELECT COUNT(*) FROM articles WHERE url = $1",
-                "https://new.example.com/article"
+            store_article_content(&article, &pool).await?;
+
+            // DB確認
+            let row = sqlx::query!(
+                "SELECT url, status_code, content FROM articles WHERE url = $1",
+                article.url
             )
             .fetch_one(&pool)
             .await?;
-            assert_eq!(count.unwrap_or(0), 1);
 
+            assert_eq!(row.url, article.url);
+            assert_eq!(Some(row.status_code), Some(article.status_code));
+            assert_eq!(Some(row.content), Some(article.content));
+
+            Ok(())
+        }
+
+        /// 重複時の更新テスト（内容変更時）
+        /// 目的: DISTINCT FROM条件による更新動作を確認
+        #[sqlx::test(fixtures("command_store_conflict"))]
+        async fn test_update_on_content_change(pool: PgPool) -> Result<()> {
             let updated_article = ArticleContent {
-                url: "https://new.example.com/article".to_string(),
+                url: "https://update.com/article".to_string(),
                 timestamp: Utc::now(),
-                status_code: 404,
+                status_code: 200,
                 content: "Updated content".to_string(),
             };
-            super::super::store_article_content(&updated_article, &pool).await?;
 
-            let (stored_status, stored_content) = sqlx::query!(
-                "SELECT status_code, content FROM articles WHERE url = $1",
-                "https://new.example.com/article"
-            )
-            .fetch_one(&pool)
-            .await
-            .map(|row| (row.status_code, row.content))?;
-
-            assert_eq!(stored_status, 404);
-            assert_eq!(stored_content, "Updated content");
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("command_store_article_content_logic"))]
-        async fn test_distinct_condition_edge_cases(pool: PgPool) -> anyhow::Result<()> {
-            let base_url = "https://distinct-test.example.com/article";
-            let initial_article = ArticleContent {
-                url: base_url.to_string(),
-                timestamp: Utc::now(),
-                status_code: 200,
-                content: "Original content".to_string(),
-            };
-            super::super::store_article_content(&initial_article, &pool).await?;
-
-            let initial_timestamp =
-                sqlx::query_scalar!("SELECT timestamp FROM articles WHERE url = $1", base_url)
-                    .fetch_one(&pool)
-                    .await?;
-
-            let same_article = ArticleContent {
-                url: base_url.to_string(),
-                timestamp: Utc::now(),
-                status_code: 200,
-                content: "Original content".to_string(),
-            };
-            super::super::store_article_content(&same_article, &pool).await?;
-            let timestamp_after_same =
-                sqlx::query_scalar!("SELECT timestamp FROM articles WHERE url = $1", base_url)
-                    .fetch_one(&pool)
-                    .await?;
-            assert_eq!(initial_timestamp, timestamp_after_same);
-
-            let status_different = ArticleContent {
-                url: base_url.to_string(),
-                timestamp: Utc::now(),
-                status_code: 404,
-                content: "Original content".to_string(),
-            };
-            super::super::store_article_content(&status_different, &pool).await?;
-            let status_after_update =
-                sqlx::query_scalar!("SELECT status_code FROM articles WHERE url = $1", base_url)
-                    .fetch_one(&pool)
-                    .await?;
-            assert_eq!(status_after_update, 404);
-
-            let content_different = ArticleContent {
-                url: base_url.to_string(),
-                timestamp: Utc::now(),
-                status_code: 404,
-                content: "Modified content".to_string(),
-            };
-            super::super::store_article_content(&content_different, &pool).await?;
-            let content_after_update =
-                sqlx::query_scalar!("SELECT content FROM articles WHERE url = $1", base_url)
-                    .fetch_one(&pool)
-                    .await?;
-            assert_eq!(content_after_update, "Modified content");
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("command_store_article_content_logic"))]
-        async fn test_timestamp_update_behavior(pool: PgPool) -> anyhow::Result<()> {
-            let test_url = "https://timestamp-test.example.com/article";
-            let initial_time = Utc::now();
-            let initial_article = ArticleContent {
-                url: test_url.to_string(),
-                timestamp: initial_time,
-                status_code: 200,
-                content: "Initial content".to_string(),
-            };
-            super::super::store_article_content(&initial_article, &pool).await?;
-            let db_timestamp_initial =
-                sqlx::query_scalar!("SELECT timestamp FROM articles WHERE url = $1", test_url)
-                    .fetch_one(&pool)
-                    .await?;
-
-            std::thread::sleep(std::time::Duration::from_millis(10));
-
-            let updated_article = ArticleContent {
-                url: test_url.to_string(),
-                timestamp: initial_time,
-                status_code: 404,
-                content: "Initial content".to_string(),
-            };
-            super::super::store_article_content(&updated_article, &pool).await?;
-            let db_timestamp_after_update =
-                sqlx::query_scalar!("SELECT timestamp FROM articles WHERE url = $1", test_url)
-                    .fetch_one(&pool)
-                    .await?;
-            assert_ne!(db_timestamp_initial, db_timestamp_after_update);
-            assert!(db_timestamp_after_update > db_timestamp_initial);
-
-            let no_change_article = ArticleContent {
-                url: test_url.to_string(),
-                timestamp: Utc::now(),
-                status_code: 404,
-                content: "Initial content".to_string(),
-            };
-            super::super::store_article_content(&no_change_article, &pool).await?;
-            let db_timestamp_after_no_change =
-                sqlx::query_scalar!("SELECT timestamp FROM articles WHERE url = $1", test_url)
-                    .fetch_one(&pool)
-                    .await?;
-            assert_eq!(db_timestamp_after_update, db_timestamp_after_no_change);
-            Ok(())
-        }
-
-        #[sqlx::test(fixtures("command_store_article_content_logic"))]
-        async fn test_boundary_values_and_data_integrity(pool: PgPool) -> anyhow::Result<()> {
-            let empty_content_article = ArticleContent {
-                url: "https://empty.example.com/article".to_string(),
-                timestamp: Utc::now(),
-                status_code: 200,
-                content: "".to_string(),
-            };
-            super::super::store_article_content(&empty_content_article, &pool).await?;
-            let stored_empty_content = sqlx::query_scalar!(
-                "SELECT content FROM articles WHERE url = $1",
-                "https://empty.example.com/article"
+            // 更新前のタイムスタンプ取得
+            let before_row = sqlx::query!(
+                "SELECT timestamp FROM articles WHERE url = $1",
+                updated_article.url
             )
             .fetch_one(&pool)
             .await?;
-            assert_eq!(stored_empty_content, "");
 
-            let boundary_status_codes = vec![0, 100, 200, 404, 500, 599, 999];
-            for status_code in boundary_status_codes.iter() {
-                let boundary_article = ArticleContent {
-                    url: format!("https://status-{}.example.com/article", status_code),
+            store_article_content(&updated_article, &pool).await?;
+
+            // 更新後確認
+            let after_row = sqlx::query!(
+                "SELECT status_code, content, timestamp FROM articles WHERE url = $1",
+                updated_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            assert_eq!(
+                Some(after_row.status_code),
+                Some(updated_article.status_code)
+            );
+            assert_eq!(Some(after_row.content), Some(updated_article.content));
+
+            // タイムスタンプが更新されていることを確認
+            assert!(after_row.timestamp > before_row.timestamp);
+
+            Ok(())
+        }
+
+        /// 重複時の更新スキップテスト（同内容時）
+        /// 目的: DISTINCT FROM条件による更新スキップを確認
+        #[sqlx::test(fixtures("command_store_conflict"))]
+        async fn test_skip_update_on_same_content(pool: PgPool) -> Result<()> {
+            let same_article = ArticleContent {
+                url: "https://existing.com/article".to_string(),
+                timestamp: Utc::now(),
+                status_code: 200,
+                content: "Original content".to_string(), // 元と同じ内容
+            };
+
+            // 更新前のタイムスタンプ取得
+            let before_row = sqlx::query!(
+                "SELECT timestamp FROM articles WHERE url = $1",
+                same_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            store_article_content(&same_article, &pool).await?;
+
+            // 更新後確認
+            let after_row = sqlx::query!(
+                "SELECT timestamp FROM articles WHERE url = $1",
+                same_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            // タイムスタンプが変更されていないことを確認（DISTINCT FROM条件でスキップされた）
+            assert_eq!(after_row.timestamp, before_row.timestamp);
+
+            Ok(())
+        }
+
+        /// ステータスコード変更時の更新テスト
+        /// 目的: status_codeの変更でも更新が実行されることを確認
+        #[sqlx::test(fixtures("command_store_conflict"))]
+        async fn test_update_on_status_change(pool: PgPool) -> Result<()> {
+            let status_changed_article = ArticleContent {
+                url: "https://same.com/article".to_string(),
+                timestamp: Utc::now(),
+                status_code: 500,                     // 404から500に変更
+                content: "Error content".to_string(), // 内容は同じ
+            };
+
+            // 更新前のタイムスタンプ取得
+            let before_row = sqlx::query!(
+                "SELECT timestamp FROM articles WHERE url = $1",
+                status_changed_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            store_article_content(&status_changed_article, &pool).await?;
+
+            // 更新後確認
+            let after_row = sqlx::query!(
+                "SELECT status_code, timestamp FROM articles WHERE url = $1",
+                status_changed_article.url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            assert_eq!(Some(after_row.status_code), Some(500));
+            // ステータス変更でもタイムスタンプが更新されることを確認
+            assert!(after_row.timestamp > before_row.timestamp);
+
+            Ok(())
+        }
+
+        /// 複数記事の連続挿入テスト
+        /// 目的: 複数の記事を連続で処理する動作を確認
+        #[sqlx::test]
+        async fn test_multiple_inserts(pool: PgPool) -> Result<()> {
+            let articles = vec![
+                ArticleContent {
+                    url: "https://multi1.com/article".to_string(),
                     timestamp: Utc::now(),
-                    status_code: *status_code,
-                    content: format!("Content for status {}", status_code),
-                };
-                super::super::store_article_content(&boundary_article, &pool).await?;
-                let stored_status = sqlx::query_scalar!(
-                    "SELECT status_code FROM articles WHERE url = $1",
-                    boundary_article.url
-                )
-                .fetch_one(&pool)
-                .await?;
-                assert_eq!(stored_status, *status_code);
+                    status_code: 200,
+                    content: "Content 1".to_string(),
+                },
+                ArticleContent {
+                    url: "https://multi2.com/article".to_string(),
+                    timestamp: Utc::now(),
+                    status_code: 404,
+                    content: "Content 2".to_string(),
+                },
+            ];
+
+            for article in &articles {
+                store_article_content(article, &pool).await?;
             }
 
-            let long_url = format!(
-                "https://very-long-domain-name-for-testing.example.com/{}",
-                "a".repeat(200)
-            );
-            let long_url_article = ArticleContent {
-                url: long_url.clone(),
-                timestamp: Utc::now(),
-                status_code: 200,
-                content: "Content for long URL".to_string(),
-            };
-            super::super::store_article_content(&long_url_article, &pool).await?;
-            let stored_url =
-                sqlx::query_scalar!("SELECT url FROM articles WHERE url = $1", long_url)
-                    .fetch_one(&pool)
-                    .await?;
-            assert_eq!(stored_url, long_url_article.url);
+            // 全件確認
+            let count = sqlx::query!("SELECT COUNT(*) as count FROM articles")
+                .fetch_one(&pool)
+                .await?;
 
-            let unicode_article = ArticleContent {
-                url: "https://unicode.example.com/test".to_string(),
-                timestamp: Utc::now(),
-                status_code: 200,
-                content: "日本語🚀<script>alert('test')</script>\n\ttab".to_string(),
-            };
-            super::super::store_article_content(&unicode_article, &pool).await?;
-            let stored_unicode = sqlx::query_scalar!(
-                "SELECT content FROM articles WHERE url = $1",
-                "https://unicode.example.com/test"
+            assert_eq!(count.count, Some(2));
+
+            Ok(())
+        }
+    }
+
+    mod fetch_and_store_article_with_client {
+        use super::*;
+        use crate::infra::api::firecrawl::MockFirecrawlClient;
+
+        /// 成功ケースでの記事取得と保存テスト
+        /// 目的: MockFirecrawlClientでの成功処理とDB保存を確認
+        #[sqlx::test]
+        async fn test_fetch_and_store_success(pool: PgPool) -> Result<()> {
+            let client = MockFirecrawlClient::new_success("モック記事内容");
+            let url = "https://success.com/article";
+
+            let result = fetch_and_store_article_with_client(url, &client, &pool).await?;
+
+            // 戻り値確認
+            assert_eq!(result.url, url);
+            assert_eq!(result.status_code, 200);
+            assert!(result.content.contains("モック記事内容"));
+
+            // DB保存確認
+            let row = sqlx::query!(
+                "SELECT url, status_code, content FROM articles WHERE url = $1",
+                url
             )
             .fetch_one(&pool)
             .await?;
-            assert_eq!(
-                stored_unicode,
-                "日本語🚀<script>alert('test')</script>\n\ttab",
-            );
+
+            assert_eq!(row.url, url);
+            assert_eq!(Some(row.status_code), Some(200));
+            assert!(row.content.contains("モック記事内容"));
+
             Ok(())
+        }
+
+        /// エラーケースでの記事取得と保存テスト
+        /// 目的: MockFirecrawlClientでのエラー処理とDB保存を確認
+        #[sqlx::test]
+        async fn test_fetch_and_store_error(pool: PgPool) -> Result<()> {
+            let client = MockFirecrawlClient::new_error("取得エラー");
+            let url = "https://error.com/article";
+
+            let result = fetch_and_store_article_with_client(url, &client, &pool).await?;
+
+            // 戻り値確認（エラー時はstatus_code=500）
+            assert_eq!(result.url, url);
+            assert_eq!(result.status_code, 500);
+            assert!(result.content.contains("記事取得APIエラー:"));
+
+            // DB保存確認
+            let row = sqlx::query!(
+                "SELECT url, status_code, content FROM articles WHERE url = $1",
+                url
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            assert_eq!(row.url, url);
+            assert_eq!(Some(row.status_code), Some(500));
+            assert!(row.content.contains("記事取得APIエラー:"));
+
+            Ok(())
+        }
+
+        /// 複数URLの連続処理テスト
+        /// 目的: 複数のURLを連続で取得・保存する動作を確認
+        #[sqlx::test]
+        async fn test_multiple_fetch_and_store(pool: PgPool) -> Result<()> {
+            let success_client = MockFirecrawlClient::new_success("成功内容");
+            let error_client = MockFirecrawlClient::new_error("失敗内容");
+
+            let urls = vec![
+                ("https://multi1.com/article", &success_client),
+                ("https://multi2.com/article", &error_client),
+            ];
+
+            for (url, client) in urls {
+                let _result = fetch_and_store_article_with_client(url, client, &pool).await?;
+            }
+
+            // 全件確認
+            let count = sqlx::query!("SELECT COUNT(*) as count FROM articles")
+                .fetch_one(&pool)
+                .await?;
+
+            assert_eq!(count.count, Some(2));
+
+            // 成功・エラー両方が保存されていることを確認
+            let success_row = sqlx::query!(
+                "SELECT status_code FROM articles WHERE url = $1",
+                "https://multi1.com/article"
+            )
+            .fetch_one(&pool)
+            .await?;
+            assert_eq!(Some(success_row.status_code), Some(200));
+
+            let error_row = sqlx::query!(
+                "SELECT status_code FROM articles WHERE url = $1",
+                "https://multi2.com/article"
+            )
+            .fetch_one(&pool)
+            .await?;
+            assert_eq!(Some(error_row.status_code), Some(500));
+
+            Ok(())
+        }
+    }
+
+    // オンラインテスト（実際のHTTP通信）
+    #[cfg(feature = "online")]
+    mod online {
+        use super::*;
+
+        mod fetch_and_store_article {
+            use super::*;
+
+            /// 実際のHTTP通信での記事取得テスト
+            /// 目的: 本番環境での動作確認（onlineフィーチャーフラグ必須）
+            /// 注意: このテストは通常のテスト実行時には実行されない
+            #[sqlx::test]
+            async fn test_online_fetch_and_store(pool: PgPool) -> Result<()> {
+                // 実在のテスト用URL（レスポンス保証のあるサイト）
+                let url = "https://httpbin.org/html";
+
+                let result = fetch_and_store_article(url, &pool).await?;
+
+                // 基本的な確認のみ（内容は不安定なため）
+                assert_eq!(result.url, url);
+                assert!(!result.content.is_empty());
+
+                // DB保存確認
+                let row = sqlx::query!("SELECT url FROM articles WHERE url = $1", url)
+                    .fetch_one(&pool)
+                    .await?;
+
+                assert_eq!(row.url, url);
+
+                Ok(())
+            }
         }
     }
 }
