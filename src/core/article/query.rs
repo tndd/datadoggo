@@ -1,4 +1,4 @@
-use super::ArticleStatus;
+use crate::core::article::model::ArticleStatus;
 use chrono::{DateTime, Utc};
 
 // ユーザーがArticleを取得する際に使用するクエリモデル（ドメイン向け）

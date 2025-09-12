@@ -1,4 +1,4 @@
-use super::model::ArticleContent;
+use crate::core::article::model::ArticleContent;
 use crate::infra::api::firecrawl::FirecrawlClient;
 use anyhow::Result;
 
