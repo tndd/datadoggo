@@ -6,33 +6,6 @@ use super::model::{
     ArticleUrlStatusQuery,
 };
 
-// 内部実装：statuses指定の正規化（このモジュール内のみで使用する）
-// queryのSQLバインド補助。記事検索系クエリだけで使うためprivateにする。
-fn normalize_statuses(statuses: Option<&[ArticleStatus]>) -> (bool, bool, bool, Option<Vec<i32>>) {
-    let mut apply = false;
-    let mut has_unprocessed = false;
-    let mut has_success = false;
-    let mut errors: Vec<i32> = Vec::new();
-
-    if let Some(list) = statuses {
-        for s in list {
-            apply = true;
-            match s {
-                ArticleStatus::Unprocessed => has_unprocessed = true,
-                ArticleStatus::Success => has_success = true,
-                ArticleStatus::Error(code) => errors.push(*code),
-            }
-        }
-    }
-
-    let error_codes = if errors.is_empty() {
-        None
-    } else {
-        Some(errors)
-    };
-    (apply, has_unprocessed, has_success, error_codes)
-}
-
 /// ArticleUrlStatusを取得する（読み取り）
 pub async fn search_article_url_statuses(
     query: Option<ArticleUrlStatusQuery>,
@@ -69,53 +42,6 @@ pub async fn search_article_url_statuses(
         .fetch_all(pool)
         .await
         .context("記事URL状態情報の取得に失敗")?;
-
-    Ok(results)
-}
-
-/// ArticleJoinRowを取得する（読み取り）
-async fn search_article_join_rows(
-    query: Option<ArticleJoinRowQuery>,
-    pool: &PgPool,
-) -> Result<Vec<ArticleJoinRow>> {
-    let query = query.unwrap_or_default();
-    let (apply_status, has_unprocessed, has_success, error_codes) =
-        normalize_statuses(query.statuses.as_deref());
-
-    let sql = r#"
-        SELECT l.url, l.title, l.pub_date, l.source,
-               a.timestamp, a.status_code, a.content
-        FROM article_links AS l
-        LEFT JOIN articles AS a ON l.url = a.url
-        WHERE ($1::text IS NULL OR l.url ILIKE '%' || $1 || '%')
-          AND ($2::timestamptz IS NULL OR l.pub_date >= $2)
-          AND ($3::timestamptz IS NULL OR l.pub_date <= $3)
-          AND (
-                NOT $4
-             OR (
-                    (COALESCE($5::bool, false) AND a.status_code IS NULL)
-                 OR (COALESCE($6::bool, false) AND a.status_code = 200)
-                 OR ($7::int[] IS NOT NULL AND a.status_code = ANY($7))
-                )
-          )
-          AND ($8::text IS NULL OR l.source = $8)
-        ORDER BY l.pub_date DESC
-        LIMIT COALESCE($9, NULL)
-    "#;
-
-    let results = sqlx::query_as::<_, ArticleJoinRow>(sql)
-        .bind(query.link_pattern)
-        .bind(query.pub_date_from)
-        .bind(query.pub_date_to)
-        .bind(apply_status)
-        .bind(has_unprocessed)
-        .bind(has_success)
-        .bind(error_codes)
-        .bind(query.source)
-        .bind(query.limit.map(|v| v as i64))
-        .fetch_all(pool)
-        .await
-        .context("記事結合情報の取得に失敗")?;
 
     Ok(results)
 }
@@ -170,6 +96,80 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     }
 
     articles
+}
+
+/// ArticleJoinRowを取得する（読み取り）
+async fn search_article_join_rows(
+    query: Option<ArticleJoinRowQuery>,
+    pool: &PgPool,
+) -> Result<Vec<ArticleJoinRow>> {
+    let query = query.unwrap_or_default();
+    let (apply_status, has_unprocessed, has_success, error_codes) =
+        normalize_statuses(query.statuses.as_deref());
+
+    let sql = r#"
+        SELECT l.url, l.title, l.pub_date, l.source,
+               a.timestamp, a.status_code, a.content
+        FROM article_links AS l
+        LEFT JOIN articles AS a ON l.url = a.url
+        WHERE ($1::text IS NULL OR l.url ILIKE '%' || $1 || '%')
+          AND ($2::timestamptz IS NULL OR l.pub_date >= $2)
+          AND ($3::timestamptz IS NULL OR l.pub_date <= $3)
+          AND (
+                NOT $4
+             OR (
+                    (COALESCE($5::bool, false) AND a.status_code IS NULL)
+                 OR (COALESCE($6::bool, false) AND a.status_code = 200)
+                 OR ($7::int[] IS NOT NULL AND a.status_code = ANY($7))
+                )
+          )
+          AND ($8::text IS NULL OR l.source = $8)
+        ORDER BY l.pub_date DESC
+        LIMIT COALESCE($9, NULL)
+    "#;
+
+    let results = sqlx::query_as::<_, ArticleJoinRow>(sql)
+        .bind(query.link_pattern)
+        .bind(query.pub_date_from)
+        .bind(query.pub_date_to)
+        .bind(apply_status)
+        .bind(has_unprocessed)
+        .bind(has_success)
+        .bind(error_codes)
+        .bind(query.source)
+        .bind(query.limit.map(|v| v as i64))
+        .fetch_all(pool)
+        .await
+        .context("記事結合情報の取得に失敗")?;
+
+    Ok(results)
+}
+
+// 内部実装：statuses指定の正規化（このモジュール内のみで使用する）
+// queryのSQLバインド補助。記事検索系クエリだけで使うためprivateにする。
+fn normalize_statuses(statuses: Option<&[ArticleStatus]>) -> (bool, bool, bool, Option<Vec<i32>>) {
+    let mut apply = false;
+    let mut has_unprocessed = false;
+    let mut has_success = false;
+    let mut errors: Vec<i32> = Vec::new();
+
+    if let Some(list) = statuses {
+        for s in list {
+            apply = true;
+            match s {
+                ArticleStatus::Unprocessed => has_unprocessed = true,
+                ArticleStatus::Success => has_success = true,
+                ArticleStatus::Error(code) => errors.push(*code),
+            }
+        }
+    }
+
+    let error_codes = if errors.is_empty() {
+        None
+    } else {
+        Some(errors)
+    };
+    (apply, has_unprocessed, has_success, error_codes)
 }
 
 #[cfg(test)]
