@@ -1,15 +1,9 @@
 use anyhow::{Context, Result};
-use sea_query::{Expr, PostgresQueryBuilder, Query};
-use sea_query_binder::SqlxBinder;
 use sqlx::PgPool;
 
-use super::builders::{
-    apply_date_range, apply_optional_limit, apply_source_filter, apply_status_code_filter,
-    apply_status_filter, apply_url_filter, ArticleLinks, Articles,
-};
 use super::model::{
-    ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery, ArticleUrlStatus,
-    ArticleUrlStatusQuery,
+    ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery, ArticleStatus,
+    ArticleUrlStatus, ArticleUrlStatusQuery,
 };
 
 /// ArticleUrlStatusを取得するリポジトリ関数
@@ -17,36 +11,40 @@ pub async fn search_article_url_statuses(
     query: Option<ArticleUrlStatusQuery>,
     pool: &PgPool,
 ) -> Result<Vec<ArticleUrlStatus>> {
+    // 入力の正規化
     let query = query.unwrap_or_default();
+    let (apply_status, has_unprocessed, has_success, error_codes): (
+        bool,
+        bool,
+        bool,
+        Option<Vec<i32>>,
+    ) = normalize_statuses(query.statuses.as_deref());
 
-    let mut select = Query::select()
-        .column((ArticleLinks::Table, ArticleLinks::Url))
-        .column((Articles::Table, Articles::StatusCode))
-        .from(ArticleLinks::Table)
-        .left_join(
-            Articles::Table,
-            Expr::col((ArticleLinks::Table, ArticleLinks::Url))
-                .equals((Articles::Table, Articles::Url)),
-        )
-        .to_owned();
+    // 静的SQL（NULL無効化パターン＋適用フラグ）
+    let sql = r#"
+        SELECT l.url, a.status_code
+        FROM article_links AS l
+        LEFT JOIN articles AS a ON l.url = a.url
+        WHERE ($1::text IS NULL OR l.url ILIKE '%' || $1 || '%')
+          AND (
+                NOT $2
+             OR (
+                    (COALESCE($3::bool, false) AND a.status_code IS NULL)
+                 OR (COALESCE($4::bool, false) AND a.status_code = 200)
+                 OR ($5::int[] IS NOT NULL AND a.status_code = ANY($5))
+                )
+          )
+        ORDER BY l.url ASC
+        LIMIT COALESCE($6, NULL)
+    "#;
 
-    select = apply_url_filter(
-        select,
-        query.url_pattern.as_deref(),
-        ArticleLinks::Table,
-        ArticleLinks::Url,
-    );
-    select = apply_status_filter(select, query.statuses.as_deref());
-    select = select
-        .order_by(
-            (ArticleLinks::Table, ArticleLinks::Url),
-            sea_query::Order::Asc,
-        )
-        .to_owned();
-    select = apply_optional_limit(select, query.limit);
-
-    let (sql, values) = select.build_sqlx(PostgresQueryBuilder);
-    let results = sqlx::query_as_with::<_, ArticleUrlStatus, _>(&sql, values)
+    let results = sqlx::query_as::<_, ArticleUrlStatus>(sql)
+        .bind(query.url_pattern)
+        .bind(apply_status)
+        .bind(has_unprocessed)
+        .bind(has_success)
+        .bind(error_codes)
+        .bind(query.limit.map(|v| v as i64))
         .fetch_all(pool)
         .await
         .context("記事URL状態情報の取得に失敗")?;
@@ -59,54 +57,46 @@ pub async fn search_article_join_rows(
     query: Option<ArticleJoinRowQuery>,
     pool: &PgPool,
 ) -> Result<Vec<ArticleJoinRow>> {
+    // 入力の正規化
     let query = query.unwrap_or_default();
+    let (apply_status, has_unprocessed, has_success, error_codes): (
+        bool,
+        bool,
+        bool,
+        Option<Vec<i32>>,
+    ) = normalize_statuses(query.statuses.as_deref());
 
-    let mut select = Query::select()
-        .column((ArticleLinks::Table, ArticleLinks::Url))
-        .column((ArticleLinks::Table, ArticleLinks::Title))
-        .column((ArticleLinks::Table, ArticleLinks::PubDate))
-        .column((ArticleLinks::Table, ArticleLinks::Source))
-        .column((Articles::Table, Articles::Timestamp))
-        .column((Articles::Table, Articles::StatusCode))
-        .column((Articles::Table, Articles::Content))
-        .from(ArticleLinks::Table)
-        .left_join(
-            Articles::Table,
-            Expr::col((ArticleLinks::Table, ArticleLinks::Url))
-                .equals((Articles::Table, Articles::Url)),
-        )
-        .to_owned();
+    let sql = r#"
+        SELECT l.url, l.title, l.pub_date, l.source,
+               a.timestamp, a.status_code, a.content
+        FROM article_links AS l
+        LEFT JOIN articles AS a ON l.url = a.url
+        WHERE ($1::text IS NULL OR l.url ILIKE '%' || $1 || '%')
+          AND ($2::timestamptz IS NULL OR l.pub_date >= $2)
+          AND ($3::timestamptz IS NULL OR l.pub_date <= $3)
+          AND (
+                NOT $4
+             OR (
+                    (COALESCE($5::bool, false) AND a.status_code IS NULL)
+                 OR (COALESCE($6::bool, false) AND a.status_code = 200)
+                 OR ($7::int[] IS NOT NULL AND a.status_code = ANY($7))
+                )
+          )
+          AND ($8::text IS NULL OR l.source = $8)
+        ORDER BY l.pub_date DESC
+        LIMIT COALESCE($9, NULL)
+    "#;
 
-    select = apply_url_filter(
-        select,
-        query.link_pattern.as_deref(),
-        ArticleLinks::Table,
-        ArticleLinks::Url,
-    );
-    select = apply_date_range(
-        select,
-        query.pub_date_from,
-        query.pub_date_to,
-        ArticleLinks::Table,
-        ArticleLinks::PubDate,
-    );
-    select = apply_status_filter(select, query.statuses.as_deref());
-    select = apply_source_filter(
-        select,
-        query.source.as_deref(),
-        ArticleLinks::Table,
-        ArticleLinks::Source,
-    );
-    select = select
-        .order_by(
-            (ArticleLinks::Table, ArticleLinks::PubDate),
-            sea_query::Order::Desc,
-        )
-        .to_owned();
-    select = apply_optional_limit(select, query.limit);
-
-    let (sql, values) = select.build_sqlx(PostgresQueryBuilder);
-    let results = sqlx::query_as_with::<_, ArticleJoinRow, _>(&sql, values)
+    let results = sqlx::query_as::<_, ArticleJoinRow>(sql)
+        .bind(query.link_pattern)
+        .bind(query.pub_date_from)
+        .bind(query.pub_date_to)
+        .bind(apply_status)
+        .bind(has_unprocessed)
+        .bind(has_success)
+        .bind(error_codes)
+        .bind(query.source)
+        .bind(query.limit.map(|v| v as i64))
         .fetch_all(pool)
         .await
         .context("記事結合情報の取得に失敗")?;
@@ -121,34 +111,21 @@ pub async fn search_article_contents(
 ) -> Result<Vec<ArticleContent>> {
     let query = query.unwrap_or_default();
 
-    let mut select = Query::select()
-        .column(Articles::Url)
-        .column(Articles::Timestamp)
-        .column(Articles::StatusCode)
-        .column(Articles::Content)
-        .from(Articles::Table)
-        .to_owned();
+    let sql = r#"
+        SELECT url, timestamp, status_code, content
+        FROM articles
+        WHERE ($1::text IS NULL OR url ILIKE '%' || $1 || '%')
+          AND ($2::timestamptz IS NULL OR timestamp >= $2)
+          AND ($3::timestamptz IS NULL OR timestamp <= $3)
+          AND ($4::int IS NULL OR status_code = $4)
+        ORDER BY timestamp DESC
+    "#;
 
-    select = apply_url_filter(
-        select,
-        query.url_pattern.as_deref(),
-        Articles::Table,
-        Articles::Url,
-    );
-    select = apply_date_range(
-        select,
-        query.timestamp_from,
-        query.timestamp_to,
-        Articles::Table,
-        Articles::Timestamp,
-    );
-    select = apply_status_code_filter(select, query.status_code);
-    select = select
-        .order_by(Articles::Timestamp, sea_query::Order::Desc)
-        .to_owned();
-
-    let (sql, values) = select.build_sqlx(PostgresQueryBuilder);
-    let articles = sqlx::query_as_with::<_, ArticleContent, _>(&sql, values)
+    let articles = sqlx::query_as::<_, ArticleContent>(sql)
+        .bind(query.url_pattern)
+        .bind(query.timestamp_from)
+        .bind(query.timestamp_to)
+        .bind(query.status_code)
         .fetch_all(pool)
         .await?;
 
@@ -178,6 +155,32 @@ pub async fn store_article_content(article: &ArticleContent, pool: &PgPool) -> R
     .context("記事データのデータベース保存に失敗")?;
 
     Ok(())
+}
+
+// 内部実装：statuses指定の正規化を行う
+fn normalize_statuses(statuses: Option<&[ArticleStatus]>) -> (bool, bool, bool, Option<Vec<i32>>) {
+    let mut apply = false;
+    let mut has_unprocessed = false;
+    let mut has_success = false;
+    let mut errors: Vec<i32> = Vec::new();
+
+    if let Some(list) = statuses {
+        for s in list {
+            apply = true;
+            match s {
+                ArticleStatus::Unprocessed => has_unprocessed = true,
+                ArticleStatus::Success => has_success = true,
+                ArticleStatus::Error(code) => errors.push(*code),
+            }
+        }
+    }
+
+    let error_codes = if errors.is_empty() {
+        None
+    } else {
+        Some(errors)
+    };
+    (apply, has_unprocessed, has_success, error_codes)
 }
 
 #[cfg(test)]

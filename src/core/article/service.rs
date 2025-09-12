@@ -2,39 +2,8 @@ use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
 use anyhow::{Context, Result};
 use sqlx::PgPool;
 
-use super::model::{
-    ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery, ArticleUrlStatus,
-    ArticleUrlStatusQuery,
-};
+use super::model::ArticleContent;
 use super::repository;
-
-// ==============================
-// ビジネスロジック層の公開API
-// ==============================
-
-/// ArticleUrlStatusを取得する（リポジトリ層への委譲）
-pub async fn search_article_url_statuses(
-    query: Option<ArticleUrlStatusQuery>,
-    pool: &PgPool,
-) -> Result<Vec<ArticleUrlStatus>> {
-    repository::search_article_url_statuses(query, pool).await
-}
-
-/// ArticleJoinRowを取得する（リポジトリ層への委譲）
-pub async fn search_article_join_rows(
-    query: Option<ArticleJoinRowQuery>,
-    pool: &PgPool,
-) -> Result<Vec<ArticleJoinRow>> {
-    repository::search_article_join_rows(query, pool).await
-}
-
-/// ArticleContentを取得する（リポジトリ層への委譲）
-pub async fn search_article_contents(
-    query: Option<ArticleContentQuery>,
-    pool: &PgPool,
-) -> Result<Vec<ArticleContent>> {
-    repository::search_article_contents(query, pool).await
-}
 
 // ==============================
 // 外部API連携とビジネスロジック
