@@ -27,13 +27,6 @@ pub async fn store_article_content(article: &ArticleContent, pool: &PgPool) -> R
     Ok(())
 }
 
-/// URLから記事を取得して保存する（本番クライアント）
-pub async fn fetch_and_store_article(url: &str, pool: &PgPool) -> Result<ArticleContent> {
-    let article = fetch_article_content(url).await?;
-    store_article_content(&article, pool).await?;
-    Ok(article)
-}
-
 /// URLから記事を取得して保存する（クライアント注入）
 pub async fn fetch_and_store_article_with_client(
     url: &str,
@@ -41,6 +34,13 @@ pub async fn fetch_and_store_article_with_client(
     pool: &PgPool,
 ) -> Result<ArticleContent> {
     let article = fetch_article_content_with_client(url, client).await?;
+    store_article_content(&article, pool).await?;
+    Ok(article)
+}
+
+/// URLから記事を取得して保存する（本番クライアント）
+pub async fn fetch_and_store_article(url: &str, pool: &PgPool) -> Result<ArticleContent> {
+    let article = fetch_article_content(url).await?;
     store_article_content(&article, pool).await?;
     Ok(article)
 }

@@ -1,11 +1,6 @@
-// 共有ユーティリティをここに集約（article配下でのみ共有）
 use super::model::ArticleContent;
 use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
 use anyhow::{Context, Result};
-
-// ============
-//    Fetch
-// ============
 
 /// 外部API(Firecrawl)から記事内容を取得する（本番クライアント）
 pub async fn fetch_article_content(url: &str) -> Result<ArticleContent> {

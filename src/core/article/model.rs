@@ -49,7 +49,7 @@ pub struct ArticleUrlStatusQuery {
 
 // ArticleLinkとArticleのJOIN結果をそのまま受け取るDB用の構造体
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct ArticleJoinRow {
+pub(crate) struct ArticleJoinRow {
     pub url: String,
     pub title: String,
     pub pub_date: DateTime<Utc>,
@@ -61,7 +61,7 @@ pub struct ArticleJoinRow {
 
 // ArticleJoinRowを取得する際に使用するクエリモデル
 #[derive(Debug, Default)]
-pub struct ArticleJoinRowQuery {
+pub(crate) struct ArticleJoinRowQuery {
     pub link_pattern: Option<String>,
     pub pub_date_from: Option<DateTime<Utc>>,
     pub pub_date_to: Option<DateTime<Utc>>,
