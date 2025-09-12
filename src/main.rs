@@ -3,7 +3,7 @@ use datadoggo::{app, core, infra};
 
 use app::execute_rss_workflow;
 use core::feed::{search_feeds, FeedQuery};
-use core::rss::{get_article_links_from_channel, store_article_links};
+use core::link::{get_article_links_from_channel, store_article_links};
 use infra::api::firecrawl::ReqwestFirecrawlClient;
 use infra::api::http::ReqwestHttpClient;
 use infra::storage::db::setup_database;

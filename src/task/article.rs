@@ -1,7 +1,7 @@
 use crate::{
     core::{
         article::{get_article_content_with_client, store_article_content, ArticleContent},
-        rss::search_backlog_article_links,
+        link::search_backlog_article_links,
     },
     infra::api::firecrawl::FirecrawlClient,
 };

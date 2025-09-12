@@ -1,7 +1,7 @@
 use crate::{
     core::{
         feed::Feed,
-        rss::{get_article_links_from_feed, store_article_links},
+        link::{get_article_links_from_feed, store_article_links},
     },
     infra::api::http::HttpClient,
 };
