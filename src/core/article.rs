@@ -1,34 +1,30 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-// このモジュール配下の下位モジュールを明示的に公開する
-// - model: データ構造とクエリモデル
-// - repository: DB入出力
-// - service: 外部API呼び出し等
-pub mod model;
-pub mod repository;
-pub mod service;
+// フラット構造の下位モジュール
+mod command;
+mod fetch;
+mod model;
+mod query;
+mod service; // 内部ユーティリティ
 
-// 外部から呼び出され得る関数/型はここで再エクスポートして集約
-pub use self::model::ArticleContent;
-pub use self::repository::store_article_content;
-pub use self::service::get_article_content_with_client;
+// 外部から呼び出され得る関数/型はここで再エクスポートして集約（唯一の玄関口）
+pub use self::command::{
+    fetch_and_store_article, fetch_and_store_article_with_client, store_article_content,
+};
+pub use self::fetch::{fetch_article_content, fetch_article_content_with_client};
+#[allow(deprecated)]
+pub use self::fetch::{get_article_content, get_article_content_with_client};
+pub use self::model::{
+    Article, ArticleContent, ArticleContentQuery, ArticleJoinRow, ArticleJoinRowQuery,
+    ArticleStatus, ArticleUrlStatus, ArticleUrlStatusQuery,
+};
+pub use self::query::{
+    search_article_contents, search_article_join_rows, search_article_url_statuses,
+};
 
-// 内部利用のためのuse（モジュール境界を明確化）
-use self::model::{ArticleJoinRowQuery, ArticleStatus};
-use self::repository::search_article_join_rows;
-
-// ユーザー側が実際に取り扱う情報モデル
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Article {
-    pub url: String,
-    pub title: String,
-    pub pub_date: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub content: String,
-}
+// 内部利用のためのuseは極力不要化（公開名を直接参照）
 
 // ユーザーがArticleを取得する際に使用するクエリモデル
 #[derive(Debug, Default)]

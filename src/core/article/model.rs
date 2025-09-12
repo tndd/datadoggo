@@ -2,6 +2,16 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+// ユーザー側が実際に取り扱う情報モデル（ドメイン向け）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Article {
+    pub url: String,
+    pub title: String,
+    pub pub_date: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub content: String,
+}
+
 // 記事の処理状態を表現するenum
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ArticleStatus {
