@@ -3,7 +3,7 @@ use sqlx::PgPool;
 
 use super::model::ArticleContent;
 use super::service::fetch_article_content;
-use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
+use crate::infra::api::firecrawl::FirecrawlClient;
 
 /// 記事内容をDBに保存（UPSERT）。
 pub async fn store_article_content(article: &ArticleContent, pool: &PgPool) -> Result<()> {
@@ -28,22 +28,14 @@ pub async fn store_article_content(article: &ArticleContent, pool: &PgPool) -> R
 }
 
 /// URLから記事を取得して保存する（クライアント注入）
-pub async fn fetch_and_store_article_with_client(
+///
+/// DI版を正とし、常に `FirecrawlClient` を注入する。
+pub async fn fetch_and_store_article(
     url: &str,
     client: &dyn FirecrawlClient,
     pool: &PgPool,
 ) -> Result<ArticleContent> {
     let article = fetch_article_content(url, client).await?;
-    store_article_content(&article, pool).await?;
-    Ok(article)
-}
-
-/// URLから記事を取得して保存する（本番クライアント）
-pub async fn fetch_and_store_article(url: &str, pool: &PgPool) -> Result<ArticleContent> {
-    // 本番クライアントをこの層で生成し、DI版のfetchを呼ぶ
-    // 目的: コアの取得APIは常にDI形を使用する一貫性を維持
-    let client = ReqwestFirecrawlClient::new()?;
-    let article = fetch_article_content(url, &client).await?;
     store_article_content(&article, pool).await?;
     Ok(article)
 }
@@ -231,7 +223,7 @@ mod tests {
         }
     }
 
-    mod fetch_and_store_article_with_client {
+    mod fetch_and_store_article {
         use super::*;
         use crate::infra::api::firecrawl::MockFirecrawlClient;
 
@@ -242,7 +234,7 @@ mod tests {
             let client = MockFirecrawlClient::new_success("モック記事内容");
             let url = "https://success.com/article";
 
-            let result = fetch_and_store_article_with_client(url, &client, &pool).await?;
+            let result = fetch_and_store_article(url, &client, &pool).await?;
 
             // 戻り値確認
             assert_eq!(result.url, url);
@@ -271,7 +263,7 @@ mod tests {
             let client = MockFirecrawlClient::new_error("取得エラー");
             let url = "https://error.com/article";
 
-            let result = fetch_and_store_article_with_client(url, &client, &pool).await?;
+            let result = fetch_and_store_article(url, &client, &pool).await?;
 
             // 戻り値確認（エラー時はstatus_code=500）
             assert_eq!(result.url, url);
@@ -306,7 +298,7 @@ mod tests {
             ];
 
             for (url, client) in urls {
-                let _result = fetch_and_store_article_with_client(url, client, &pool).await?;
+                let _result = fetch_and_store_article(url, client, &pool).await?;
             }
 
             // 全件確認
@@ -341,6 +333,7 @@ mod tests {
     #[cfg(feature = "online")]
     mod online {
         use super::*;
+        use crate::infra::api::firecrawl::ReqwestFirecrawlClient;
 
         mod fetch_and_store_article {
             use super::*;
@@ -353,7 +346,8 @@ mod tests {
                 // 実在のテスト用URL（レスポンス保証のあるサイト）
                 let url = "https://httpbin.org/html";
 
-                let result = fetch_and_store_article(url, &pool).await?;
+                let client = ReqwestFirecrawlClient::new()?;
+                let result = fetch_and_store_article(url, &client, &pool).await?;
 
                 // 基本的な確認のみ（内容は不安定なため）
                 assert_eq!(result.url, url);
