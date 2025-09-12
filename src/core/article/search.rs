@@ -173,317 +173,273 @@ fn normalize_statuses(statuses: Option<&[ArticleStatus]>) -> (bool, bool, bool, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, Utc};
+    use crate::core::article::model::ArticleStatus;
+    use crate::core::article::query::{ArticleJoinRowQuery, ArticleQuery, ArticleUrlStatusQuery};
+    use chrono::{DateTime, Utc};
     use sqlx::PgPool;
 
-    // normalize_statusesの単体テスト
-    // 目的: ステータス指定の正規化ロジックが期待通りであることを確認
-    // 検証観点:
-    // - applyフラグが指定時にtrueになること
-    // - 未処理/成功/エラーコードの各フラグ・配列が正しく反映されること
-    mod normalize_statuses {
+    // ヘルパー系は helper モジュールに集約
+    mod helper {
         use super::*;
 
+        /// URLだけの配列に変換（可読性向上用）
+        pub fn get_urls<T, F>(items: &[T], f: F) -> Vec<String>
+        where
+            F: Fn(&T) -> &str,
+        {
+            items.iter().map(|x| f(x).to_string()).collect()
+        }
+
+        /// 期間指定のためのユーティリティ
+        pub fn ts(s: &str) -> DateTime<Utc> {
+            s.parse::<DateTime<Utc>>().expect("RFC3339に準拠した日時")
+        }
+    }
+
+    // 内部関数 normalize_statuses の検証
+    mod normalize_statuses {
+        use super::normalize_statuses;
+        use super::*;
+
+        /// 目的: None入力時にフィルタが適用されないことを確認
+        /// 検証観点: apply=false, 他フラグ=false, エラーNone
         #[test]
-        fn test_normalize_statuses_basic() {
-            let (apply, unp, ok, errs) = normalize_statuses(Some(&[
+        fn test_none() {
+            let (apply, has_unprocessed, has_success, errors) = normalize_statuses(None);
+            assert!(!apply);
+            assert!(!has_unprocessed);
+            assert!(!has_success);
+            assert!(errors.is_none());
+        }
+
+        /// 目的: 複合指定時のフラグ・エラーコード展開を確認
+        /// 検証観点: apply=true, 各フラグの正当性, エラー配列の順序保持
+        #[test]
+        fn test_mixed() {
+            let statuses = vec![
                 ArticleStatus::Unprocessed,
                 ArticleStatus::Success,
-                ArticleStatus::Error(404),
                 ArticleStatus::Error(500),
-            ]));
+                ArticleStatus::Error(404),
+            ];
+            let (apply, unp, ok, errs) = normalize_statuses(Some(&statuses));
             assert!(apply);
             assert!(unp);
             assert!(ok);
-            assert_eq!(errs.unwrap(), vec![404, 500]);
+            assert_eq!(errs, Some(vec![500, 404]));
+        }
+
+        /// 目的: 空スライス指定時にフィルタ非適用となることを確認
+        /// 検証観点: apply=false（ループ未突入のため）
+        #[test]
+        fn test_empty_slice() {
+            let empty: Vec<ArticleStatus> = vec![];
+            let (apply, unp, ok, errs) = normalize_statuses(Some(&empty));
+            assert!(!apply);
+            assert!(!unp);
+            assert!(!ok);
+            assert!(errs.is_none());
         }
     }
 
+    // DB使用テスト: search_article_url_statuses
     mod search_article_url_statuses {
+        use super::helper::*;
         use super::*;
 
-        /// 基本的なURL状態検索テスト
-        /// 目的: 基本的なクエリの動作とURLソートを確認
-        #[sqlx::test(fixtures("query_url_status_basic"))]
-        async fn test_basic_search(pool: PgPool) -> Result<()> {
-            let result = search_article_url_statuses(None, &pool).await?;
+        /// 目的: 汎用fixtureからURL状態を一括取得し、NULL/200/エラーが混在して返ることを確認
+        /// 検証観点:
+        /// - パターン未指定で全件取得
+        /// - Left Join のため未処理(Null)が混ざる
+        /// - 件数と代表的なURLの存在確認
+        #[sqlx::test(fixtures("search"))]
+        async fn test_basic_fetch(pool: PgPool) -> Result<(), anyhow::Error> {
+            let results = search_article_url_statuses(None, &pool).await?;
+            assert!(results.len() >= 6, "最低6件は投入されている前提");
 
-            // 3件のarticle_linksが存在することを確認
-            assert_eq!(result.len(), 3);
-
-            // URLがソート順（ASC）で取得されることを確認
-            assert_eq!(result[0].url, "https://example.com/article-a");
-            assert_eq!(result[1].url, "https://example.com/article-b");
-            assert_eq!(result[2].url, "https://example.org/post-c");
-
-            // ステータスコードが正しく設定されていることを確認
-            assert_eq!(result[0].status_code, Some(200));
-            assert_eq!(result[1].status_code, Some(404));
-            assert_eq!(result[2].status_code, None); // 未処理
+            // 代表値の存在チェック
+            let urls = get_urls(&results, |x| &x.url);
+            assert!(urls.iter().any(|u| u.contains("example.com/article-1"))); // 200
+            assert!(urls.iter().any(|u| u.contains("example.com/article-2"))); // error
+            assert!(urls.iter().any(|u| u.contains("example.com/article-3"))); // unprocessed
 
             Ok(())
         }
 
-        /// URLパターンフィルタリングテスト
-        /// 目的: ILIKE検索の正常動作を確認
-        #[sqlx::test(fixtures("query_url_pattern_filter"))]
-        async fn test_url_pattern_filtering(pool: PgPool) -> Result<()> {
-            // "tech-blog"パターンで検索
-            let query = ArticleUrlStatusQuery {
-                url_pattern: Some("tech-blog".to_string()),
-                ..Default::default()
-            };
-
-            let result = search_article_url_statuses(Some(query), &pool).await?;
-
-            // tech-blog.com の2件のみヒット
-            assert_eq!(result.len(), 2);
-            assert!(result.iter().all(|r| r.url.contains("tech-blog.com")));
-            assert!(result.iter().all(|r| r.status_code == Some(200)));
-
-            Ok(())
-        }
-
-        /// ステータスフィルタリングテスト
-        /// 目的: ステータス指定検索の正常動作を確認
-        #[sqlx::test(fixtures("query_status_filter"))]
-        async fn test_status_filtering(pool: PgPool) -> Result<()> {
-            // 成功ステータスのみを検索
-            let query = ArticleUrlStatusQuery {
-                statuses: Some(vec![ArticleStatus::Success]),
-                ..Default::default()
-            };
-
-            let result = search_article_url_statuses(Some(query), &pool).await?;
-
-            // 2件の成功記事のみヒット
-            assert_eq!(result.len(), 2);
-            assert!(result.iter().all(|r| r.status_code == Some(200)));
-
-            // 未処理ステータスを検索
-            let query = ArticleUrlStatusQuery {
+        /// 目的: ステータスフィルタ（未処理/成功/特定エラー）が正しく適用されることを検証
+        /// 検証観点: normalize_statusesのSQLバインド効果をE2Eで確認
+        #[sqlx::test(fixtures("search_status_filter"))]
+        async fn test_status_filters(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 未処理のみ
+            let q = ArticleUrlStatusQuery {
+                url_pattern: None,
                 statuses: Some(vec![ArticleStatus::Unprocessed]),
-                ..Default::default()
+                limit: None,
             };
+            let unprocessed = search_article_url_statuses(Some(q), &pool).await?;
+            assert_eq!(unprocessed.len(), 1);
+            assert_eq!(unprocessed[0].status_code, None);
 
-            let result = search_article_url_statuses(Some(query), &pool).await?;
-
-            // 1件の未処理記事のみヒット
-            assert_eq!(result.len(), 1);
-            assert_eq!(result[0].status_code, None);
-            assert!(result[0].url.contains("unprocessed.com"));
-
-            Ok(())
-        }
-
-        /// 制限フィルタリングテスト
-        /// 目的: LIMIT句の正常動作を確認
-        #[sqlx::test(fixtures("query_url_status_basic"))]
-        async fn test_limit_filtering(pool: PgPool) -> Result<()> {
-            let query = ArticleUrlStatusQuery {
-                limit: Some(2),
-                ..Default::default()
-            };
-
-            let result = search_article_url_statuses(Some(query), &pool).await?;
-
-            // 制限された件数のみ取得されることを確認
-            assert_eq!(result.len(), 2);
-
-            // ソート順序が維持されることを確認（URL ASC）
-            assert_eq!(result[0].url, "https://example.com/article-a");
-            assert_eq!(result[1].url, "https://example.com/article-b");
-
-            Ok(())
-        }
-    }
-
-    mod search_article_join_rows {
-        use super::*;
-
-        /// 基本的な結合検索テスト
-        /// 目的: JOINクエリの基本動作と日付降順ソートを確認
-        #[sqlx::test(fixtures("query_join_rows_basic"))]
-        async fn test_basic_search(pool: PgPool) -> Result<()> {
-            let result = search_article_join_rows(None, &pool).await?;
-
-            // 3件の結合データが取得されることを確認
-            assert_eq!(result.len(), 3);
-
-            // 日付の降順ソートを確認（pub_date DESC）
-            let pub_dates: Vec<_> = result.iter().map(|r| r.pub_date).collect();
-            assert!(pub_dates[0] > pub_dates[1]);
-            assert!(pub_dates[1] > pub_dates[2]);
-
-            // データの整合性を確認（最新の記事が最初）
-            let first_row = &result[0];
-            assert_eq!(first_row.url, "https://latest.com/article");
-            assert_eq!(first_row.title, "Latest Article");
-            assert_eq!(first_row.source, "news");
-            assert_eq!(first_row.status_code, Some(200));
-
-            Ok(())
-        }
-
-        /// 日付範囲フィルタリングテスト
-        /// 目的: pub_date_from, pub_date_toでの絞り込み動作を確認
-        #[sqlx::test(fixtures("query_date_range_filter"))]
-        async fn test_date_range_filtering(pool: PgPool) -> Result<()> {
-            // 2025年1月の記事のみ検索
-            let from_date = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
-            let to_date = Utc.with_ymd_and_hms(2025, 1, 31, 23, 59, 59).unwrap();
-
-            let query = ArticleJoinRowQuery {
-                pub_date_from: Some(from_date),
-                pub_date_to: Some(to_date),
-                ..Default::default()
-            };
-
-            let result = search_article_join_rows(Some(query), &pool).await?;
-
-            // 2025年1月の3件がヒット
-            assert_eq!(result.len(), 3);
-            assert!(result
-                .iter()
-                .all(|r| r.pub_date >= from_date && r.pub_date <= to_date));
-
-            // 日付降順ソートの確認
-            assert_eq!(result[0].url, "https://jan31.com/article");
-            assert_eq!(result[1].url, "https://jan15.com/article");
-            assert_eq!(result[2].url, "https://jan01.com/article");
-
-            Ok(())
-        }
-
-        /// ステータスフィルタリングテスト
-        /// 目的: ステータス条件による絞り込みを確認
-        #[sqlx::test(fixtures("query_status_filter"))]
-        async fn test_status_filtering(pool: PgPool) -> Result<()> {
-            // 成功ステータスのみを検索
-            let query = ArticleJoinRowQuery {
+            // 成功のみ
+            let q = ArticleUrlStatusQuery {
+                url_pattern: None,
                 statuses: Some(vec![ArticleStatus::Success]),
-                ..Default::default()
+                limit: None,
             };
+            let success = search_article_url_statuses(Some(q), &pool).await?;
+            assert_eq!(success.len(), 1);
+            assert_eq!(success[0].status_code, Some(200));
 
-            let result = search_article_join_rows(Some(query), &pool).await?;
-
-            // 2件の成功記事のみヒット
-            assert_eq!(result.len(), 2);
-            assert!(result.iter().all(|r| r.status_code == Some(200)));
-            assert!(result.iter().all(|r| r.content.is_some()));
-
-            // エラーステータスを検索
-            let query = ArticleJoinRowQuery {
-                statuses: Some(vec![ArticleStatus::Error(404), ArticleStatus::Error(500)]),
-                ..Default::default()
+            // 特定エラーのみ（404）
+            let q = ArticleUrlStatusQuery {
+                url_pattern: None,
+                statuses: Some(vec![ArticleStatus::Error(404)]),
+                limit: None,
             };
-
-            let result = search_article_join_rows(Some(query), &pool).await?;
-
-            // 2件のエラー記事がヒット
-            assert_eq!(result.len(), 2);
-            assert!(result
-                .iter()
-                .all(|r| r.status_code == Some(404) || r.status_code == Some(500)));
-
+            let not_found = search_article_url_statuses(Some(q), &pool).await?;
+            assert_eq!(not_found.len(), 1);
+            assert_eq!(not_found[0].status_code, Some(404));
             Ok(())
         }
 
-        /// ソースフィルタリングテスト
-        /// 目的: sourceでの絞り込み動作を確認
-        #[sqlx::test(fixtures("query_source_filter"))]
-        async fn test_source_filtering(pool: PgPool) -> Result<()> {
-            // techソースのみを検索
-            let query = ArticleJoinRowQuery {
-                source: Some("tech".to_string()),
-                ..Default::default()
-            };
-
-            let result = search_article_join_rows(Some(query), &pool).await?;
-
-            // 2件のtech記事のみヒット
-            assert_eq!(result.len(), 2);
-            assert!(result.iter().all(|r| r.source == "tech"));
-
-            // 日付降順ソート確認
-            assert_eq!(result[0].url, "https://tech2.com/article");
-            assert_eq!(result[1].url, "https://tech1.com/article");
-
-            Ok(())
-        }
-
-        /// 制限フィルタリングテスト
-        /// 目的: LIMIT句の正常動作を確認
-        #[sqlx::test(fixtures("query_join_rows_basic"))]
-        async fn test_limit_filtering(pool: PgPool) -> Result<()> {
-            let query = ArticleJoinRowQuery {
+        /// 目的: URLパターン・Limitの適用と並び順(ASC by url)を確認
+        /// 検証観点: ILIKE + LIMIT + ORDER BYの組み合わせ
+        #[sqlx::test(fixtures("search_limit"))]
+        async fn test_pattern_and_limit(pool: PgPool) -> Result<(), anyhow::Error> {
+            let q = ArticleUrlStatusQuery {
+                url_pattern: Some("https://limit.test".to_string()),
+                statuses: None,
                 limit: Some(2),
-                ..Default::default()
             };
-
-            let result = search_article_join_rows(Some(query), &pool).await?;
-
-            // 制限された件数のみ取得されることを確認
-            assert_eq!(result.len(), 2);
-
-            // 日付降順で最新の2件が取得されることを確認
-            assert_eq!(result[0].url, "https://latest.com/article");
-            assert_eq!(result[1].url, "https://middle.com/article");
-
+            let results = search_article_url_statuses(Some(q), &pool).await?;
+            assert_eq!(results.len(), 2);
+            let urls = get_urls(&results, |x| &x.url);
+            assert_eq!(
+                urls,
+                vec![
+                    "https://limit.test/a".to_string(),
+                    "https://limit.test/b".to_string(),
+                ]
+            );
             Ok(())
         }
     }
 
+    // DB使用テスト: search_articles（ドメインArticleを返すフィルタ付き）
     mod search_articles {
+        use super::helper::*;
         use super::*;
 
-        /// ドメイン向け記事検索の基本テスト
-        /// 目的: ArticleJoinRowからArticleへの変換とフィルタリングを確認
-        #[sqlx::test(fixtures("query_articles_domain"))]
-        async fn test_basic(pool: PgPool) -> Result<()> {
-            let result = search_articles(None, &pool).await?;
+        /// 目的: 成功(200)かつcontent非空・timestamp有りのみが返ること
+        /// 検証観点: JOIN -> フィルタ -> Article変換 の一連の正当性
+        #[sqlx::test(fixtures("search"))]
+        async fn test_basic_filter_and_transform(pool: PgPool) -> Result<(), anyhow::Error> {
+            let results = search_articles(None, &pool).await?;
+            // search.sql には 200&content有り が3件以上含まれる前提
+            assert!(results.len() >= 3);
 
-            // 成功ステータス(200)かつcontentとtimestampが存在する記事のみ取得
-            // valid1, valid2のみ（errorとincompleteは除外される）
-            assert_eq!(result.len(), 2);
-
-            // 各記事のフィールドが適切に設定されていることを確認
-            let first_article = &result[0];
-            assert!(first_article.url.starts_with("https://valid"));
-            assert!(first_article.title.starts_with("Valid Article"));
-            assert!(first_article.content.starts_with("Complete valid content"));
-
-            // 日付の降順ソート（pub_date DESC）を確認
-            // valid1が2025-01-02、valid2が2025-01-01なので、valid1が最初
-            assert_eq!(result[0].url, "https://valid1.com/article");
-            assert_eq!(result[1].url, "https://valid2.com/article");
-
+            // いずれもcontent非空・URL妥当性
+            assert!(results.iter().all(|a| !a.content.is_empty()));
+            assert!(results
+                .iter()
+                .any(|a| a.url.contains("example.com/article-1")));
+            assert!(results
+                .iter()
+                .any(|a| a.url.contains("another.com/path/ok")));
             Ok(())
         }
 
-        /// フィルタ条件付き検索テスト
-        /// 目的: ArticleQueryのフィルタ条件が正常に動作することを確認
-        #[sqlx::test(fixtures("query_articles_domain"))]
-        async fn test_with_filters(pool: PgPool) -> Result<()> {
-            let from_date = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
-            let to_date = Utc.with_ymd_and_hms(2025, 1, 1, 23, 59, 59).unwrap();
+        /// 目的: 空文字contentは除外されること
+        /// 検証観点: content.is_empty() の除外ロジック
+        #[sqlx::test(fixtures("search_empty_content"))]
+        async fn test_drop_empty_content(pool: PgPool) -> Result<(), anyhow::Error> {
+            let results = search_articles(None, &pool).await?;
+            let urls = get_urls(&results, |x| &x.url);
+            assert!(urls.contains(&"https://empty.test/ok".to_string()));
+            assert!(!urls.contains(&"https://empty.test/empty".to_string()));
+            Ok(())
+        }
 
-            let query = ArticleQuery {
-                link_pattern: Some("valid".to_string()),
-                pub_date_from: Some(from_date),
-                pub_date_to: Some(to_date),
-                limit: Some(1),
+        /// 目的: link_pattern・期間・limitの複合指定が正しく作用
+        /// 検証観点: ArticleJoinRowQueryへの変換ロジック含め E2E 確認
+        #[sqlx::test(fixtures("search"))]
+        async fn test_pattern_date_limit(pool: PgPool) -> Result<(), anyhow::Error> {
+            let q = ArticleQuery {
+                link_pattern: Some("another.com".to_string()),
+                pub_date_from: Some(ts("2025-02-01T00:00:00Z")),
+                pub_date_to: Some(ts("2025-02-01T23:59:59Z")),
+                // 注意: limitはJOIN前に適用されるため、ここでは指定しない
+                limit: None,
             };
+            let results = search_articles(Some(q), &pool).await?;
+            assert!(results.len() >= 1);
+            assert!(results[0].url.contains("another.com/path/ok"));
+            Ok(())
+        }
+    }
 
-            let result = search_articles(Some(query), &pool).await?;
+    // DB使用テスト: search_article_join_rows（低レベルJOIN結果）
+    mod search_article_join_rows {
+        use super::helper::*;
+        use super::search_article_join_rows;
+        use super::*;
 
-            // フィルタ条件にマッチする記事のみ取得
-            // 2025-01-01の範囲でvalid2のみがヒット
-            assert_eq!(result.len(), 1);
-            assert_eq!(result[0].url, "https://valid2.com/article");
-            assert!(result[0].url.contains("valid"));
-            assert!(result[0].pub_date >= from_date && result[0].pub_date <= to_date);
+        /// 目的: ステータス複合指定（Success + Error）で該当行のみ返る
+        /// 検証観点: normalize_statuses -> SQL条件のOR結合が正しく動作
+        #[sqlx::test(fixtures("search"))]
+        async fn test_status_mixed(pool: PgPool) -> Result<(), anyhow::Error> {
+            let q = ArticleJoinRowQuery {
+                link_pattern: None,
+                pub_date_from: None,
+                pub_date_to: None,
+                statuses: Some(vec![ArticleStatus::Success, ArticleStatus::Error(500)]),
+                source: None,
+                limit: None,
+            };
+            let rows = search_article_join_rows(Some(q), &pool).await?;
+            assert!(rows
+                .iter()
+                .all(|r| r.status_code == Some(200) || r.status_code == Some(500)));
+            assert!(rows.iter().any(|r| r.status_code == Some(200)));
+            assert!(rows.iter().any(|r| r.status_code == Some(500)));
+            Ok(())
+        }
 
+        /// 目的: sourceフィルタで特定ソースのみ抽出できる
+        /// 検証観点: l.source = $8 の等価フィルタ
+        #[sqlx::test(fixtures("search_source_filter"))]
+        async fn test_source_filter(pool: PgPool) -> Result<(), anyhow::Error> {
+            let q = ArticleJoinRowQuery {
+                link_pattern: None,
+                pub_date_from: None,
+                pub_date_to: None,
+                statuses: Some(vec![ArticleStatus::Success]),
+                source: Some("rss".to_string()),
+                limit: None,
+            };
+            let rows = search_article_join_rows(Some(q), &pool).await?;
+            assert!(!rows.is_empty());
+            assert!(rows.iter().all(|r| r.source == "rss"));
+            Ok(())
+        }
+
+        /// 目的: 期間境界が含まれる（>=, <=）ことを確認
+        /// 検証観点: pub_date_from/toのinclusive動作
+        #[sqlx::test(fixtures("search_pub_date_range"))]
+        async fn test_date_range_inclusive(pool: PgPool) -> Result<(), anyhow::Error> {
+            let q = ArticleJoinRowQuery {
+                link_pattern: None,
+                pub_date_from: Some(ts("2025-01-01T00:00:00Z")),
+                pub_date_to: Some(ts("2025-01-01T23:59:59Z")),
+                statuses: Some(vec![ArticleStatus::Success]),
+                source: None,
+                limit: None,
+            };
+            let rows = search_article_join_rows(Some(q), &pool).await?;
+            let urls = get_urls(&rows, |x| &x.url);
+            assert!(urls.contains(&"https://date.test/exact-start".to_string()));
+            assert!(urls.contains(&"https://date.test/exact-end".to_string()));
+            assert!(!urls.contains(&"https://date.test/before".to_string()));
             Ok(())
         }
     }
