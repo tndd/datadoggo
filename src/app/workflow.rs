@@ -268,7 +268,7 @@ mod tests {
             );
 
             // 記事取得でエラーが発生した場合、エラー記事として保存される
-            // （get_article_content_with_client関数は常にOkを返し、エラー情報をstatus_codeとcontentに含める設計）
+            // （fetch_article_content 関数は常にOkを返し、エラー情報をstatus_codeとcontentに含める設計）
             let article_count_after_firecrawl_error =
                 sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
                     .fetch_one(&pool)

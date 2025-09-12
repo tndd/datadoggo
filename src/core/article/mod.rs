@@ -10,4 +10,4 @@ pub use self::model::{
     Article, ArticleContent, ArticleQuery, ArticleStatus, ArticleUrlStatus, ArticleUrlStatusQuery,
 };
 pub use self::query::{search_article_url_statuses, search_articles};
-pub use self::service::{fetch_article_content, fetch_article_content_with_client};
+pub use self::service::fetch_article_content;

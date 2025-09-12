@@ -2,8 +2,8 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 use super::model::ArticleContent;
-use super::service::{fetch_article_content, fetch_article_content_with_client};
-use crate::infra::api::firecrawl::FirecrawlClient;
+use super::service::fetch_article_content;
+use crate::infra::api::firecrawl::{FirecrawlClient, ReqwestFirecrawlClient};
 
 /// 記事内容をDBに保存（UPSERT）。
 pub async fn store_article_content(article: &ArticleContent, pool: &PgPool) -> Result<()> {
@@ -33,14 +33,17 @@ pub async fn fetch_and_store_article_with_client(
     client: &dyn FirecrawlClient,
     pool: &PgPool,
 ) -> Result<ArticleContent> {
-    let article = fetch_article_content_with_client(url, client).await?;
+    let article = fetch_article_content(url, client).await?;
     store_article_content(&article, pool).await?;
     Ok(article)
 }
 
 /// URLから記事を取得して保存する（本番クライアント）
 pub async fn fetch_and_store_article(url: &str, pool: &PgPool) -> Result<ArticleContent> {
-    let article = fetch_article_content(url).await?;
+    // 本番クライアントをこの層で生成し、DI版のfetchを呼ぶ
+    // 目的: コアの取得APIは常にDI形を使用する一貫性を維持
+    let client = ReqwestFirecrawlClient::new()?;
+    let article = fetch_article_content(url, &client).await?;
     store_article_content(&article, pool).await?;
     Ok(article)
 }

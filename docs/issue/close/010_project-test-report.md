@@ -59,7 +59,7 @@
   - 提案: `mod search_article_url_statuses { … }` 等の明示的モジュール名に統一。
 
 - `src/core/article/service.rs`
-  - 対象: `get_article_content`, `get_article_content_with_client`, `fetch_and_store_article{,_with_client}`
+  - 対象: `fetch_article_content`（DI）, `fetch_and_store_article{,_with_client}`
   - 乖離: `mod helper` が `tests` 内に内在し、他テストと混在。helperテストは `tests` 配下で `mod helper` を切る代わりに、同ファイル内でも `mod helper` を最初に置き、以降 `{関数名}` モジュールと明確に分離（命名・並び順の統一）。
   - 良点: `#[cfg(feature = "online")]` の分離は適切。
 
