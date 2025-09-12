@@ -760,7 +760,8 @@ mod tests {
         ) -> Result<(), anyhow::Error> {
             // 同じURL、異なるsourceでの記事作成
             let duplicate_url = "https://duplicate-source.example.com/same-article";
-            let links_with_different_sources = vec![
+            // Vecではなく固定長配列で十分なため、Clippyに従い配列に変更
+            let links_with_different_sources = [
                 ArticleLink {
                     title: "初回の記事".to_string(),
                     url: duplicate_url.to_string(),

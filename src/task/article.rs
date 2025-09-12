@@ -1,7 +1,7 @@
 use crate::{
     core::{
-        article::{get_article_content_with_client, store_article_content, ArticleContent},
-        rss::search_backlog_article_links,
+        article::{fetch_article_content_via_firecrawl, store_article_content, ArticleContent},
+        link::search_backlog_article_links,
     },
     infra::api::firecrawl::FirecrawlClient,
 };
@@ -22,7 +22,7 @@ pub async fn task_collect_articles<F: FirecrawlClient>(
         println!("記事処理中: {}", article_link.url);
 
         let article_result =
-            get_article_content_with_client(&article_link.url, firecrawl_client).await;
+            fetch_article_content_via_firecrawl(&article_link.url, firecrawl_client).await;
 
         match article_result {
             Ok(article) => match store_article_content(&article, pool).await {
@@ -323,7 +323,7 @@ mod tests {
 
                 // エラー記事は再処理対象として残る（status_code != 200）
                 assert!(
-                    final_backlog.len() > 0,
+                    !final_backlog.is_empty(),
                     "エラー記事は再処理対象として残るべきです"
                 );
 

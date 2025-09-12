@@ -1,7 +1,7 @@
 use crate::{
     core::{
         feed::Feed,
-        rss::{get_article_links_from_feed, store_article_links},
+        link::{get_article_links_from_feed, store_article_links},
     },
     infra::api::http::HttpClient,
 };
@@ -430,7 +430,8 @@ mod tests {
             let mock_client = MockHttpClient::new_success();
 
             // 同じURLを持つ複数のフィードをシミュレート
-            let competing_feeds = vec![
+            // Vecではなく固定長配列で十分なため、Clippyに従い配列に変更
+            let competing_feeds = [
                 Feed {
                     group: "source1".to_string(),
                     name: "competing_feed_1".to_string(),

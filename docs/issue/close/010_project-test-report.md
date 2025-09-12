@@ -59,7 +59,7 @@
   - 提案: `mod search_article_url_statuses { … }` 等の明示的モジュール名に統一。
 
 - `src/core/article/service.rs`
-  - 対象: `get_article_content`, `get_article_content_with_client`, `fetch_and_store_article{,_with_client}`
+  - 対象: `fetch_article_content`（DI）, `fetch_and_store_article`（DI）
   - 乖離: `mod helper` が `tests` 内に内在し、他テストと混在。helperテストは `tests` 配下で `mod helper` を切る代わりに、同ファイル内でも `mod helper` を最初に置き、以降 `{関数名}` モジュールと明確に分離（命名・並び順の統一）。
   - 良点: `#[cfg(feature = "online")]` の分離は適切。
 
@@ -178,7 +178,7 @@
 
 - 追加テストの必要性
   - 層（infra/core/task/app）ごとに基本・境界・エラー系が既にカバーされており、現時点でテスト数の大幅な増強は不要。
-  - 例外的に、未直テストの関数（`fetch_and_store_article{,_with_client}`）は他経路（task/app統合）で間接カバーされているため必須ではないが、将来の変更点として1件だけのスモーク追加は検討余地あり（必須ではない）。
+  - 例外的に、未直テストの関数（`fetch_and_store_article`）は他経路（task/app統合）で間接カバーされているため必須ではないが、将来の変更点として1件だけのスモーク追加は検討余地あり（必須ではない）。
 
 - 無駄なテスト/重複
   - 顕著な重複は `src/core/rss.rs` の `search_article_links` 周辺に集中（類似観点が分割され件数過多）。提案した5件への統合で解消可能。

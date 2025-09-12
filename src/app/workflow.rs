@@ -166,8 +166,7 @@ mod tests {
             assert!(
                 first_article_content
                     .as_ref()
-                    .map_or(false, |content| content
-                        .contains("BBC統合テスト記事の内容です")),
+                    .is_some_and(|content| content.contains("BBC統合テスト記事の内容です")),
                 "記事内容が期待されるモック内容を含んでいません: {:?}",
                 first_article_content
             );
@@ -268,7 +267,7 @@ mod tests {
             );
 
             // 記事取得でエラーが発生した場合、エラー記事として保存される
-            // （get_article_content_with_client関数は常にOkを返し、エラー情報をstatus_codeとcontentに含める設計）
+            // （fetch_article_content 関数は常にOkを返し、エラー情報をstatus_codeとcontentに含める設計）
             let article_count_after_firecrawl_error =
                 sqlx::query_scalar!("SELECT COUNT(*) FROM articles")
                     .fetch_one(&pool)
@@ -298,7 +297,7 @@ mod tests {
             assert!(
                 error_content
                     .as_ref()
-                    .map_or(false, |content| content.contains("記事取得APIエラー:")),
+                    .is_some_and(|content| content.contains("記事取得APIエラー:")),
                 "エラー記事の内容に記事取得APIエラーメッセージが含まれるべきです: {:?}",
                 error_content
             );

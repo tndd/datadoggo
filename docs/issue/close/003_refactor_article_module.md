@@ -22,7 +22,7 @@
   - `model.rs`（Article, ArticleLight, ArticleStatus, ArticleView など純粋な型と実装）
   - `content.rs`（ArticleContent とその保存/検索）
   - `repo.rs`（Article/ArticleLight の検索クエリ）
-  - `service.rs`（Firecrawl 統合: get_article_content / get_article_content_with_client）
+  - `service.rs`（Firecrawl 統合: fetch_article_content［DI専用］）
   - `tests/`（ユニット・統合テスト分割、または各ファイル内テストの維持）
 
 既存の `src/domain/article.rs` は薄いファサードにし、最終的に各モジュールへの委譲 + `pub use` のみを残す。
