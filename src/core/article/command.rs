@@ -79,7 +79,7 @@ mod tests {
 
         /// 重複時の更新テスト（内容変更時）
         /// 目的: DISTINCT FROM条件による更新動作を確認
-        #[sqlx::test(fixtures("command_store_conflict"))]
+        #[sqlx::test(fixtures("command"))]
         async fn test_update_on_content_change(pool: PgPool) -> Result<()> {
             let updated_article = ArticleContent {
                 url: "https://update.com/article".to_string(),
@@ -120,7 +120,7 @@ mod tests {
 
         /// 重複時の更新スキップテスト（同内容時）
         /// 目的: DISTINCT FROM条件による更新スキップを確認
-        #[sqlx::test(fixtures("command_store_conflict"))]
+        #[sqlx::test(fixtures("command"))]
         async fn test_skip_update_on_same_content(pool: PgPool) -> Result<()> {
             let same_article = ArticleContent {
                 url: "https://existing.com/article".to_string(),
@@ -155,7 +155,7 @@ mod tests {
 
         /// ステータスコード変更時の更新テスト
         /// 目的: status_codeの変更でも更新が実行されることを確認
-        #[sqlx::test(fixtures("command_store_conflict"))]
+        #[sqlx::test(fixtures("command"))]
         async fn test_update_on_status_change(pool: PgPool) -> Result<()> {
             let status_changed_article = ArticleContent {
                 url: "https://same.com/article".to_string(),
