@@ -55,7 +55,7 @@ mod tests {
     mod store_article_content {
         use super::*;
 
-        #[sqlx::test(fixtures("store_article_content_logic"))]
+        #[sqlx::test(fixtures("command_store_article_content_logic"))]
         async fn test_basic_insert_and_conflict_resolution(pool: PgPool) -> anyhow::Result<()> {
             let new_article = ArticleContent {
                 url: "https://new.example.com/article".to_string(),
@@ -94,7 +94,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("store_article_content_logic"))]
+        #[sqlx::test(fixtures("command_store_article_content_logic"))]
         async fn test_distinct_condition_edge_cases(pool: PgPool) -> anyhow::Result<()> {
             let base_url = "https://distinct-test.example.com/article";
             let initial_article = ArticleContent {
@@ -151,7 +151,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("store_article_content_logic"))]
+        #[sqlx::test(fixtures("command_store_article_content_logic"))]
         async fn test_timestamp_update_behavior(pool: PgPool) -> anyhow::Result<()> {
             let test_url = "https://timestamp-test.example.com/article";
             let initial_time = Utc::now();
@@ -198,7 +198,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("store_article_content_logic"))]
+        #[sqlx::test(fixtures("command_store_article_content_logic"))]
         async fn test_boundary_values_and_data_integrity(pool: PgPool) -> anyhow::Result<()> {
             let empty_content_article = ArticleContent {
                 url: "https://empty.example.com/article".to_string(),

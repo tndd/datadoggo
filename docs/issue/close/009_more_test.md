@@ -11,7 +11,7 @@
 | 層      | ディレクトリ                 | fixture ファイル数 | 状況         |
 | ------- | ---------------------------- | ------------------ | ------------ |
 | **app** | `src/app/fixtures/`          | **0 件**           | **完全に空** |
-| core    | `src/core/article/fixtures/` | 7 件               | 充実（規範） |
+| core    | `src/core/article/fixtures/` | 9 件               | 充実（規範） |
 | core    | `src/core/fixtures/`         | 2 件               | 不足         |
 | task    | `src/task/fixtures/`         | 2 件               | 不足         |
 | infra   | なし                         | 0 件               | fixture なし |
@@ -42,19 +42,21 @@
 
 ```
 src/core/article/fixtures/
-├── article_basic.sql
-├── article_filter.sql
-├── service_basic.sql
-├── service_boundary_values.sql
-├── service_comprehensive.sql
-├── service_limit_tests.sql
-└── service_search_patterns.sql
+├── command_store_article_content_logic.sql
+├── query_basic.sql
+├── query_boundary_values.sql
+├── query_comprehensive.sql
+├── query_domain_basic.sql
+├── query_domain_filter.sql
+├── query_edge_cases.sql
+├── query_limit_tests.sql
+└── query_search_patterns.sql
 ```
 
 **特徴:**
 - 機能別・観点別に分類された fixture
 - 基本系・境界値・包括的テスト・制限値テスト・検索パターンなど多角的な観点
-- 命名規則が統一されている（`{機能}_{観点}.sql`）
+- 命名規則が統一されている（`{ファイル名}_{観点}.sql`）
 
 ## 影響範囲
 

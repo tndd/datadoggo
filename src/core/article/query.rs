@@ -186,7 +186,7 @@ mod tests {
         use super::*;
         use crate::core::article::model::ArticleStatus;
 
-        #[sqlx::test(fixtures("service_basic"))]
+        #[sqlx::test(fixtures("query_basic"))]
         async fn test_basic_search(pool: PgPool) -> Result<()> {
             let results = super::super::search_article_url_statuses(None, &pool).await?;
             assert!(results.len() >= 3);
@@ -196,7 +196,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_basic"))]
+        #[sqlx::test(fixtures("query_basic"))]
         async fn test_status_filtering(pool: PgPool) -> Result<()> {
             let success_query = ArticleUrlStatusQuery {
                 statuses: Some(vec![ArticleStatus::Success]),
@@ -210,7 +210,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_search_patterns"))]
+        #[sqlx::test(fixtures("query_search_patterns"))]
         async fn test_url_pattern_filtering(pool: PgPool) -> Result<()> {
             let domain_query = ArticleUrlStatusQuery {
                 url_pattern: Some("example.com".to_string()),
@@ -224,7 +224,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_limit_tests"))]
+        #[sqlx::test(fixtures("query_limit_tests"))]
         async fn test_limit_filtering(pool: PgPool) -> Result<()> {
             let limit_query = ArticleUrlStatusQuery {
                 limit: Some(2),
@@ -242,7 +242,7 @@ mod tests {
         use super::*;
         use crate::core::article::model::ArticleStatus;
 
-        #[sqlx::test(fixtures("service_basic"))]
+        #[sqlx::test(fixtures("query_basic"))]
         async fn test_basic_search(pool: PgPool) -> Result<()> {
             let result = super::super::search_article_join_rows(None, &pool).await?;
             assert!(result.len() >= 1);
@@ -252,7 +252,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_basic"))]
+        #[sqlx::test(fixtures("query_basic"))]
         async fn test_status_filtering(pool: PgPool) -> Result<()> {
             let success_query = ArticleJoinRowQuery {
                 statuses: Some(vec![ArticleStatus::Success]),
@@ -267,7 +267,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_search_patterns"))]
+        #[sqlx::test(fixtures("query_search_patterns"))]
         async fn test_pattern_and_date_filtering(pool: PgPool) -> Result<()> {
             let pub_date_from = Utc.with_ymd_and_hms(2025, 1, 10, 0, 0, 0).unwrap();
             let pub_date_to = Utc.with_ymd_and_hms(2025, 1, 12, 23, 59, 59).unwrap();
@@ -285,7 +285,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_limit_tests"))]
+        #[sqlx::test(fixtures("query_limit_tests"))]
         async fn test_limit_and_source_filtering(pool: PgPool) -> Result<()> {
             let limit_query = ArticleJoinRowQuery {
                 limit: Some(3),
@@ -307,7 +307,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_boundary_values"))]
+        #[sqlx::test(fixtures("query_boundary_values"))]
         async fn test_edge_cases_and_boundary_values(pool: PgPool) -> Result<()> {
             let empty_pattern_query = ArticleJoinRowQuery {
                 link_pattern: Some("".to_string()),
@@ -325,7 +325,7 @@ mod tests {
     mod search_article_contents {
         use super::*;
 
-        #[sqlx::test(fixtures("service_basic"))]
+        #[sqlx::test(fixtures("query_basic"))]
         async fn test_basic_content_search(pool: PgPool) -> Result<()> {
             let results = super::super::search_article_contents(None, &pool).await?;
             assert!(results.len() >= 2);
@@ -335,7 +335,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_search_patterns"))]
+        #[sqlx::test(fixtures("query_search_patterns"))]
         async fn test_url_pattern_search(pool: PgPool) -> Result<()> {
             let query = ArticleContentQuery {
                 url_pattern: Some("tech.example.com".to_string()),
@@ -348,7 +348,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_search_patterns"))]
+        #[sqlx::test(fixtures("query_search_patterns"))]
         async fn test_timestamp_range_filtering(pool: PgPool) -> Result<()> {
             let timestamp_from = Utc.with_ymd_and_hms(2025, 1, 10, 0, 0, 0).unwrap();
             let timestamp_to = Utc.with_ymd_and_hms(2025, 1, 12, 23, 59, 59).unwrap();
@@ -364,7 +364,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("service_basic"))]
+        #[sqlx::test(fixtures("query_basic"))]
         async fn test_status_code_filtering(pool: PgPool) -> Result<()> {
             let success_query = ArticleContentQuery {
                 status_code: Some(200),
@@ -383,7 +383,7 @@ mod tests {
     mod search_article_join_rows_comprehensive {
         use super::*;
 
-        #[sqlx::test(fixtures("repository_comprehensive"))]
+        #[sqlx::test(fixtures("query_comprehensive"))]
         async fn test_comprehensive_source_filtering(pool: PgPool) -> Result<()> {
             let tech_query = ArticleJoinRowQuery {
                 source: Some("tech".to_string()),
@@ -413,7 +413,7 @@ mod tests {
     mod search_article_contents_comprehensive {
         use super::*;
 
-        #[sqlx::test(fixtures("repository_comprehensive"))]
+        #[sqlx::test(fixtures("query_comprehensive"))]
         async fn test_comprehensive_content_search(pool: PgPool) -> Result<()> {
             let domain_query = ArticleContentQuery {
                 url_pattern: Some("tech-news.com".to_string()),
@@ -439,7 +439,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("repository_edge_cases"))]
+        #[sqlx::test(fixtures("query_edge_cases"))]
         async fn test_content_edge_cases(pool: PgPool) -> Result<()> {
             let long_content_query = ArticleContentQuery {
                 url_pattern: Some("extremely-long-domain-name".to_string()),
@@ -482,7 +482,7 @@ mod tests {
         use super::*;
         use chrono::{Datelike, TimeZone, Utc};
 
-        #[sqlx::test(fixtures("article_basic"))]
+        #[sqlx::test(fixtures("query_domain_basic"))]
         async fn test_basic(pool: PgPool) -> Result<()> {
             let result = super::super::search_articles(None, &pool).await?;
             assert_eq!(result.len(), 6);
@@ -499,7 +499,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("article_filter"))]
+        #[sqlx::test(fixtures("query_domain_filter"))]
         async fn test_with_filters(pool: PgPool) -> Result<()> {
             let pub_date_from = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
             let pub_date_to = Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap();
