@@ -3,7 +3,7 @@ mod fetch;
 mod model;
 mod query; // 内部ユーティリティ
 
-pub use self::command::{fetch_and_store_article, store_article_content};
+pub use self::command::{fetch_via_firecrawl_and_store_article_content, store_article_content};
 pub use self::fetch::fetch_article_content_via_firecrawl;
 pub use self::model::{
     Article, ArticleContent, ArticleQuery, ArticleStatus, ArticleUrlStatus, ArticleUrlStatusQuery,

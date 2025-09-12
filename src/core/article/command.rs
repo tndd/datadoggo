@@ -30,7 +30,7 @@ pub async fn store_article_content(article: &ArticleContent, pool: &PgPool) -> R
 /// URLから記事を取得して保存する（クライアント注入）
 ///
 /// DI版を正とし、常に `FirecrawlClient` を注入する。
-pub async fn fetch_and_store_article(
+pub async fn fetch_via_firecrawl_and_store_article_content(
     url: &str,
     client: &dyn FirecrawlClient,
     pool: &PgPool,
@@ -234,7 +234,7 @@ mod tests {
             let client = MockFirecrawlClient::new_success("モック記事内容");
             let url = "https://success.com/article";
 
-            let result = fetch_and_store_article(url, &client, &pool).await?;
+            let result = fetch_via_firecrawl_and_store_article_content(url, &client, &pool).await?;
 
             // 戻り値確認
             assert_eq!(result.url, url);
@@ -263,7 +263,7 @@ mod tests {
             let client = MockFirecrawlClient::new_error("取得エラー");
             let url = "https://error.com/article";
 
-            let result = fetch_and_store_article(url, &client, &pool).await?;
+            let result = fetch_via_firecrawl_and_store_article_content(url, &client, &pool).await?;
 
             // 戻り値確認（エラー時はstatus_code=500）
             assert_eq!(result.url, url);
@@ -298,7 +298,8 @@ mod tests {
             ];
 
             for (url, client) in urls {
-                let _result = fetch_and_store_article(url, client, &pool).await?;
+                let _result =
+                    fetch_via_firecrawl_and_store_article_content(url, client, &pool).await?;
             }
 
             // 全件確認
