@@ -8,6 +8,12 @@ repos:
         types_or: [rust, toml]
         pass_filenames: false
         always_run: true
+      - id: cargo-clippy
+        name: cargo clippy (deny warnings)
+        entry: bash -c 'cargo clippy --all-targets --all-features -- -D warnings'
+        language: system
+        types_or: [rust, toml]
+        pass_filenames: false
       - id: cargo-test
         name: cargo test
         entry: cargo test --all --locked
