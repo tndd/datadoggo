@@ -1,10 +1,8 @@
 use anyhow::{Context, Result};
 use sqlx::PgPool;
 
-use super::model::{
-    Article, ArticleJoinRow, ArticleJoinRowQuery, ArticleQuery, ArticleStatus, ArticleUrlStatus,
-    ArticleUrlStatusQuery,
-};
+use super::model::{Article, ArticleJoinRow, ArticleStatus, ArticleUrlStatus};
+use super::query::{ArticleJoinRowQuery, ArticleQuery, ArticleUrlStatusQuery};
 
 /// ArticleUrlStatusを取得する（読み取り）
 pub async fn search_article_url_statuses(
