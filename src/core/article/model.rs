@@ -28,6 +28,8 @@ pub enum ArticleStatus {
 pub struct ArticleUrlStatus {
     pub url: String,
     pub status_code: Option<i32>,
+    // 記事の公開日時。再取得優先度の判断などに用いる（低レベル用途）
+    pub pub_date: DateTime<Utc>,
 }
 
 // ArticleLinkとArticleのJOIN結果をそのまま受け取るDB用の構造体
@@ -190,10 +192,15 @@ mod tests {
             let url_status = ArticleUrlStatus {
                 url: "https://example.com".to_string(),
                 status_code: Some(200),
+                pub_date: Utc.with_ymd_and_hms(2023, 12, 25, 10, 30, 0).unwrap(),
             };
 
             assert_eq!(url_status.url, "https://example.com");
             assert_eq!(url_status.status_code, Some(200));
+            assert_eq!(
+                url_status.pub_date,
+                Utc.with_ymd_and_hms(2023, 12, 25, 10, 30, 0).unwrap()
+            );
         }
 
         /// ArticleUrlStatusのシリアライゼーションテスト
@@ -203,11 +210,13 @@ mod tests {
             let url_status = ArticleUrlStatus {
                 url: "https://example.com".to_string(),
                 status_code: Some(404),
+                pub_date: Utc.with_ymd_and_hms(2023, 12, 31, 23, 59, 59).unwrap(),
             };
 
             let json = serde_json::to_string(&url_status).unwrap();
             assert!(json.contains("\"url\":\"https://example.com\""));
             assert!(json.contains("\"status_code\":404"));
+            assert!(json.contains("\"pub_date\":\"2023-12-31T23:59:59Z\""));
         }
 
         /// ArticleUrlStatusのNoneステータスコードテスト
@@ -217,11 +226,13 @@ mod tests {
             let url_status = ArticleUrlStatus {
                 url: "https://example.com".to_string(),
                 status_code: None,
+                pub_date: Utc.with_ymd_and_hms(2023, 1, 1, 0, 0, 0).unwrap(),
             };
 
             let json = serde_json::to_string(&url_status).unwrap();
             assert!(json.contains("\"url\":\"https://example.com\""));
             assert!(json.contains("\"status_code\":null"));
+            assert!(json.contains("\"pub_date\":\"2023-01-01T00:00:00Z\""));
         }
     }
 

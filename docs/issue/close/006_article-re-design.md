@@ -89,15 +89,17 @@ mod.rsとは従属的な関係となる。
 ---
 
 テーブル定義:
-| Field       | Type        |
-| ----------- | ----------- |
-| url         | String      |
-| status_code | Option<i32> |
+| Field       | Type                  |
+| ----------- | --------------------- |
+| url         | String                |
+| status_code | Option<i32>           |
+| pub_date    | DateTime<Utc>         |
 
 ---
 
 注意点:
 - このArticleUrlStatus追加に伴い、その取得のためのクエリと関数とテストの実装が必要となる
+- 失敗URL抽出や優先度付けの判断材料として `pub_date` を保持する（既存テーブル `article_links.pub_date` の値）
 
 ## ArticleJoinRow
 - `ArticleLink`と`Article`のJOIN結果をそのまま受け取るDB用の構造体

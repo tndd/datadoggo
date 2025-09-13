@@ -14,7 +14,7 @@ pub async fn search_article_url_statuses(
         normalize_statuses(query.statuses.as_deref());
 
     let sql = r#"
-        SELECT l.url, a.status_code
+        SELECT l.url, a.status_code, l.pub_date
         FROM article_links AS l
         LEFT JOIN articles AS a ON l.url = a.url
         WHERE ($1::text IS NULL OR l.url ILIKE '%' || $1 || '%')
