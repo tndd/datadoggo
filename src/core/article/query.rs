@@ -14,6 +14,8 @@ pub struct ArticleQuery {
 #[derive(Debug, Default)]
 pub struct ArticleUrlStatusQuery {
     pub url_pattern: Option<String>,
+    pub pub_date_from: Option<DateTime<Utc>>,
+    pub pub_date_to: Option<DateTime<Utc>>,
     pub statuses: Option<Vec<ArticleStatus>>,
     pub limit: Option<i64>,
 }
@@ -93,6 +95,8 @@ mod tests {
         fn test_article_url_status_query_default() {
             let query = ArticleUrlStatusQuery::default();
             assert!(query.url_pattern.is_none());
+            assert!(query.pub_date_from.is_none());
+            assert!(query.pub_date_to.is_none());
             assert!(query.statuses.is_none());
             assert!(query.limit.is_none());
         }
@@ -101,14 +105,20 @@ mod tests {
         /// 目的: 各フィールドが正常に設定されることを確認
         #[test]
         fn test_article_url_status_query_fields() {
+            let from_date = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
+            let to_date = Utc.with_ymd_and_hms(2025, 1, 1, 23, 59, 59).unwrap();
             let statuses = vec![ArticleStatus::Success, ArticleStatus::Error(404)];
             let query = ArticleUrlStatusQuery {
                 url_pattern: Some("example.com".to_string()),
+                pub_date_from: Some(from_date),
+                pub_date_to: Some(to_date),
                 statuses: Some(statuses.clone()),
                 limit: Some(50),
             };
 
             assert_eq!(query.url_pattern, Some("example.com".to_string()));
+            assert_eq!(query.pub_date_from, Some(from_date));
+            assert_eq!(query.pub_date_to, Some(to_date));
             assert_eq!(query.statuses, Some(statuses));
             assert_eq!(query.limit, Some(50));
         }

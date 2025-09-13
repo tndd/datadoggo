@@ -18,20 +18,24 @@ pub async fn search_article_url_statuses(
         FROM article_links AS l
         LEFT JOIN articles AS a ON l.url = a.url
         WHERE ($1::text IS NULL OR l.url ILIKE '%' || $1 || '%')
+          AND ($2::timestamptz IS NULL OR l.pub_date >= $2)
+          AND ($3::timestamptz IS NULL OR l.pub_date <= $3)
           AND (
-                NOT $2
+                NOT $4
              OR (
-                    (COALESCE($3::bool, false) AND a.status_code IS NULL)
-                 OR (COALESCE($4::bool, false) AND a.status_code = 200)
-                 OR ($5::int[] IS NOT NULL AND a.status_code = ANY($5))
+                    (COALESCE($5::bool, false) AND a.status_code IS NULL)
+                 OR (COALESCE($6::bool, false) AND a.status_code = 200)
+                 OR ($7::int[] IS NOT NULL AND a.status_code = ANY($7))
                 )
           )
         ORDER BY l.url ASC
-        LIMIT $6
+        LIMIT $8
     "#;
 
     let results = sqlx::query_as::<_, ArticleUrlStatus>(sql)
         .bind(query.url_pattern)
+        .bind(query.pub_date_from)
+        .bind(query.pub_date_to)
         .bind(apply_status)
         .bind(has_unprocessed)
         .bind(has_success)
@@ -279,6 +283,7 @@ mod tests {
                 url_pattern: None,
                 statuses: Some(vec![ArticleStatus::Unprocessed]),
                 limit: None,
+                ..Default::default()
             };
             let unprocessed = search_article_url_statuses(Some(q), &pool).await?;
             assert_eq!(unprocessed.len(), 1);
@@ -289,6 +294,7 @@ mod tests {
                 url_pattern: None,
                 statuses: Some(vec![ArticleStatus::Success]),
                 limit: None,
+                ..Default::default()
             };
             let success = search_article_url_statuses(Some(q), &pool).await?;
             assert_eq!(success.len(), 1);
@@ -299,6 +305,7 @@ mod tests {
                 url_pattern: None,
                 statuses: Some(vec![ArticleStatus::Error(404)]),
                 limit: None,
+                ..Default::default()
             };
             let not_found = search_article_url_statuses(Some(q), &pool).await?;
             assert_eq!(not_found.len(), 1);
@@ -314,6 +321,7 @@ mod tests {
                 url_pattern: Some("https://limit.test".to_string()),
                 statuses: None,
                 limit: Some(2),
+                ..Default::default()
             };
             let results = search_article_url_statuses(Some(q), &pool).await?;
             assert_eq!(results.len(), 2);
@@ -325,6 +333,24 @@ mod tests {
                     "https://limit.test/b".to_string(),
                 ]
             );
+            Ok(())
+        }
+
+        /// 目的: pub_date 範囲フィルタが包含(>=, <=)で効くこと
+        /// 検証観点: exact-start と exact-end を含み、before を除外する
+        #[sqlx::test(fixtures("search_pub_date_range"))]
+        async fn test_pub_date_range_filters(pool: PgPool) -> Result<(), anyhow::Error> {
+            let q = ArticleUrlStatusQuery {
+                url_pattern: Some("https://date.test".to_string()),
+                pub_date_from: Some(ts("2025-01-01T00:00:00Z")),
+                pub_date_to: Some(ts("2025-01-01T23:59:59Z")),
+                ..Default::default()
+            };
+            let results = search_article_url_statuses(Some(q), &pool).await?;
+            let urls = get_urls(&results, |x| &x.url);
+            assert!(urls.contains(&"https://date.test/exact-start".to_string()));
+            assert!(urls.contains(&"https://date.test/exact-end".to_string()));
+            assert!(!urls.contains(&"https://date.test/before".to_string()));
             Ok(())
         }
     }
