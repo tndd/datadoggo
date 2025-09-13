@@ -53,7 +53,9 @@ pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Resu
     let query = query.unwrap_or_default();
 
     // ドメイン要件に合致する行だけをDB側で抽出
-    // - 成功(200)のみ（contentはスキーマ上NOT NULLのため追加条件は不要）
+    // - 成功(200)のみ
+    // - テーブル定義上、contentがnullにはなりえない。最低でも空文字列が入る。
+    //   - 空文字列はそれ自体に意味があるものとして現状では扱うこととする
     // - timestampは必須（updated_atとして受け取る）
     let sql = r#"
         SELECT l.url,
