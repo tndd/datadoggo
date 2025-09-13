@@ -89,19 +89,20 @@ mod.rsとは従属的な関係となる。
 ---
 
 テーブル定義:
-| Field       | Type        |
-| ----------- | ----------- |
-| url         | String      |
-| status_code | Option<i32> |
+| Field       | Type                  |
+| ----------- | --------------------- |
+| url         | String                |
+| status_code | Option<i32>           |
+| pub_date    | DateTime<Utc>         |
 
 ---
 
 注意点:
 - このArticleUrlStatus追加に伴い、その取得のためのクエリと関数とテストの実装が必要となる
+- 失敗URL抽出や優先度付けの判断材料として `pub_date` を保持する（既存テーブル `article_links.pub_date` の値）
 
-## ArticleJoinRow
-- `ArticleLink`と`Article`のJOIN結果をそのまま受け取るDB用の構造体
-- 外部には公開しない
+## ArticleJoinRow（廃止）
+この中間体は廃止。`search_articles` はDB側で成功行のみを絞り込み、`Article` を直接 `FromRow` で受け取る。
 
 ---
 
@@ -123,8 +124,8 @@ mod.rsとは従属的な関係となる。
   - timestampは`Article`における`update_at`
   - sourceは`Article`には変換されない
 
-## ArticleJoinRowQuery
-- `ArticleJoinRow` を取得する際に使用するクエリモデル
+## ArticleJoinRowQuery（廃止）
+`ArticleJoinRow` 廃止に伴い不要。期間・パターン・件数等の条件は `ArticleQuery` に集約。
 
 ---
 
@@ -140,8 +141,8 @@ mod.rsとは従属的な関係となる。
 
 ---
 
-## search_article_join_rows()
-- `ArticleJoinRowQuery` を受け取り、`Vec<ArticleJoinRow>` を返す関数
+## search_article_join_rows()（廃止）
+低レベルJOINの取得関数は削除。`search_articles` が直接SQLで `Article` を返す。
 
 # 要望
 - 過度な抽象化は控えること

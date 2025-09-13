@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use sqlx::PgPool;
 
-use crate::core::article::model::{Article, ArticleJoinRow, ArticleStatus, ArticleUrlStatus};
-use crate::core::article::query::{ArticleJoinRowQuery, ArticleQuery, ArticleUrlStatusQuery};
+use crate::core::article::model::{Article, ArticleStatus, ArticleUrlStatus};
+use crate::core::article::query::{ArticleQuery, ArticleUrlStatusQuery};
 
 /// ArticleUrlStatusを取得する（読み取り）
 pub async fn search_article_url_statuses(
@@ -14,104 +14,7 @@ pub async fn search_article_url_statuses(
         normalize_statuses(query.statuses.as_deref());
 
     let sql = r#"
-        SELECT l.url, a.status_code
-        FROM article_links AS l
-        LEFT JOIN articles AS a ON l.url = a.url
-        WHERE ($1::text IS NULL OR l.url ILIKE '%' || $1 || '%')
-          AND (
-                NOT $2
-             OR (
-                    (COALESCE($3::bool, false) AND a.status_code IS NULL)
-                 OR (COALESCE($4::bool, false) AND a.status_code = 200)
-                 OR ($5::int[] IS NOT NULL AND a.status_code = ANY($5))
-                )
-          )
-        ORDER BY l.url ASC
-        LIMIT $6
-    "#;
-
-    let results = sqlx::query_as::<_, ArticleUrlStatus>(sql)
-        .bind(query.url_pattern)
-        .bind(apply_status)
-        .bind(has_unprocessed)
-        .bind(has_success)
-        .bind(error_codes)
-        .bind(query.limit)
-        .fetch_all(pool)
-        .await
-        .context("記事URL状態情報の取得に失敗")?;
-
-    Ok(results)
-}
-
-/// ドメイン向けArticleを取得（status_code=200のみ、結合行から変換）
-pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
-    let query = query.unwrap_or_default();
-
-    // 低レベルのJOIN検索クエリに変換
-    let join_query = ArticleJoinRowQuery {
-        link_pattern: query.link_pattern,
-        pub_date_from: query.pub_date_from,
-        pub_date_to: query.pub_date_to,
-        statuses: Some(vec![ArticleStatus::Success]), // 成功したもののみ
-        source: None,
-        limit: query.limit,
-    };
-
-    let join_rows = search_article_join_rows(Some(join_query), pool).await?;
-
-    // ArticleJoinRowからArticleに変換
-    let mut dropped_count = 0;
-    let articles: Result<Vec<Article>, _> = join_rows
-        .into_iter()
-        .filter_map(|row| {
-            // contentが存在し、かつ空でないことを is_some_and で簡潔に表現
-            if row.status_code == Some(200)
-                && row.content.as_ref().is_some_and(|c| !c.is_empty())
-                && row.timestamp.is_some()
-            {
-                Some(Ok(Article {
-                    url: row.url,
-                    title: row.title,
-                    pub_date: row.pub_date,
-                    updated_at: row.timestamp.expect("フィルタ条件で確認済みのtimestampがNone"),
-                    content: row.content.expect("フィルタ条件で確認済みのcontentがNone"),
-                }))
-            } else {
-                dropped_count += 1;
-                if cfg!(debug_assertions) {
-                    eprintln!(
-                        "記事レコードをスキップ: url={}, status_code={:?}, content_exists={}, timestamp_exists={}",
-                        row.url,
-                        row.status_code,
-                        row.content.is_some(),
-                        row.timestamp.is_some()
-                    );
-                }
-                None
-            }
-        })
-        .collect();
-
-    if dropped_count > 0 {
-        println!("{}件の無効な記事レコードをスキップしました", dropped_count);
-    }
-
-    articles
-}
-
-/// ArticleJoinRowを取得する（読み取り）
-async fn search_article_join_rows(
-    query: Option<ArticleJoinRowQuery>,
-    pool: &PgPool,
-) -> Result<Vec<ArticleJoinRow>> {
-    let query = query.unwrap_or_default();
-    let (apply_status, has_unprocessed, has_success, error_codes) =
-        normalize_statuses(query.statuses.as_deref());
-
-    let sql = r#"
-        SELECT l.url, l.title, l.pub_date, l.source,
-               a.timestamp, a.status_code, a.content
+        SELECT l.url, a.status_code, l.pub_date
         FROM article_links AS l
         LEFT JOIN articles AS a ON l.url = a.url
         WHERE ($1::text IS NULL OR l.url ILIKE '%' || $1 || '%')
@@ -125,26 +28,59 @@ async fn search_article_join_rows(
                  OR ($7::int[] IS NOT NULL AND a.status_code = ANY($7))
                 )
           )
-          AND ($8::text IS NULL OR l.source = $8)
-        ORDER BY l.pub_date DESC
-        LIMIT $9
+        ORDER BY l.url ASC
+        LIMIT $8
     "#;
 
-    let results = sqlx::query_as::<_, ArticleJoinRow>(sql)
-        .bind(query.link_pattern)
+    let results = sqlx::query_as::<_, ArticleUrlStatus>(sql)
+        .bind(query.url_pattern)
         .bind(query.pub_date_from)
         .bind(query.pub_date_to)
         .bind(apply_status)
         .bind(has_unprocessed)
         .bind(has_success)
         .bind(error_codes)
-        .bind(query.source)
         .bind(query.limit)
         .fetch_all(pool)
         .await
-        .context("記事結合情報の取得に失敗")?;
+        .context("記事URL状態情報の取得に失敗")?;
 
     Ok(results)
+}
+
+/// ドメイン向けArticleを取得（status_code=200のみを直接SQLで取得）
+pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
+    let query = query.unwrap_or_default();
+
+    // ドメイン要件に合致する行だけをDB側で抽出
+    // - 成功(200)のみ（contentはスキーマ上NOT NULLのため追加条件は不要）
+    // - timestampは必須（updated_atとして受け取る）
+    let sql = r#"
+        SELECT l.url,
+               l.title,
+               l.pub_date,
+               a.timestamp AS updated_at,
+               a.content
+        FROM article_links AS l
+        JOIN articles AS a ON l.url = a.url
+        WHERE ($1::text IS NULL OR l.url ILIKE '%' || $1 || '%')
+          AND ($2::timestamptz IS NULL OR l.pub_date >= $2)
+          AND ($3::timestamptz IS NULL OR l.pub_date <= $3)
+          AND a.status_code = 200
+        ORDER BY l.pub_date DESC
+        LIMIT $4
+    "#;
+
+    let articles = sqlx::query_as::<_, Article>(sql)
+        .bind(query.link_pattern)
+        .bind(query.pub_date_from)
+        .bind(query.pub_date_to)
+        .bind(query.limit)
+        .fetch_all(pool)
+        .await
+        .context("記事(成功のみ)の取得に失敗")?;
+
+    Ok(articles)
 }
 
 // 内部実装：statuses指定の正規化（このモジュール内のみで使用する）
@@ -178,7 +114,7 @@ fn normalize_statuses(statuses: Option<&[ArticleStatus]>) -> (bool, bool, bool, 
 mod tests {
     use super::*;
     use crate::core::article::model::ArticleStatus;
-    use crate::core::article::query::{ArticleJoinRowQuery, ArticleQuery, ArticleUrlStatusQuery};
+    use crate::core::article::query::{ArticleQuery, ArticleUrlStatusQuery};
     use chrono::{DateTime, Utc};
     use sqlx::PgPool;
 
@@ -279,6 +215,7 @@ mod tests {
                 url_pattern: None,
                 statuses: Some(vec![ArticleStatus::Unprocessed]),
                 limit: None,
+                ..Default::default()
             };
             let unprocessed = search_article_url_statuses(Some(q), &pool).await?;
             assert_eq!(unprocessed.len(), 1);
@@ -289,6 +226,7 @@ mod tests {
                 url_pattern: None,
                 statuses: Some(vec![ArticleStatus::Success]),
                 limit: None,
+                ..Default::default()
             };
             let success = search_article_url_statuses(Some(q), &pool).await?;
             assert_eq!(success.len(), 1);
@@ -299,6 +237,7 @@ mod tests {
                 url_pattern: None,
                 statuses: Some(vec![ArticleStatus::Error(404)]),
                 limit: None,
+                ..Default::default()
             };
             let not_found = search_article_url_statuses(Some(q), &pool).await?;
             assert_eq!(not_found.len(), 1);
@@ -314,6 +253,7 @@ mod tests {
                 url_pattern: Some("https://limit.test".to_string()),
                 statuses: None,
                 limit: Some(2),
+                ..Default::default()
             };
             let results = search_article_url_statuses(Some(q), &pool).await?;
             assert_eq!(results.len(), 2);
@@ -327,6 +267,24 @@ mod tests {
             );
             Ok(())
         }
+
+        /// 目的: pub_date 範囲フィルタが包含(>=, <=)で効くこと
+        /// 検証観点: exact-start と exact-end を含み、before を除外する
+        #[sqlx::test(fixtures("search_pub_date_range"))]
+        async fn test_pub_date_range_filters(pool: PgPool) -> Result<(), anyhow::Error> {
+            let q = ArticleUrlStatusQuery {
+                url_pattern: Some("https://date.test".to_string()),
+                pub_date_from: Some(ts("2025-01-01T00:00:00Z")),
+                pub_date_to: Some(ts("2025-01-01T23:59:59Z")),
+                ..Default::default()
+            };
+            let results = search_article_url_statuses(Some(q), &pool).await?;
+            let urls = get_urls(&results, |x| &x.url);
+            assert!(urls.contains(&"https://date.test/exact-start".to_string()));
+            assert!(urls.contains(&"https://date.test/exact-end".to_string()));
+            assert!(!urls.contains(&"https://date.test/before".to_string()));
+            Ok(())
+        }
     }
 
     // DB使用テスト: search_articles（ドメインArticleを返すフィルタ付き）
@@ -334,16 +292,15 @@ mod tests {
         use super::helper::*;
         use super::*;
 
-        /// 目的: 成功(200)かつcontent非空・timestamp有りのみが返ること
-        /// 検証観点: JOIN -> フィルタ -> Article変換 の一連の正当性
+        /// 目的: 成功(200)かつtimestamp有りの記事が返ること（contentは空文字も許容）
+        /// 検証観点: 直接SQLでの絞り込み（status=200）とマッピングの正当性
         #[sqlx::test(fixtures("search"))]
         async fn test_basic_filter_and_transform(pool: PgPool) -> Result<(), anyhow::Error> {
             let results = search_articles(None, &pool).await?;
             // search.sql には 200&content有り が3件以上含まれる前提
             assert!(results.len() >= 3);
 
-            // いずれもcontent非空・URL妥当性
-            assert!(results.iter().all(|a| !a.content.is_empty()));
+            // URL妥当性（代表例）
             assert!(results
                 .iter()
                 .any(|a| a.url.contains("example.com/article-1")));
@@ -353,97 +310,30 @@ mod tests {
             Ok(())
         }
 
-        /// 目的: 空文字contentは除外されること
-        /// 検証観点: content.is_empty() の除外ロジック
-        #[sqlx::test(fixtures("search_empty_content"))]
-        async fn test_drop_empty_content(pool: PgPool) -> Result<(), anyhow::Error> {
-            let results = search_articles(None, &pool).await?;
-            let urls = get_urls(&results, |x| &x.url);
-            assert!(urls.contains(&"https://empty.test/ok".to_string()));
-            assert!(!urls.contains(&"https://empty.test/empty".to_string()));
-            Ok(())
-        }
-
-        /// 目的: link_pattern・期間・limitの複合指定が正しく作用
-        /// 検証観点: ArticleJoinRowQueryへの変換ロジック含め E2E 確認
+        /// 目的: link_pattern・期間・limitの複合指定が正しく作用し、空文字contentの行も含まれる
+        /// 検証観点: 期間/パターン/limit のSQL適用に加え、空文字contentが返ること
         #[sqlx::test(fixtures("search"))]
         async fn test_pattern_date_limit(pool: PgPool) -> Result<(), anyhow::Error> {
             let q = ArticleQuery {
                 link_pattern: Some("another.com".to_string()),
                 pub_date_from: Some(ts("2025-02-01T00:00:00Z")),
                 pub_date_to: Some(ts("2025-02-01T23:59:59Z")),
-                // 注意: limitはJOIN前に適用されるため、ここでは指定しない
-                limit: None,
+                // LIMITは最終結果に対して適用される
+                limit: Some(2),
             };
             let results = search_articles(Some(q), &pool).await?;
-            assert!(!results.is_empty());
-            assert!(results[0].url.contains("another.com/path/ok"));
-            Ok(())
-        }
-    }
+            // 2件（ok, empty）に限定される
+            assert_eq!(results.len(), 2);
+            let urls: Vec<_> = results.iter().map(|a| a.url.as_str()).collect();
+            assert!(urls.contains(&"https://another.com/path/ok"));
+            assert!(urls.contains(&"https://another.com/path/empty"));
 
-    // DB使用テスト: search_article_join_rows（低レベルJOIN結果）
-    mod search_article_join_rows {
-        use super::helper::*;
-        use super::search_article_join_rows;
-        use super::*;
-
-        /// 目的: ステータス複合指定（Success + Error）で該当行のみ返る
-        /// 検証観点: normalize_statuses -> SQL条件のOR結合が正しく動作
-        #[sqlx::test(fixtures("search"))]
-        async fn test_status_mixed(pool: PgPool) -> Result<(), anyhow::Error> {
-            let q = ArticleJoinRowQuery {
-                link_pattern: None,
-                pub_date_from: None,
-                pub_date_to: None,
-                statuses: Some(vec![ArticleStatus::Success, ArticleStatus::Error(500)]),
-                source: None,
-                limit: None,
-            };
-            let rows = search_article_join_rows(Some(q), &pool).await?;
-            assert!(rows
+            // 空文字contentの行が含まれること
+            let empty = results
                 .iter()
-                .all(|r| r.status_code == Some(200) || r.status_code == Some(500)));
-            assert!(rows.iter().any(|r| r.status_code == Some(200)));
-            assert!(rows.iter().any(|r| r.status_code == Some(500)));
-            Ok(())
-        }
-
-        /// 目的: sourceフィルタで特定ソースのみ抽出できる
-        /// 検証観点: l.source = $8 の等価フィルタ
-        #[sqlx::test(fixtures("search_source_filter"))]
-        async fn test_source_filter(pool: PgPool) -> Result<(), anyhow::Error> {
-            let q = ArticleJoinRowQuery {
-                link_pattern: None,
-                pub_date_from: None,
-                pub_date_to: None,
-                statuses: Some(vec![ArticleStatus::Success]),
-                source: Some("rss".to_string()),
-                limit: None,
-            };
-            let rows = search_article_join_rows(Some(q), &pool).await?;
-            assert!(!rows.is_empty());
-            assert!(rows.iter().all(|r| r.source == "rss"));
-            Ok(())
-        }
-
-        /// 目的: 期間境界が含まれる（>=, <=）ことを確認
-        /// 検証観点: pub_date_from/toのinclusive動作
-        #[sqlx::test(fixtures("search_pub_date_range"))]
-        async fn test_date_range_inclusive(pool: PgPool) -> Result<(), anyhow::Error> {
-            let q = ArticleJoinRowQuery {
-                link_pattern: None,
-                pub_date_from: Some(ts("2025-01-01T00:00:00Z")),
-                pub_date_to: Some(ts("2025-01-01T23:59:59Z")),
-                statuses: Some(vec![ArticleStatus::Success]),
-                source: None,
-                limit: None,
-            };
-            let rows = search_article_join_rows(Some(q), &pool).await?;
-            let urls = get_urls(&rows, |x| &x.url);
-            assert!(urls.contains(&"https://date.test/exact-start".to_string()));
-            assert!(urls.contains(&"https://date.test/exact-end".to_string()));
-            assert!(!urls.contains(&"https://date.test/before".to_string()));
+                .find(|a| a.url == "https://another.com/path/empty")
+                .expect("空文字contentのURLが含まれる");
+            assert!(empty.content.is_empty());
             Ok(())
         }
     }
