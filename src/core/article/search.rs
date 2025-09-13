@@ -310,39 +310,30 @@ mod tests {
             Ok(())
         }
 
-        /// 目的: link_pattern・期間・limitの複合指定が正しく作用
-        /// 検証観点: 期間/パターン/limit のSQL適用をE2E確認
+        /// 目的: link_pattern・期間・limitの複合指定が正しく作用し、空文字contentの行も含まれる
+        /// 検証観点: 期間/パターン/limit のSQL適用に加え、空文字contentが返ること
         #[sqlx::test(fixtures("search"))]
         async fn test_pattern_date_limit(pool: PgPool) -> Result<(), anyhow::Error> {
             let q = ArticleQuery {
                 link_pattern: Some("another.com".to_string()),
                 pub_date_from: Some(ts("2025-02-01T00:00:00Z")),
                 pub_date_to: Some(ts("2025-02-01T23:59:59Z")),
-                // 注意: limitはJOIN前に適用されるため、ここでは指定しない
-                limit: None,
+                // LIMITは最終結果に対して適用される
+                limit: Some(2),
             };
             let results = search_articles(Some(q), &pool).await?;
-            assert!(!results.is_empty());
-            assert!(results
-                .iter()
-                .any(|a| a.url.contains("another.com/path/ok")));
-            Ok(())
-        }
+            // 2件（ok, empty）に限定される
+            assert_eq!(results.len(), 2);
+            let urls: Vec<_> = results.iter().map(|a| a.url.as_str()).collect();
+            assert!(urls.contains(&"https://another.com/path/ok"));
+            assert!(urls.contains(&"https://another.com/path/empty"));
 
-        /// 目的: 空文字contentのレコードも取得対象になること
-        /// 検証観点: スキーマ上NOT NULL（空文字はあり得る）であることを前提に、空文字を保持したまま返す
-        #[sqlx::test(fixtures("search"))]
-        async fn test_include_empty_content(pool: PgPool) -> Result<(), anyhow::Error> {
-            let results = search_articles(None, &pool).await?;
-            // 対象URLが含まれていること
-            let target = results
+            // 空文字contentの行が含まれること
+            let empty = results
                 .iter()
-                .find(|a| a.url == "https://another.com/path/empty");
-            assert!(target.is_some(), "空文字contentのURLが返ってくること");
-            assert!(
-                target.unwrap().content.is_empty(),
-                "contentは空文字であること"
-            );
+                .find(|a| a.url == "https://another.com/path/empty")
+                .expect("空文字contentのURLが含まれる");
+            assert!(empty.content.is_empty());
             Ok(())
         }
     }
