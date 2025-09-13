@@ -29,7 +29,6 @@ pub enum ArticleStatus {
 pub struct ArticleUrlStatus {
     pub url: String,
     pub status_code: Option<i32>,
-    // 記事の公開日時。再取得優先度の判断などに用いる（低レベル用途）
     pub pub_date: DateTime<Utc>,
 }
 
