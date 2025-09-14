@@ -16,24 +16,12 @@ pub struct ArticleLink {
     pub source: String,
 }
 
-// RSSのチャンネルから<item>要素のリンク情報を抽出する関数
-pub fn get_article_links_from_channel(channel: &Channel) -> Vec<ArticleLink> {
-    channel
-        .items()
-        .iter()
-        .filter_map(|item| {
-            let link = item.link()?;
-            let pub_date_str = item.pub_date()?;
-            let parsed_date = parse_date(pub_date_str).ok()?;
-
-            Some(ArticleLink {
-                url: link.to_string(),
-                title: item.title().unwrap_or("タイトルなし").to_string(),
-                pub_date: parsed_date,
-                source: "rss".to_string(),
-            })
-        })
-        .collect()
+// 記事のフィルター条件を表す構造体
+#[derive(Debug, Default)]
+pub struct ArticleLinkQuery {
+    pub link_pattern: Option<String>,
+    pub pub_date_from: Option<DateTime<Utc>>,
+    pub pub_date_to: Option<DateTime<Utc>>,
 }
 
 /// feedからarticle_linkのリストを取得する
@@ -46,7 +34,7 @@ pub async fn get_article_links_from_feed<H: HttpClient>(
         .await
         .context(format!("RSSフィードの取得に失敗: {}", feed))?;
     let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
-    let article_links = get_article_links_from_channel(&channel);
+    let article_links = parse_article_links_from_channel(&channel);
 
     Ok(article_links)
 }
@@ -89,14 +77,6 @@ pub async fn store_article_links(article_links: &[ArticleLink], pool: &PgPool) -
     .context("記事リンクのバルクUPSERT処理に失敗しました")?;
 
     Ok(())
-}
-
-// 記事のフィルター条件を表す構造体
-#[derive(Debug, Default)]
-pub struct ArticleLinkQuery {
-    pub link_pattern: Option<String>,
-    pub pub_date_from: Option<DateTime<Utc>>,
-    pub pub_date_to: Option<DateTime<Utc>>,
 }
 
 /// # 概要
@@ -147,6 +127,26 @@ pub async fn search_backlog_article_links(pool: &PgPool) -> Result<Vec<ArticleLi
     .context("未処理記事リンクの取得に失敗")?;
 
     Ok(links)
+}
+
+// RSSのチャンネルから<item>要素のリンク情報を抽出する関数
+fn parse_article_links_from_channel(channel: &Channel) -> Vec<ArticleLink> {
+    channel
+        .items()
+        .iter()
+        .filter_map(|item| {
+            let link = item.link()?;
+            let pub_date_str = item.pub_date()?;
+            let parsed_date = parse_date(pub_date_str).ok()?;
+
+            Some(ArticleLink {
+                url: link.to_string(),
+                title: item.title().unwrap_or("タイトルなし").to_string(),
+                pub_date: parsed_date,
+                source: "rss".to_string(),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -210,7 +210,7 @@ mod tests {
                 </rss>
                 "#;
             let channel = parse_channel_from_xml_str(xml).expect("Failed to parse test RSS");
-            let article_links = get_article_links_from_channel(&channel);
+            let article_links = parse_article_links_from_channel(&channel);
 
             assert_eq!(article_links.len(), 2, "2件の記事が抽出されるはず");
             assert_eq!(article_links[0].title, "Test Article 1");
@@ -233,7 +233,7 @@ mod tests {
                 assert!(result.is_ok(), "{}のRSSファイル読み込みに失敗", feed_name);
 
                 let channel = result.unwrap();
-                let article_links = get_article_links_from_channel(&channel);
+                let article_links = parse_article_links_from_channel(&channel);
                 assert!(!article_links.is_empty(), "{}の記事が0件", feed_name);
 
                 validate_article_links(&article_links);
