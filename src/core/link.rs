@@ -24,8 +24,8 @@ pub struct ArticleLinkQuery {
     pub pub_date_to: Option<DateTime<Utc>>,
 }
 
-/// feedからarticle_linkのリストを取得する
-pub async fn get_article_links_from_feed<H: HttpClient>(
+/// feedを用いてarticle_linkのリストを取得する
+pub async fn fetch_article_links_using_feed<H: HttpClient>(
     client: &H,
     feed: &Feed,
 ) -> Result<Vec<ArticleLink>> {
@@ -34,7 +34,7 @@ pub async fn get_article_links_from_feed<H: HttpClient>(
         .await
         .context(format!("RSSフィードの取得に失敗: {}", feed))?;
     let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
-    let article_links = parse_article_links_from_channel(&channel);
+    let article_links = get_article_links_from_channel(&channel);
 
     Ok(article_links)
 }
@@ -130,7 +130,7 @@ pub async fn search_backlog_article_links(pool: &PgPool) -> Result<Vec<ArticleLi
 }
 
 // RSSのチャンネルから<item>要素のリンク情報を抽出する関数
-fn parse_article_links_from_channel(channel: &Channel) -> Vec<ArticleLink> {
+fn get_article_links_from_channel(channel: &Channel) -> Vec<ArticleLink> {
     channel
         .items()
         .iter()
@@ -210,7 +210,7 @@ mod tests {
                 </rss>
                 "#;
             let channel = parse_channel_from_xml_str(xml).expect("Failed to parse test RSS");
-            let article_links = parse_article_links_from_channel(&channel);
+            let article_links = get_article_links_from_channel(&channel);
 
             assert_eq!(article_links.len(), 2, "2件の記事が抽出されるはず");
             assert_eq!(article_links[0].title, "Test Article 1");
@@ -233,7 +233,7 @@ mod tests {
                 assert!(result.is_ok(), "{}のRSSファイル読み込みに失敗", feed_name);
 
                 let channel = result.unwrap();
-                let article_links = parse_article_links_from_channel(&channel);
+                let article_links = get_article_links_from_channel(&channel);
                 assert!(!article_links.is_empty(), "{}の記事が0件", feed_name);
 
                 validate_article_links(&article_links);
@@ -374,7 +374,7 @@ mod tests {
                 rss_link: "https://example.com/rss.xml".to_string(),
             };
 
-            let result = get_article_links_from_feed(&mock_client, &test_feed).await;
+            let result = fetch_article_links_using_feed(&mock_client, &test_feed).await;
 
             assert!(result.is_ok(), "RSSフィードの取得が失敗");
 
@@ -435,7 +435,7 @@ mod tests {
                 rss_link: "https://example.com/error.xml".to_string(),
             };
 
-            let result = get_article_links_from_feed(&error_client, &test_feed).await;
+            let result = fetch_article_links_using_feed(&error_client, &test_feed).await;
 
             assert!(result.is_err(), "エラーが発生するべき");
             let error_msg = result.unwrap_err().to_string();

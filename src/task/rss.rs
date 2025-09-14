@@ -1,7 +1,7 @@
 use crate::{
     core::{
         feed::Feed,
-        link::{get_article_links_from_feed, store_article_links},
+        link::{fetch_article_links_using_feed, store_article_links},
     },
     infra::api::http::HttpClient,
 };
@@ -19,7 +19,7 @@ pub async fn task_collect_article_links<H: HttpClient>(
     for feed in feeds {
         println!("フィード処理中: {}", feed);
 
-        match get_article_links_from_feed(client, feed).await {
+        match fetch_article_links_using_feed(client, feed).await {
             Ok(article_links) => {
                 println!("  {}件のリンクを抽出", article_links.len());
 
