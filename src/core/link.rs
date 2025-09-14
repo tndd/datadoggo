@@ -109,26 +109,6 @@ pub async fn search_article_links(
     Ok(article_links)
 }
 
-/// 未処理かエラーの記事リンクを取得する
-pub async fn search_backlog_article_links(pool: &PgPool) -> Result<Vec<ArticleLink>> {
-    let links = sqlx::query_as!(
-        ArticleLink,
-        r#"
-        SELECT al.url, al.title, al.pub_date, al.source
-        FROM article_links al
-        LEFT JOIN articles a ON al.url = a.url
-        WHERE a.url IS NULL OR a.status_code != 200
-        ORDER BY al.pub_date DESC
-        LIMIT 100
-        "#
-    )
-    .fetch_all(pool)
-    .await
-    .context("未処理記事リンクの取得に失敗")?;
-
-    Ok(links)
-}
-
 // RSSのチャンネルから<item>要素のリンク情報を抽出する関数
 fn get_article_links_from_channel(channel: &Channel) -> Vec<ArticleLink> {
     channel
@@ -651,35 +631,6 @@ mod tests {
                 .collect();
             assert!(urls.iter().any(|url| url.contains("CaseSensitive")));
             assert!(urls.iter().any(|url| url.contains("casesensitive")));
-            Ok(())
-        }
-    }
-
-    // バックログ取得のテストを独立モジュール化
-    mod search_backlog_article_links {
-        use super::*;
-
-        #[sqlx::test(fixtures("rss_backlog"))]
-        async fn test_search_backlog_article_links(pool: PgPool) -> Result<(), anyhow::Error> {
-            let backlog_links = search_backlog_article_links(&pool).await?;
-            assert_eq!(backlog_links.len(), 6);
-            super::validate_date_sort_desc(&backlog_links);
-            let links: Vec<&str> = backlog_links.iter().map(|l| l.url.as_str()).collect();
-            assert!(links.contains(&"https://example.com/unprocessed-article-1"));
-            assert!(links.contains(&"https://example.com/unprocessed-article-2"));
-            assert!(links.contains(&"https://example.com/error-article-1"));
-            assert!(links.contains(&"https://example.com/error-article-2"));
-            assert!(links.contains(&"https://example.com/timeout-article"));
-            assert!(links.contains(&"https://example.com/notfound-article"));
-            Ok(())
-        }
-
-        #[sqlx::test]
-        async fn test_search_backlog_article_links_empty(
-            pool: PgPool,
-        ) -> Result<(), anyhow::Error> {
-            let backlog_links = search_backlog_article_links(&pool).await?;
-            assert_eq!(backlog_links.len(), 0);
             Ok(())
         }
     }
