@@ -48,6 +48,21 @@ pub async fn search_article_url_statuses(
     Ok(results)
 }
 
+// 未処理か失敗したバックログ記事のリンクを取得
+pub async fn search_backlog_article_links(pool: &PgPool) -> Result<Vec<String>> {
+    // 全てのステータスを取得し、成功(200)以外をフィルタリング
+    let url_statuses = search_article_url_statuses(None, pool).await?;
+
+    // 未処理(status_code = None)または失敗(status_code != 200)のURLのみを抽出
+    let backlog_urls: Vec<String> = url_statuses
+        .into_iter()
+        .filter(|status| status.status_code.is_none() || status.status_code != Some(200))
+        .map(|status| status.url)
+        .collect();
+
+    Ok(backlog_urls)
+}
+
 /// ドメイン向けArticleを取得（status_code=200のみを直接SQLで取得）
 pub async fn search_articles(query: Option<ArticleQuery>, pool: &PgPool) -> Result<Vec<Article>> {
     let query = query.unwrap_or_default();
@@ -336,6 +351,188 @@ mod tests {
                 .find(|a| a.url == "https://another.com/path/empty")
                 .expect("空文字contentのURLが含まれる");
             assert!(empty.content.is_empty());
+            Ok(())
+        }
+    }
+
+    // DB使用テスト: search_backlog_article_links
+    mod search_backlog_article_links {
+        use super::*;
+
+        /// 目的: 未処理・エラー・成功記事の基本的な分類処理を包括的に検証
+        /// 検証観点:
+        /// - 未処理記事（articlesテーブル未存在）が取得される
+        /// - エラー記事（status_code != 200）が取得される
+        /// - 成功記事（status_code = 200）が除外される
+        /// - 各種エラーコード（404,500,502,403）が適切に処理される
+        #[sqlx::test(fixtures("search_backlog_article_links"))]
+        async fn test_comprehensive_backlog_classification(
+            pool: PgPool,
+        ) -> Result<(), anyhow::Error> {
+            let backlog_urls = search_backlog_article_links(&pool).await?;
+
+            // 9件が取得される（未処理5件 + エラー4件）
+            assert_eq!(
+                backlog_urls.len(),
+                9,
+                "バックログURLが期待と異なる: {}件",
+                backlog_urls.len()
+            );
+
+            // 未処理記事が含まれることを確認
+            assert!(
+                backlog_urls
+                    .iter()
+                    .any(|url| url.contains("unprocessed.example.com")),
+                "未処理記事のURLが含まれていません"
+            );
+            let unprocessed_count = backlog_urls
+                .iter()
+                .filter(|url| url.contains("unprocessed.example.com"))
+                .count();
+            assert_eq!(unprocessed_count, 5, "未処理記事数が期待と異なります");
+
+            // 各種エラーコードの記事が含まれることを確認
+            assert!(
+                backlog_urls.iter().any(|url| url.contains("not-found")),
+                "404エラー記事が含まれていません"
+            );
+            assert!(
+                backlog_urls.iter().any(|url| url.contains("server-error")),
+                "500エラー記事が含まれていません"
+            );
+            assert!(
+                backlog_urls.iter().any(|url| url.contains("bad-gateway")),
+                "502エラー記事が含まれていません"
+            );
+            assert!(
+                backlog_urls.iter().any(|url| url.contains("forbidden")),
+                "403エラー記事が含まれていません"
+            );
+            let error_count = backlog_urls
+                .iter()
+                .filter(|url| url.contains("error.example.com"))
+                .count();
+            assert_eq!(error_count, 4, "エラー記事数が期待と異なります");
+
+            // 成功記事が除外されることを確認
+            assert!(
+                !backlog_urls
+                    .iter()
+                    .any(|url| url.contains("success.example.com")),
+                "成功記事のURLが除外されていません"
+            );
+
+            Ok(())
+        }
+
+        /// 目的: 境界条件での動作確認（全件成功・全件未処理）
+        /// 検証観点:
+        /// - 全件成功時に空配列が返される
+        /// - 全件未処理時に全記事が返される
+        #[sqlx::test(fixtures("search_backlog_article_links"))]
+        async fn test_boundary_conditions(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 境界条件1: 全件成功状態をテスト
+            // 未処理記事にarticlesエントリを追加（全て成功として）
+            sqlx::query!(
+                r#"
+                INSERT INTO articles (url, timestamp, status_code, content)
+                SELECT url, NOW(), 200, 'テスト成功内容'
+                FROM article_links
+                WHERE url LIKE '%unprocessed%'
+            "#
+            )
+            .execute(&pool)
+            .await?;
+            // エラー記事を成功に変更
+            sqlx::query!("UPDATE articles SET status_code = 200 WHERE status_code != 200")
+                .execute(&pool)
+                .await?;
+
+            let all_success_backlog = search_backlog_article_links(&pool).await?;
+            assert_eq!(
+                all_success_backlog.len(),
+                0,
+                "全件成功時にバックログが空でありません: {}件",
+                all_success_backlog.len()
+            );
+
+            // 境界条件2: 全件未処理状態をテスト
+            // 全てのarticlesを削除
+            sqlx::query!("DELETE FROM articles").execute(&pool).await?;
+
+            let all_unprocessed_backlog = search_backlog_article_links(&pool).await?;
+            assert_eq!(
+                all_unprocessed_backlog.len(),
+                12,
+                "全件未処理時に期待と異なる件数: {}件",
+                all_unprocessed_backlog.len()
+            );
+
+            // 全記事が取得されることを確認
+            let all_domains_count = all_unprocessed_backlog
+                .iter()
+                .filter(|url| {
+                    url.contains("unprocessed.example.com")
+                        || url.contains("error.example.com")
+                        || url.contains("success.example.com")
+                })
+                .count();
+            assert_eq!(
+                all_domains_count, 12,
+                "全記事が未処理として取得されていません"
+            );
+
+            Ok(())
+        }
+
+        /// 目的: 性能と安定性の確認（大量データ処理）
+        /// 検証観点:
+        /// - 大量のバックログデータでも正常に動作する
+        /// - メモリ効率とクエリ性能が適切である
+        #[sqlx::test(fixtures("search_backlog_article_links"))]
+        async fn test_performance_and_stability(pool: PgPool) -> Result<(), anyhow::Error> {
+            // 大量の未処理記事を追加（50件）
+            for i in 1..=50 {
+                sqlx::query!(
+                    "INSERT INTO article_links (url, title, pub_date, source) VALUES ($1, $2, $3, $4)",
+                    format!("https://large.example.com/article{}", i),
+                    format!("大量テスト記事{}", i),
+                    chrono::Utc::now(),
+                    "test"
+                ).execute(&pool).await?;
+            }
+
+            let backlog_urls = search_backlog_article_links(&pool).await?;
+
+            // 元の9件 + 追加の50件 = 59件
+            assert_eq!(
+                backlog_urls.len(),
+                59,
+                "大量バックログの件数が期待と異なります: {}件",
+                backlog_urls.len()
+            );
+
+            // 追加した記事が適切に含まれることを確認
+            let large_count = backlog_urls
+                .iter()
+                .filter(|url| url.contains("large.example.com"))
+                .count();
+            assert_eq!(
+                large_count, 50,
+                "追加した大量記事が正しく取得されていません"
+            );
+
+            // 重複がないことを確認（性能と安定性の指標）
+            let mut sorted_urls = backlog_urls.clone();
+            sorted_urls.sort();
+            sorted_urls.dedup();
+            assert_eq!(
+                sorted_urls.len(),
+                backlog_urls.len(),
+                "重複したURLが存在します"
+            );
+
             Ok(())
         }
     }
