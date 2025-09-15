@@ -7,7 +7,6 @@ edition = "2021"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "macros", "migrate", "chrono"] }
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
 rss = "2.0"
-dotenvy = "0.15"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
@@ -18,10 +17,6 @@ async-trait = "0.1"
 reqwest = { version = "0.11", features = ["json"] }
 firecrawl-sdk = "0.3.1"
 sha2 = "0.10"
-
-[dev-dependencies]
-ctor = "0.2"
-httpmock = "0.7"
 
 [features]
 default = []
