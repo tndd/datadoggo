@@ -1,94 +1,112 @@
--- search_backlog_article_links テスト用のフィクスチャ
--- 未処理またはエラーの記事リンクを取得するテスト用データ
-
--- 記事リンクデータ
+-- 記事のテストデータ（ArticleLink構造対応：link, title, pub_date, sourceフィールド）
 INSERT INTO article_links (url, title, pub_date, source)
-VALUES 
-    -- 未処理リンク（articlesテーブルに対応するレコードなし）
+VALUES -- 基本テストデータ（save_testsで重複テスト用として使用）
     (
-        'https://example.com/unprocessed-article-1',
-        '未処理記事1',
-        '2025-09-04T10:00:00Z',
+        'https://test.example.com/article1',
+        'テスト記事1',
+        '2025-08-26T10:00:00Z',
         'test'
     ),
     (
-        'https://example.com/unprocessed-article-2',
-        '未処理記事2',
-        '2025-09-04T09:00:00Z',
-        'test'
-    ),
-    -- エラー状態のリンク（status_code != 200）
-    (
-        'https://example.com/error-article-1',
-        'エラー記事1',
-        '2025-09-04T08:00:00Z',
+        'https://test.example.com/article2',
+        'テスト記事2',
+        '2025-08-26T11:00:00Z',
         'test'
     ),
     (
-        'https://example.com/error-article-2',
-        'エラー記事2',
-        '2025-09-04T07:00:00Z',
-        'test'
-    ),
-    -- 正常処理済みリンク（status_code = 200）
-    (
-        'https://example.com/success-article-1',
-        '正常記事1',
-        '2025-09-04T06:00:00Z',
+        'https://news.sample.org/breaking',
+        'ニュース記事',
+        '2025-08-26T09:30:00Z',
         'test'
     ),
     (
-        'https://example.com/success-article-2',
-        '正常記事2',
-        '2025-09-04T05:00:00Z',
+        'https://blog.tech.net/update',
+        '技術ブログ',
+        '2025-08-26T12:15:00Z',
         'test'
     ),
-    -- 複数エラーパターン
+    -- 日付境界テスト用（厳密な境界値）
     (
-        'https://example.com/timeout-article',
-        'タイムアウト記事',
-        '2025-09-04T04:00:00Z',
+        'https://test.com/boundary/exactly-start',
+        'Boundary Start Article',
+        '2025-01-15T00:00:00Z',
         'test'
     ),
     (
-        'https://example.com/notfound-article',
-        '404記事',
-        '2025-09-04T03:00:00Z',
+        'https://test.com/boundary/exactly-end',
+        'Boundary End Article',
+        '2025-01-15T23:59:59Z',
+        'test'
+    ),
+    (
+        'https://test.com/boundary/one-second-before',
+        'Just Before Range',
+        '2025-01-14T23:59:59Z',
+        'test'
+    ),
+    (
+        'https://test.com/boundary/one-second-after',
+        'Just After Range',
+        '2025-01-16T00:00:01Z',
+        'test'
+    ),
+    -- 取得機能テスト用
+    (
+        'https://example.com/tech/article-2025-01-15',
+        'Tech News 2025',
+        '2025-01-15T10:00:00Z',
+        'test'
+    ),
+    (
+        'https://news.example.com/world/breaking-news',
+        'Breaking World News',
+        '2025-01-14T15:30:00Z',
+        'test'
+    ),
+    (
+        'https://blog.example.com/lifestyle/health-tips',
+        'Health Tips for 2025',
+        '2025-01-16T08:45:00Z',
+        'test'
+    ),
+    -- URL部分一致テスト用
+    (
+        'https://example.com/test',
+        'Simple Test',
+        '2025-01-10T12:00:00Z',
+        'test'
+    ),
+    (
+        'https://not-example.com/test',
+        'Not Example Test',
+        '2025-01-11T12:00:00Z',
+        'test'
+    ),
+    -- 特殊文字・エスケープテスト用
+    (
+        'https://special.com/article%20with%20spaces',
+        'Article With Spaces',
+        '2025-01-13T12:00:00Z',
+        'test'
+    ),
+    (
+        'https://special.com/article_with_underscore',
+        'Article With Underscore',
+        '2025-01-13T13:00:00Z',
+        'test'
+    ),
+    -- 大小文字混合テスト用（ILIKE確認）
+    (
+        'https://CaseSensitive.com/MixedCase',
+        'Mixed Case Article',
+        '2025-01-14T12:00:00Z',
+        'test'
+    ),
+    -- シンプル記事（pub_date必須のため残す）
+    (
+        'https://minimal.site.com/simple',
+        'シンプル記事',
+        '2025-08-26T13:45:00Z',
         'test'
     );
-
--- 記事データ（エラーと正常のみ）
-INSERT INTO articles (url, status_code, content)
-VALUES 
-    -- エラー記事（status_code != 200）
-    (
-        'https://example.com/error-article-1',
-        500,
-        'サーバーエラー'
-    ),
-    (
-        'https://example.com/error-article-2',
-        503,
-        'サービス利用不可'
-    ),
-    (
-        'https://example.com/timeout-article',
-        408,
-        'リクエストタイムアウト'
-    ),
-    (
-        'https://example.com/notfound-article',
-        404,
-        'ページが見つかりません'
-    ),
-    -- 正常記事（status_code = 200）
-    (
-        'https://example.com/success-article-1',
-        200,
-        '正常な記事内容1'
-    ),
-    (
-        'https://example.com/success-article-2',
-        200,
-        '正常な記事内容2'
-    );
+-- 注意：pub_dateがNULLのレコードは新しいスキーマでは対応不可のため削除
