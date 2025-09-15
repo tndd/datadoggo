@@ -1,4 +1,4 @@
--- search_backlog_article_links専用テストfixture
+-- search_backlog_urls専用テストfixture
 -- バックログ記事（未処理 + エラー記事）の取得機能を包括的にテストするためのデータ
 
 -- article_linksデータ（12件）

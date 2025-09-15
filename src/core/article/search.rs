@@ -49,7 +49,7 @@ pub async fn search_article_url_statuses(
 }
 
 // 未処理か失敗したバックログ記事のリンクを取得
-pub async fn search_backlog_article_links(pool: &PgPool) -> Result<Vec<String>> {
+pub async fn search_backlog_urls(pool: &PgPool) -> Result<Vec<String>> {
     // 全てのステータスを取得し、成功(200)以外をフィルタリング
     let url_statuses = search_article_url_statuses(None, pool).await?;
 
@@ -355,8 +355,8 @@ mod tests {
         }
     }
 
-    // DB使用テスト: search_backlog_article_links
-    mod search_backlog_article_links {
+    // DB使用テスト: search_backlog_urls
+    mod search_backlog_urls {
         use super::*;
 
         /// 目的: 未処理・エラー・成功記事の基本的な分類処理を包括的に検証
@@ -365,11 +365,11 @@ mod tests {
         /// - エラー記事（status_code != 200）が取得される
         /// - 成功記事（status_code = 200）が除外される
         /// - 各種エラーコード（404,500,502,403）が適切に処理される
-        #[sqlx::test(fixtures("search_backlog_article_links"))]
+        #[sqlx::test(fixtures("search_backlog_urls"))]
         async fn test_comprehensive_backlog_classification(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
-            let backlog_urls = search_backlog_article_links(&pool).await?;
+            let backlog_urls = search_backlog_urls(&pool).await?;
 
             // 9件が取得される（未処理5件 + エラー4件）
             assert_eq!(
@@ -430,7 +430,7 @@ mod tests {
         /// 検証観点:
         /// - 全件成功時に空配列が返される
         /// - 全件未処理時に全記事が返される
-        #[sqlx::test(fixtures("search_backlog_article_links"))]
+        #[sqlx::test(fixtures("search_backlog_urls"))]
         async fn test_boundary_conditions(pool: PgPool) -> Result<(), anyhow::Error> {
             // 境界条件1: 全件成功状態をテスト
             // 未処理記事にarticlesエントリを追加（全て成功として）
@@ -449,7 +449,7 @@ mod tests {
                 .execute(&pool)
                 .await?;
 
-            let all_success_backlog = search_backlog_article_links(&pool).await?;
+            let all_success_backlog = search_backlog_urls(&pool).await?;
             assert_eq!(
                 all_success_backlog.len(),
                 0,
@@ -461,7 +461,7 @@ mod tests {
             // 全てのarticlesを削除
             sqlx::query!("DELETE FROM articles").execute(&pool).await?;
 
-            let all_unprocessed_backlog = search_backlog_article_links(&pool).await?;
+            let all_unprocessed_backlog = search_backlog_urls(&pool).await?;
             assert_eq!(
                 all_unprocessed_backlog.len(),
                 12,
