@@ -4,8 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# ── DB層（現状維持。chrono/migrateもそのまま） ───────────────
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "macros", "migrate", "chrono"] }
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+
+# ── ランタイム（必要最小の機能だけ明示。fullは使わない） ─────
+tokio = { version = "1.47", default-features = false, features = ["macros", "rt-multi-thread", "time", "sync", "net", "io-util"] }
+
+# ── RSS/Serde 系（現状維持） ────────────────────────────────
 rss = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -14,7 +19,13 @@ chrono = { version = "0.4", features = ["serde"] }
 dateparser = "0.2"
 anyhow = "1.0"
 async-trait = "0.1"
-reqwest = { version = "0.11", features = ["json"] }
+
+# ── HTTP/TLS を rustls 系に統一（ここが肝） ─────────────────
+# 0.11 → 0.12 へ。native-tls（security-framework）を落とすため default-features を切る
+# http2/gzip は従来の挙動を大体カバーするために付けておく（不要なら後で外せる）
+reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls", "http2", "json", "gzip"] }
+
+# ── その他 ────────────────────────────────────────────────
 firecrawl-sdk = "0.3.1"
 sha2 = "0.10"
 
