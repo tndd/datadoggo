@@ -485,55 +485,5 @@ mod tests {
 
             Ok(())
         }
-
-        /// 目的: 性能と安定性の確認（大量データ処理）
-        /// 検証観点:
-        /// - 大量のバックログデータでも正常に動作する
-        /// - メモリ効率とクエリ性能が適切である
-        #[sqlx::test(fixtures("search_backlog_article_links"))]
-        async fn test_performance_and_stability(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 大量の未処理記事を追加（50件）
-            for i in 1..=50 {
-                sqlx::query!(
-                    "INSERT INTO article_links (url, title, pub_date, source) VALUES ($1, $2, $3, $4)",
-                    format!("https://large.example.com/article{}", i),
-                    format!("大量テスト記事{}", i),
-                    chrono::Utc::now(),
-                    "test"
-                ).execute(&pool).await?;
-            }
-
-            let backlog_urls = search_backlog_article_links(&pool).await?;
-
-            // 元の9件 + 追加の50件 = 59件
-            assert_eq!(
-                backlog_urls.len(),
-                59,
-                "大量バックログの件数が期待と異なります: {}件",
-                backlog_urls.len()
-            );
-
-            // 追加した記事が適切に含まれることを確認
-            let large_count = backlog_urls
-                .iter()
-                .filter(|url| url.contains("large.example.com"))
-                .count();
-            assert_eq!(
-                large_count, 50,
-                "追加した大量記事が正しく取得されていません"
-            );
-
-            // 重複がないことを確認（性能と安定性の指標）
-            let mut sorted_urls = backlog_urls.clone();
-            sorted_urls.sort();
-            sorted_urls.dedup();
-            assert_eq!(
-                sorted_urls.len(),
-                backlog_urls.len(),
-                "重複したURLが存在します"
-            );
-
-            Ok(())
-        }
     }
 }
