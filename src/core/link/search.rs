@@ -1,5 +1,4 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
 use crate::core::link::model::{ArticleLink, ArticleLinkQuery};
@@ -38,6 +37,7 @@ pub async fn search_article_links(
 mod tests {
     use super::*;
     use crate::infra::parser::parse_date;
+    use chrono::{DateTime, Utc};
 
     // 日付ソートの検証ヘルパー関数
     fn validate_date_sort_desc(article_links: &[ArticleLink]) {
