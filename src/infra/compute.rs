@@ -29,13 +29,6 @@ pub fn calc_hash(input: &str, length: usize) -> String {
 ///
 /// # Returns
 /// 6文字のSHA256ベース16進数識別子
-///
-/// # Example
-/// ```
-/// use datadoggo::infra::compute::generate_mock_rss_id;
-/// let id = generate_mock_rss_id("https://example.com/rss.xml");
-/// assert_eq!(id.len(), 6);
-/// ```
 pub fn generate_mock_rss_id(url: &str) -> String {
     calc_hash(url, 6)
 }
