@@ -3,5 +3,9 @@
         "rust": "cd $workspaceRoot && cargo test"
     },
     "code-runner.clearPreviousOutput": true,
-    "code-runner.runInTerminal": true
+    "code-runner.runInTerminal": true,
+    "rust-analyzer.testExplorer": true,
+    "rust-analyzer.linkedProjects": [
+        "./Cargo.toml"
+    ]
 }
