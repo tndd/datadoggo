@@ -32,7 +32,7 @@ pub async fn workflow_news<H: HttpClient, F: FirecrawlClient>(
         }
     }
 
-    let rss_links = search_rss_links(query).context("フィード設定の読み込みに失敗")?;
+    let rss_links = search_rss_links(query.as_ref()).context("フィード設定の読み込みに失敗")?;
 
     if rss_links.is_empty() {
         println!("対象のフィードが見つかりませんでした");
@@ -65,7 +65,7 @@ mod tests {
         async fn test_basic(pool: PgPool) -> Result<(), anyhow::Error> {
             // 実際のrss/link.ymlからBBCグループのフィード数を取得
             let bbc_query = Some(RssLinkQuery::from_group("bbc"));
-            let bbc_rss_links = search_rss_links(bbc_query.clone())?;
+            let bbc_rss_links = search_rss_links(bbc_query.as_ref())?;
             let expected_bbc_links_count = bbc_rss_links.len();
 
             assert!(
@@ -223,7 +223,7 @@ mod tests {
 
             // 実際のrss/link.ymlからBBCグループのフィード数を取得
             let bbc_query = Some(RssLinkQuery::from_group("bbc"));
-            let bbc_feeds = search_rss_links(bbc_query.clone())?;
+            let bbc_feeds = search_rss_links(bbc_query.as_ref())?;
             let expected_bbc_feed_count = bbc_feeds.len();
 
             let result_firecrawl_error = workflow_news(

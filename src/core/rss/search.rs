@@ -8,9 +8,9 @@ use anyhow::{Context, Result};
 /// 3. group & name指定
 ///
 /// 内部でcore/rss/link.ymlファイルを読み込み、指定されたクエリでフィルタリングする
-pub fn search_rss_links(query: Option<RssLinkQuery>) -> Result<Vec<RssLink>> {
+pub fn search_rss_links(query: Option<&RssLinkQuery>) -> Result<Vec<RssLink>> {
     let rss_links = load_rss_links_from_yaml("src/core/rss/link.yml")?;
-    let query = query.unwrap_or_default();
+    let query = query.cloned().unwrap_or_default();
 
     let filtered_rss_links = rss_links
         .iter()
@@ -80,7 +80,7 @@ mod tests {
                 group: Some("bbc".to_string()),
                 name: None,
             };
-            let rss_links = search_rss_links(Some(query)).unwrap();
+            let rss_links = search_rss_links(Some(&query)).unwrap();
             assert!(!rss_links.is_empty());
             assert!(rss_links.iter().all(|f| f.group == "bbc"));
         }
@@ -91,7 +91,7 @@ mod tests {
                 group: Some("bbc".to_string()),
                 name: Some("world".to_string()),
             };
-            let rss_links = search_rss_links(Some(query)).unwrap();
+            let rss_links = search_rss_links(Some(&query)).unwrap();
             assert_eq!(rss_links.len(), 1);
             assert_eq!(rss_links[0].group, "bbc");
             assert_eq!(rss_links[0].name, "world");
