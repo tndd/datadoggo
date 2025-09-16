@@ -39,24 +39,24 @@ pub type RssLinkMap = HashMap<String, HashMap<String, String>>;
 mod tests {
     use super::*;
 
-    mod feed_display {
+    mod rss_link_display {
         use super::*;
 
         #[test]
-        fn test_feed_display_format() {
-            let feed = RssLink {
+        fn test_rss_link_display_format() {
+            let rss_link = RssLink {
                 group: "bbc".to_string(),
                 name: "world".to_string(),
                 url: "https://feeds.bbci.co.uk/news/world/rss.xml".to_string(),
             };
             assert_eq!(
-                format!("{}", feed),
+                format!("{}", rss_link),
                 "bbc/world (https://feeds.bbci.co.uk/news/world/rss.xml)"
             );
         }
     }
 
-    mod feed_query {
+    mod rss_link_query {
         use super::*;
 
         #[test]
