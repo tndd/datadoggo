@@ -39,8 +39,11 @@ pub fn search_feeds(query: Option<RssLinkQuery>) -> Result<Vec<RssLink>> {
 
 /// core/rss/link.ymlからフィード情報を読み込み、RssLinkのベクタとして返す
 fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<RssLink>> {
-    let rss_link_map: RssLinkMap = load_yaml_from_file(file_path)
+    let yaml_value = load_yaml_from_file(file_path)
         .with_context(|| format!("RSSリンクYAMLファイルの読み込みに失敗: {}", file_path))?;
+
+    let rss_link_map: RssLinkMap = serde_yaml::from_value(yaml_value)
+        .with_context(|| format!("YAMLデータの変換に失敗: {}", file_path))?;
 
     let mut feeds = Vec::new();
 
