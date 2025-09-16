@@ -34,7 +34,7 @@ INSERT INTO articles (url, timestamp, status_code, content) VALUES
 ('https://entertainment-feed3.example.com/story-1', '2025-01-20T10:40:00Z', 404, '見つからなかったエンタメ記事');
 
 -- バッチ処理境界のテスト用
--- search_backlog_article_links の LIMIT 100 境界を意識したデータ
+-- search_backlog_urls の LIMIT 100 境界を意識したデータ
 INSERT INTO article_links (url, title, pub_date, source) VALUES
 -- 大量の未処理記事（実際の境界テスト用）
 ('https://batch-test.example.com/unprocessed-01', '未処理記事01', '2025-01-19T09:00:00Z', 'batch-test'),

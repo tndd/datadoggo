@@ -1,7 +1,7 @@
 use crate::{
-    core::{
-        article::{fetch_article_content_via_firecrawl, store_article_content, ArticleContent},
-        link::search_backlog_article_links,
+    core::article::{
+        fetch_article_content_via_firecrawl, search_backlog_urls, store_article_content,
+        ArticleContent,
     },
     infra::api::firecrawl::FirecrawlClient,
 };
@@ -15,14 +15,14 @@ pub async fn task_collect_articles<F: FirecrawlClient>(
 ) -> Result<()> {
     println!("--- 記事内容取得開始 ---");
     // 未処理のリンクを取得（articleテーブルに存在しないarticle_linkを取得）
-    let unprocessed_links = search_backlog_article_links(pool).await?;
+    let unprocessed_links = search_backlog_urls(pool).await?;
     println!("未処理リンク数: {}件", unprocessed_links.len());
 
     for article_link in unprocessed_links {
-        println!("記事処理中: {}", article_link.url);
+        println!("記事処理中: {}", article_link);
 
         let article_result =
-            fetch_article_content_via_firecrawl(&article_link.url, firecrawl_client).await;
+            fetch_article_content_via_firecrawl(&article_link, firecrawl_client).await;
 
         match article_result {
             Ok(article) => match store_article_content(&article, pool).await {
@@ -38,7 +38,7 @@ pub async fn task_collect_articles<F: FirecrawlClient>(
 
                 // エラーが発生した場合も、status_codeを記録してスキップ
                 let error_article = ArticleContent {
-                    url: article_link.url,
+                    url: article_link,
                     timestamp: chrono::Utc::now(),
                     status_code: 500, // エラー用のステータスコード
                     content: format!("取得エラー: {}", e),
@@ -275,7 +275,7 @@ mod tests {
                 let error_client = MockFirecrawlClient::new_error("一部記事でAPI障害");
 
                 // 初期状態のバックログ数を確認
-                let initial_backlog = search_backlog_article_links(&pool).await?;
+                let initial_backlog = search_backlog_urls(&pool).await?;
                 let initial_backlog_count = initial_backlog.len();
 
                 assert!(
@@ -319,7 +319,7 @@ mod tests {
                 );
 
                 // 処理が中断せずに最後まで実行されたことを確認
-                let final_backlog = search_backlog_article_links(&pool).await?;
+                let final_backlog = search_backlog_urls(&pool).await?;
 
                 // エラー記事は再処理対象として残る（status_code != 200）
                 assert!(
@@ -340,7 +340,7 @@ mod tests {
                 let success_client = MockFirecrawlClient::new_success("成功記事内容");
 
                 // concurrent_processing fixtureには処理済み・未処理の混在データが含まれる
-                let initial_backlog = search_backlog_article_links(&pool).await?;
+                let initial_backlog = search_backlog_urls(&pool).await?;
                 let initial_backlog_count = initial_backlog.len();
 
                 let initial_success_count =
@@ -373,7 +373,7 @@ mod tests {
                         .await?;
 
                 // バックログがすべて処理されたことを確認
-                let final_backlog = search_backlog_article_links(&pool).await?;
+                let final_backlog = search_backlog_urls(&pool).await?;
                 assert_eq!(
                     final_backlog.len(),
                     0,
