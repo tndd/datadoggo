@@ -10,7 +10,7 @@
 - 外部通信が走るものは feature flag "online" で通常実行から除外
 - テスト件数上限: 1つの関数/構造体/トレイトにつき最大5件
 - 価値の高いテストを優先（境界・内部仕様に依存する壊れやすい箇所）
-- feeds.yaml の実ファイル依存は現状維持（今は変更しない）
+- rss/link.yml の実ファイル依存は現状維持（今は変更しない）
 
 ---
 
@@ -86,7 +86,7 @@
 - インライン配置により
   - モジュール分割・リネーム時に `#[sqlx::test(fixtures(...))]` の相対参照が壊れやすい
   - テストの横断検索・重複排除・共通化が難しい
-- 実ファイル依存（例: `feeds.yaml`）により、環境差分の影響を受けやすい
+- 実ファイル依存（例: `rss/link.yml`）により、環境差分の影響を受けやすい
 - フィクスチャ散在により、データ意図とテスト対象の対応が追いにくい
 
 ---
@@ -104,7 +104,7 @@
   - 既存通り“同階層”に配置し、`#[sqlx::test(fixtures("…"))]` の相対参照は簡素なまま維持
   - フィクスチャ名の命名規約のみ整理（例: `rss_*.sql`, `service_*.sql`, `task_*.sql`）
 
-- feeds.yaml 依存
+- rss/link.yml 依存
   - 現状維持（`app/workflow.rs` の統合テストは実ファイルを使用）
 
 - テスト件数の最適化（価値優先）
@@ -122,7 +122,7 @@
   - `error_recovery_tests` を `mod task_collect_articles { … }` 配下に統一（basic/mixed/error_reprocessing/partial_failure/mixed_result）
 
 - `src/app/workflow.rs`
-  - 変更なし（feeds.yaml 依存は現状維持）。`mod online` の位置づけ明確化のみ検討可
+  - 変更なし（rss/link.yml 依存は現状維持）。`mod online` の位置づけ明確化のみ検討可
 
 - `src/core/rss.rs`
   - `xml_parsing_tests` → `mod get_article_links_from_channel { … }`
@@ -170,7 +170,7 @@
 ## 結論
 - 現状のテストは「量・観点」は充実しており、プロジェクト方針（インライン方式・同階層fixtures）にも概ね適合しています。
 - 主要な改善点は「命名とサブモジュール構成の統一」と「1対象あたり最大5件への厳選」です。特に `src/core/rss.rs` の `search_article_links` は代表ケースへの絞り込みが必要です。
-- feeds.yaml 依存は現状維持としつつも、将来的に必要であればフィクスチャ化の選択肢は残せます（今回の範囲では不変更）。
+- rss/link.yml 依存は現状維持としつつも、将来的に必要であればフィクスチャ化の選択肢は残せます（今回の範囲では不変更）。
 
 ---
 
