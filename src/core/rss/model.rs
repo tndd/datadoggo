@@ -9,6 +9,7 @@ pub struct RssLink {
     pub url: String,
 }
 
+// TODO: 正式なログ実装
 impl fmt::Display for RssLink {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}/{} ({})", self.group, self.name, self.url)
