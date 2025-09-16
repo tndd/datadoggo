@@ -1,5 +1,5 @@
 use crate::core::link::model::ArticleLink;
-use crate::core::rss::Feed;
+use crate::core::rss::RssLink;
 use crate::infra::api::http::HttpClient;
 use crate::infra::parser::{parse_channel_from_xml_str, parse_date};
 use anyhow::{Context, Result};
@@ -8,10 +8,10 @@ use rss::Channel;
 /// feedを用いてarticle_linkのリストを取得する
 pub async fn fetch_article_links_using_feed<H: HttpClient>(
     client: &H,
-    feed: &Feed,
+    feed: &RssLink,
 ) -> Result<Vec<ArticleLink>> {
     let xml_content = client
-        .fetch(&feed.rss_link, 30)
+        .fetch(&feed.url, 30)
         .await
         .context(format!("RSSフィードの取得に失敗: {}", feed))?;
     let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
@@ -133,10 +133,10 @@ mod tests {
             // 動的XML生成を使用するモッククライアント
             let mock_client = MockHttpClient::new_success();
 
-            let test_feed = Feed {
+            let test_feed = RssLink {
                 group: "test".to_string(),
                 name: "テストフィード".to_string(),
-                rss_link: "https://example.com/rss.xml".to_string(),
+                url: "https://example.com/rss.xml".to_string(),
             };
 
             let result = fetch_article_links_using_feed(&mock_client, &test_feed).await;
@@ -148,7 +148,7 @@ mod tests {
 
             // URLハッシュを計算
             use crate::infra::compute::generate_mock_rss_id;
-            let hash = generate_mock_rss_id(&test_feed.rss_link);
+            let hash = generate_mock_rss_id(&test_feed.url);
 
             // 各記事の詳細検証
             for (index, link) in article_links.iter().enumerate() {
@@ -194,10 +194,10 @@ mod tests {
             // エラーを返すモッククライアント
             let error_client = MockHttpClient::new_error("接続タイムアウト");
 
-            let test_feed = Feed {
+            let test_feed = RssLink {
                 group: "test".to_string(),
                 name: "エラーテストフィード".to_string(),
-                rss_link: "https://example.com/error.xml".to_string(),
+                url: "https://example.com/error.xml".to_string(),
             };
 
             let result = fetch_article_links_using_feed(&error_client, &test_feed).await;

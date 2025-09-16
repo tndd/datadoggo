@@ -1,4 +1,4 @@
-use super::model::{Feed, FeedMap, FeedQuery};
+use super::model::{RssLink, RssLinkMap, RssLinkQuery};
 use crate::infra::storage::file::load_yaml_from_file;
 use anyhow::{Context, Result};
 
@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 /// 2. groupのみ指定
 /// 3. group & name指定
 ///
-/// 内部でfeeds.ymlファイルを読み込み、指定されたクエリでフィルタリングする
-pub fn search_feeds(query: Option<FeedQuery>) -> Result<Vec<Feed>> {
+/// 内部でcore/rss/link.ymlファイルを読み込み、指定されたクエリでフィルタリングする
+pub fn search_feeds(query: Option<RssLinkQuery>) -> Result<Vec<RssLink>> {
     let feeds = load_feeds_from_yaml("src/core/rss/link.yml")?;
     let query = query.unwrap_or_default();
 
@@ -37,19 +37,19 @@ pub fn search_feeds(query: Option<FeedQuery>) -> Result<Vec<Feed>> {
     Ok(filtered_feeds)
 }
 
-/// src/core/feed/feeds.ymlからフィード情報を読み込み、Feedのベクタとして返す
-fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<Feed>> {
-    let feed_map: FeedMap = load_yaml_from_file(file_path)
-        .with_context(|| format!("フィードYAMLファイルの読み込みに失敗: {}", file_path))?;
+/// core/rss/link.ymlからフィード情報を読み込み、RssLinkのベクタとして返す
+fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<RssLink>> {
+    let rss_link_map: RssLinkMap = load_yaml_from_file(file_path)
+        .with_context(|| format!("RSSリンクYAMLファイルの読み込みに失敗: {}", file_path))?;
 
     let mut feeds = Vec::new();
 
-    for (group, name_links) in feed_map {
+    for (group, name_links) in rss_link_map {
         for (name, link) in name_links {
-            feeds.push(Feed {
+            feeds.push(RssLink {
                 group: group.clone(),
                 name,
-                rss_link: link,
+                url: link,
             });
         }
     }
@@ -73,7 +73,7 @@ mod tests {
 
         #[test]
         fn test_group_only() {
-            let query = FeedQuery {
+            let query = RssLinkQuery {
                 group: Some("bbc".to_string()),
                 name: None,
             };
@@ -84,7 +84,7 @@ mod tests {
 
         #[test]
         fn test_group_and_name() {
-            let query = FeedQuery {
+            let query = RssLinkQuery {
                 group: Some("bbc".to_string()),
                 name: Some("world".to_string()),
             };

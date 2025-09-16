@@ -1,5 +1,5 @@
 use crate::{
-    core::rss::{search_feeds, FeedQuery},
+    core::rss::{search_feeds, RssLinkQuery},
     infra::api::{firecrawl::FirecrawlClient, http::HttpClient},
     task::{task_collect_article_links, task_collect_articles},
 };
@@ -27,7 +27,7 @@ pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
     }
 
     // feeds.yamlからフィード設定を読み込み
-    let query = group.map(FeedQuery::from_group);
+    let query = group.map(RssLinkQuery::from_group);
     let feeds = search_feeds(query).context("フィード設定の読み込みに失敗")?;
 
     if let Some(group_name) = group {
@@ -62,7 +62,7 @@ pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::rss::{search_feeds, FeedQuery};
+    use crate::core::rss::{search_feeds, RssLinkQuery};
     use crate::infra::api::{firecrawl::MockFirecrawlClient, http::MockHttpClient};
     use sqlx::PgPool;
 
@@ -74,7 +74,7 @@ mod tests {
         #[sqlx::test]
         async fn test_basic(pool: PgPool) -> Result<(), anyhow::Error> {
             // 実際のfeeds.yamlからBBCグループのフィード数を取得
-            let bbc_query = Some(FeedQuery::from_group("bbc"));
+            let bbc_query = Some(RssLinkQuery::from_group("bbc"));
             let bbc_feeds = search_feeds(bbc_query)?;
             let expected_bbc_feed_count = bbc_feeds.len();
 
@@ -236,7 +236,7 @@ mod tests {
             let error_firecrawl_client = MockFirecrawlClient::new_error("記事取得API障害");
 
             // 実際のfeeds.yamlからBBCグループのフィード数を取得
-            let bbc_query = Some(FeedQuery::from_group("bbc"));
+            let bbc_query = Some(RssLinkQuery::from_group("bbc"));
             let bbc_feeds = search_feeds(bbc_query)?;
             let expected_bbc_feed_count = bbc_feeds.len();
 
