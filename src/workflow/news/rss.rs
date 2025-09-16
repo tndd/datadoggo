@@ -9,7 +9,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 /// RSSフィードからリンクを収集してDBに保存する
-pub async fn task_collect_article_links<H: HttpClient>(
+pub(super) async fn task_collect_article_links<H: HttpClient>(
     client: &H,
     rss_links: &[RssLink],
     pool: &PgPool,

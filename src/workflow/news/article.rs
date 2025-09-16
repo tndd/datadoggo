@@ -9,7 +9,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 /// バックログ対象リンクから処理待ちの記事を収集してDBに保存する
-pub async fn task_collect_articles<F: FirecrawlClient>(
+pub(super) async fn task_collect_articles<F: FirecrawlClient>(
     firecrawl_client: &F,
     pool: &PgPool,
 ) -> Result<()> {

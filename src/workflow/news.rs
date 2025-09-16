@@ -8,8 +8,8 @@ use sqlx::PgPool;
 pub mod article;
 pub mod rss;
 
-pub use article::task_collect_articles;
-pub use rss::task_collect_article_links;
+use article::task_collect_articles;
+use rss::task_collect_article_links;
 
 /// ニュースワークフローのメイン実行関数（依存性を注入）
 ///
