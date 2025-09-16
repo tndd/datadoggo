@@ -17,7 +17,7 @@ impl fmt::Display for RssLink {
 }
 
 // RSSリンク検索のフィルター条件を表す構造体
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct RssLinkQuery {
     pub group: Option<String>,
     pub name: Option<String>,
