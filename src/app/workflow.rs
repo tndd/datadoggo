@@ -1,5 +1,5 @@
 use crate::{
-    core::rss::{search_feeds, RssLinkQuery},
+    core::rss::{search_rss_links, RssLinkQuery},
     infra::api::{firecrawl::FirecrawlClient, http::HttpClient},
     task::{task_collect_article_links, task_collect_articles},
 };
@@ -8,7 +8,7 @@ use sqlx::PgPool;
 
 /// RSSワークフローのメイン実行関数（依存性を注入）
 ///
-/// 1. feeds.yamlからフィード設定を読み込み
+/// 1. rss/link.ymlからフィード設定を読み込み
 /// 2. 各RSSフィードからリンクを取得してDBに保存
 /// 3. 未処理のリンクから記事内容を取得してDBに保存
 pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
@@ -27,23 +27,23 @@ pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
     }
 
     let query = group.map(RssLinkQuery::from_group);
-    let feeds = search_feeds(query).context("フィード設定の読み込みに失敗")?;
+    let rss_links = search_rss_links(query).context("フィード設定の読み込みに失敗")?;
 
     if let Some(group_name) = group {
-        if feeds.is_empty() {
+        if rss_links.is_empty() {
             println!(
                 "指定されたグループ '{}' のフィードが見つかりませんでした",
                 group_name
             );
             return Ok(());
         }
-        println!("対象フィード数: {}件", feeds.len());
+        println!("対象フィード数: {}件", rss_links.len());
     } else {
-        println!("フィード設定読み込み完了: {}件", feeds.len());
+        println!("フィード設定読み込み完了: {}件", rss_links.len());
     }
 
     // 段階1: RSSフィードからリンクを取得
-    task_collect_article_links(http_client, &feeds, pool).await?;
+    task_collect_article_links(http_client, &rss_links, pool).await?;
     // 段階2: 未処理のリンクから記事内容を取得
     task_collect_articles(firecrawl_client, pool).await?;
 
@@ -61,7 +61,7 @@ pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::rss::{search_feeds, RssLinkQuery};
+    use crate::core::rss::{search_rss_links, RssLinkQuery};
     use crate::infra::api::{firecrawl::MockFirecrawlClient, http::MockHttpClient};
     use sqlx::PgPool;
 
@@ -69,20 +69,20 @@ mod tests {
     mod execute_rss_workflow {
         use super::*;
 
-        /// 実際のfeeds.yamlを使用して、execute_rss_workflowが正しく動作することをテスト
+        /// 実際のrss/link.ymlを使用して、execute_rss_workflowが正しく動作することをテスト
         #[sqlx::test]
         async fn test_basic(pool: PgPool) -> Result<(), anyhow::Error> {
-            // 実際のfeeds.yamlからBBCグループのフィード数を取得
+            // 実際のrss/link.ymlからBBCグループのフィード数を取得
             let bbc_query = Some(RssLinkQuery::from_group("bbc"));
-            let bbc_feeds = search_feeds(bbc_query)?;
-            let expected_bbc_feed_count = bbc_feeds.len();
+            let bbc_rss_links = search_rss_links(bbc_query)?;
+            let expected_bbc_links_count = bbc_rss_links.len();
 
             assert!(
-                expected_bbc_feed_count > 0,
-                "BBCグループのフィードが見つかりません。feeds.yamlを確認してください"
+                expected_bbc_links_count > 0,
+                "BBCグループのフィードが見つかりません。rss/link.ymlを確認してください"
             );
 
-            println!("BBCフィード数: {}件", expected_bbc_feed_count);
+            println!("BBCフィード数: {}件", expected_bbc_links_count);
 
             // モッククライアントの準備
             let mock_http_client = MockHttpClient::new_success();
@@ -108,7 +108,7 @@ mod tests {
                 "初期状態でarticlesが空ではありません"
             );
 
-            // execute_rss_workflowを実行（実際のfeeds.yamlを使用してBBCグループを指定）
+            // execute_rss_workflowを実行（実際のrss/link.ymlを使用してBBCグループを指定）
             let result = execute_rss_workflow(
                 &mock_http_client,
                 &mock_firecrawl_client,
@@ -127,7 +127,7 @@ mod tests {
             let final_rss_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
                 .await?;
-            let expected_rss_count = expected_bbc_feed_count * 3; // 各フィードから3記事生成
+            let expected_rss_count = expected_bbc_links_count * 3; // 各フィードから3記事生成
             assert_eq!(
                 final_rss_count.unwrap_or(0),
                 expected_rss_count as i64,
@@ -171,17 +171,17 @@ mod tests {
             );
 
             println!("✅ execute_rss_workflow BBC統合テスト完了");
-            println!("  BBCフィード数: {}", expected_bbc_feed_count);
+            println!("  BBCフィード数: {}", expected_bbc_links_count);
             println!("  保存されたRSSリンク数: {}", final_rss_count.unwrap_or(0));
             println!("  保存された記事数: {}", final_article_count.unwrap_or(0));
-            println!("  実際のfeeds.yamlからの読み込み: 成功");
+            println!("  実際のrss/link.ymlからの読み込み: 成功");
 
             Ok(())
         }
 
         #[sqlx::test]
         async fn test_http_error(pool: PgPool) -> Result<(), anyhow::Error> {
-            // エラーシナリオ: HTTP取得エラー（実際のfeeds.yaml使用）
+            // エラーシナリオ: HTTP取得エラー（実際のrss/link.yml使用）
             let error_http_client = MockHttpClient::new_error("RSS取得接続エラー");
             let success_firecrawl_client = MockFirecrawlClient::new_success("記事内容");
 
@@ -234,9 +234,9 @@ mod tests {
             let success_http_client = MockHttpClient::new_success();
             let error_firecrawl_client = MockFirecrawlClient::new_error("記事取得API障害");
 
-            // 実際のfeeds.yamlからBBCグループのフィード数を取得
+            // 実際のrss/link.ymlからBBCグループのフィード数を取得
             let bbc_query = Some(RssLinkQuery::from_group("bbc"));
-            let bbc_feeds = search_feeds(bbc_query)?;
+            let bbc_feeds = search_rss_links(bbc_query)?;
             let expected_bbc_feed_count = bbc_feeds.len();
 
             let result_firecrawl_error = execute_rss_workflow(

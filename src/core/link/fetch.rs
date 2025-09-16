@@ -5,15 +5,15 @@ use crate::infra::parser::{parse_channel_from_xml_str, parse_date};
 use anyhow::{Context, Result};
 use rss::Channel;
 
-/// feedを用いてarticle_linkのリストを取得する
+/// rss_linkを用いてarticle_linkのリストを取得する
 pub async fn fetch_article_links_using_feed<H: HttpClient>(
     client: &H,
-    feed: &RssLink,
+    rss_link: &RssLink,
 ) -> Result<Vec<ArticleLink>> {
     let xml_content = client
-        .fetch(&feed.url, 30)
+        .fetch(&rss_link.url, 30)
         .await
-        .context(format!("RSSフィードの取得に失敗: {}", feed))?;
+        .context(format!("RSSフィードの取得に失敗: {}", rss_link))?;
     let channel = parse_channel_from_xml_str(&xml_content).context("XMLの解析に失敗")?;
     let article_links = get_article_links_from_channel(&channel);
 

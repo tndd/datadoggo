@@ -8,23 +8,23 @@ use anyhow::{Context, Result};
 /// 3. group & name指定
 ///
 /// 内部でcore/rss/link.ymlファイルを読み込み、指定されたクエリでフィルタリングする
-pub fn search_feeds(query: Option<RssLinkQuery>) -> Result<Vec<RssLink>> {
-    let feeds = load_feeds_from_yaml("src/core/rss/link.yml")?;
+pub fn search_rss_links(query: Option<RssLinkQuery>) -> Result<Vec<RssLink>> {
+    let rss_links = load_rss_links_from_yaml("src/core/rss/link.yml")?;
     let query = query.unwrap_or_default();
 
-    let filtered_feeds = feeds
+    let filtered_rss_links = rss_links
         .iter()
-        .filter(|feed| {
+        .filter(|rss_link| {
             // groupフィルター
             if let Some(ref group_filter) = query.group {
-                if feed.group != *group_filter {
+                if rss_link.group != *group_filter {
                     return false;
                 }
             }
 
             // nameフィルター（groupが指定されている場合のみ適用）
             if let Some(ref name_filter) = query.name {
-                if feed.name != *name_filter {
+                if rss_link.name != *name_filter {
                     return false;
                 }
             }
@@ -34,22 +34,22 @@ pub fn search_feeds(query: Option<RssLinkQuery>) -> Result<Vec<RssLink>> {
         .cloned()
         .collect();
 
-    Ok(filtered_feeds)
+    Ok(filtered_rss_links)
 }
 
 /// core/rss/link.ymlからフィード情報を読み込み、RssLinkのベクタとして返す
-fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<RssLink>> {
+fn load_rss_links_from_yaml(file_path: &str) -> Result<Vec<RssLink>> {
     let yaml_value = load_yaml_from_file(file_path)
         .with_context(|| format!("RSSリンクYAMLファイルの読み込みに失敗: {}", file_path))?;
 
     let rss_link_map: RssLinkMap = serde_yaml::from_value(yaml_value)
         .with_context(|| format!("YAMLデータの変換に失敗: {}", file_path))?;
 
-    let mut feeds = Vec::new();
+    let mut rss_links = Vec::new();
 
     for (group, name_links) in rss_link_map {
         for (name, link) in name_links {
-            feeds.push(RssLink {
+            rss_links.push(RssLink {
                 group: group.clone(),
                 name,
                 url: link,
@@ -57,19 +57,19 @@ fn load_feeds_from_yaml(file_path: &str) -> Result<Vec<RssLink>> {
         }
     }
 
-    Ok(feeds)
+    Ok(rss_links)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    mod search_feeds {
+    mod search_rss_links {
         use super::*;
 
         #[test]
         fn test_no_filter() {
-            let result = search_feeds(None);
+            let result = search_rss_links(None);
             assert!(result.is_ok());
             assert!(!result.unwrap().is_empty());
         }
@@ -80,9 +80,9 @@ mod tests {
                 group: Some("bbc".to_string()),
                 name: None,
             };
-            let feeds = search_feeds(Some(query)).unwrap();
-            assert!(!feeds.is_empty());
-            assert!(feeds.iter().all(|f| f.group == "bbc"));
+            let rss_links = search_rss_links(Some(query)).unwrap();
+            assert!(!rss_links.is_empty());
+            assert!(rss_links.iter().all(|f| f.group == "bbc"));
         }
 
         #[test]
@@ -91,21 +91,21 @@ mod tests {
                 group: Some("bbc".to_string()),
                 name: Some("world".to_string()),
             };
-            let feeds = search_feeds(Some(query)).unwrap();
-            assert_eq!(feeds.len(), 1);
-            assert_eq!(feeds[0].group, "bbc");
-            assert_eq!(feeds[0].name, "world");
+            let rss_links = search_rss_links(Some(query)).unwrap();
+            assert_eq!(rss_links.len(), 1);
+            assert_eq!(rss_links[0].group, "bbc");
+            assert_eq!(rss_links[0].name, "world");
         }
     }
 
-    mod load_feeds_from_yaml {
+    mod load_rss_links_from_yaml {
         use super::*;
 
         #[test]
-        fn test_load_feeds_from_yaml() {
-            let feeds = search_feeds(None).unwrap();
-            assert!(!feeds.is_empty());
-            assert!(feeds.iter().any(|f| f.group == "bbc"));
+        fn test_load_rss_links_from_yaml() {
+            let rss_links = load_rss_links_from_yaml("src/core/rss/link.yml").unwrap();
+            assert!(!rss_links.is_empty());
+            assert!(rss_links.iter().any(|f| f.group == "bbc"));
         }
     }
 }

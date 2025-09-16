@@ -11,15 +11,15 @@ use sqlx::PgPool;
 /// RSSフィードからリンクを収集してDBに保存する
 pub async fn task_collect_article_links<H: HttpClient>(
     client: &H,
-    feeds: &[RssLink],
+    rss_links: &[RssLink],
     pool: &PgPool,
 ) -> Result<()> {
     println!("--- RSSフィードからリンク取得開始 ---");
 
-    for feed in feeds {
-        println!("フィード処理中: {}", feed);
+    for rss_link in rss_links {
+        println!("フィード処理中: {}", rss_link);
 
-        match fetch_article_links_using_feed(client, feed).await {
+        match fetch_article_links_using_feed(client, rss_link).await {
             Ok(article_links) => {
                 println!("  {}件のリンクを抽出", article_links.len());
 
@@ -95,8 +95,8 @@ mod tests {
 
             // 各フィードから生成されたリンクの形式を検証
             use crate::infra::compute::generate_mock_rss_id;
-            for feed in &test_feeds {
-                let hash = generate_mock_rss_id(&feed.url);
+            for rss_link in &test_feeds {
+                let hash = generate_mock_rss_id(&rss_link.url);
                 let feed_link_count = sqlx::query_scalar!(
                     "SELECT COUNT(*) FROM article_links WHERE url LIKE $1",
                     format!("https://{}.example.com/%", hash)
