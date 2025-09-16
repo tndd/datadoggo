@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 ///
 /// 内部でfeeds.ymlファイルを読み込み、指定されたクエリでフィルタリングする
 pub fn search_feeds(query: Option<FeedQuery>) -> Result<Vec<Feed>> {
-    let feeds = load_feeds_from_yaml("src/core/feed/feeds.yml")?;
+    let feeds = load_feeds_from_yaml("src/core/rss/link.yml")?;
     let query = query.unwrap_or_default();
 
     let filtered_feeds = feeds

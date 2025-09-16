@@ -1,5 +1,5 @@
-use crate::core::feed::Feed;
 use crate::core::link::model::ArticleLink;
+use crate::core::rss::Feed;
 use crate::infra::api::http::HttpClient;
 use crate::infra::parser::{parse_channel_from_xml_str, parse_date};
 use anyhow::{Context, Result};

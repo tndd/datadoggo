@@ -1,7 +1,7 @@
 use crate::{
     core::{
-        feed::Feed,
         link::{fetch_article_links_using_feed, store_article_links},
+        rss::Feed,
     },
     infra::api::http::HttpClient,
 };
@@ -52,7 +52,7 @@ mod tests {
         use super::*;
         #[sqlx::test]
         async fn test_success(pool: PgPool) -> Result<(), anyhow::Error> {
-            use crate::core::feed::Feed;
+            use crate::core::rss::Feed;
             use crate::infra::api::http::MockHttpClient;
 
             // テスト用フィードを準備（異なるURLで3つのフィード）
@@ -111,7 +111,7 @@ mod tests {
 
         #[sqlx::test]
         async fn test_with_errors(pool: PgPool) -> Result<(), anyhow::Error> {
-            use crate::core::feed::Feed;
+            use crate::core::rss::Feed;
             use crate::infra::api::http::MockHttpClient;
 
             let test_feeds = vec![
@@ -157,7 +157,7 @@ mod tests {
 
         #[sqlx::test]
         async fn test_duplicate_handling(pool: PgPool) -> Result<(), anyhow::Error> {
-            use crate::core::feed::Feed;
+            use crate::core::rss::Feed;
             use crate::infra::api::http::MockHttpClient;
 
             let same_rss_url = "https://shared.example.com/common.xml";

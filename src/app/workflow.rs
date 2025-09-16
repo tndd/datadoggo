@@ -1,5 +1,5 @@
 use crate::{
-    core::feed::{search_feeds, FeedQuery},
+    core::rss::{search_feeds, FeedQuery},
     infra::api::{firecrawl::FirecrawlClient, http::HttpClient},
     task::{task_collect_article_links, task_collect_articles},
 };
@@ -62,7 +62,7 @@ pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::feed::{search_feeds, FeedQuery};
+    use crate::core::rss::{search_feeds, FeedQuery};
     use crate::infra::api::{firecrawl::MockFirecrawlClient, http::MockHttpClient};
     use sqlx::PgPool;
 
