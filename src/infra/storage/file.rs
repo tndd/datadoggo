@@ -1,7 +1,6 @@
 use crate::infra::parser::parse_channel_from_reader;
 use anyhow::{Context, Result};
 use rss::Channel;
-use serde::de::DeserializeOwned;
 use std::fs::File;
 use std::io::BufReader;
 
@@ -28,8 +27,8 @@ pub fn load_json_from_file(file_path: &str) -> Result<serde_json::Value> {
         .with_context(|| format!("JSONファイルの解析に失敗: {}", file_path))
 }
 
-/// YAMLファイルからSerdeでDeserializeできる型を読み込む
-pub fn load_yaml_from_file<T: DeserializeOwned>(file_path: &str) -> Result<T> {
+/// YAMLファイルからserde_yaml::Valueを読み込む
+pub fn load_yaml_from_file(file_path: &str) -> Result<serde_yaml::Value> {
     let buf_reader = load_file(file_path)?;
     serde_yaml::from_reader(buf_reader)
         .with_context(|| format!("YAMLファイルの解析に失敗: {}", file_path))

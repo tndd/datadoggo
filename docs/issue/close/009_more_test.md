@@ -20,7 +20,7 @@
 
 ```bash
 # grep "#[cfg(test)]" の結果
-/src/core/feed.rs:94
+/src/core/rss/search.rs:62
 /src/core/rss.rs:152
 /src/app/workflow.rs:62
 /src/task/article.rs:58
@@ -62,7 +62,7 @@ src/core/article/fixtures/
 
 ### 高リスク
 - **app 層全般**: Workflow, UseCase の品質保証が皆無
-- **core/rss, core/feed**: RSS 処理の信頼性が不十分
+- **core/rss**: RSS 処理の信頼性が不十分
 - **task 層**: バックグラウンド処理の品質が不安定
 
 ### 中リスク
@@ -95,9 +95,9 @@ src/core/article/fixtures/
    ├── rss_backlog.sql (既存)
    ├── rss_error_cases.sql         # 新規
    ├── rss_large_feed.sql          # 新規
-   ├── feed_basic.sql              # 新規
-   ├── feed_invalid.sql            # 新規
-   └── feed_boundary.sql           # 新規
+   ├── rss_basic.sql               # 新規
+   ├── rss_invalid.sql             # 新規
+   └── rss_boundary.sql            # 新規
    ```
 
 2. **task 層**

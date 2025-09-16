@@ -1,7 +1,7 @@
 use crate::{
     core::{
-        feed::Feed,
         link::{fetch_article_links_using_feed, store_article_links},
+        rss::RssLink,
     },
     infra::api::http::HttpClient,
 };
@@ -11,15 +11,15 @@ use sqlx::PgPool;
 /// RSSフィードからリンクを収集してDBに保存する
 pub async fn task_collect_article_links<H: HttpClient>(
     client: &H,
-    feeds: &[Feed],
+    rss_links: &[RssLink],
     pool: &PgPool,
 ) -> Result<()> {
     println!("--- RSSフィードからリンク取得開始 ---");
 
-    for feed in feeds {
-        println!("フィード処理中: {}", feed);
+    for rss_link in rss_links {
+        println!("フィード処理中: {}", rss_link);
 
-        match fetch_article_links_using_feed(client, feed).await {
+        match fetch_article_links_using_feed(client, rss_link).await {
             Ok(article_links) => {
                 println!("  {}件のリンクを抽出", article_links.len());
 
@@ -52,25 +52,25 @@ mod tests {
         use super::*;
         #[sqlx::test]
         async fn test_success(pool: PgPool) -> Result<(), anyhow::Error> {
-            use crate::core::feed::Feed;
+            use crate::core::rss::RssLink;
             use crate::infra::api::http::MockHttpClient;
 
             // テスト用フィードを準備（異なるURLで3つのフィード）
             let test_feeds = vec![
-                Feed {
+                RssLink {
                     group: "news".to_string(),
                     name: "tech_news".to_string(),
-                    rss_link: "https://technews.example.com/rss.xml".to_string(),
+                    url: "https://technews.example.com/rss.xml".to_string(),
                 },
-                Feed {
+                RssLink {
                     group: "blog".to_string(),
                     name: "dev_blog".to_string(),
-                    rss_link: "https://devblog.example.com/feed.xml".to_string(),
+                    url: "https://devblog.example.com/feed.xml".to_string(),
                 },
-                Feed {
+                RssLink {
                     group: "updates".to_string(),
                     name: "product_updates".to_string(),
-                    rss_link: "https://updates.example.com/rss".to_string(),
+                    url: "https://updates.example.com/rss".to_string(),
                 },
             ];
 
@@ -95,8 +95,8 @@ mod tests {
 
             // 各フィードから生成されたリンクの形式を検証
             use crate::infra::compute::generate_mock_rss_id;
-            for feed in &test_feeds {
-                let hash = generate_mock_rss_id(&feed.rss_link);
+            for rss_link in &test_feeds {
+                let hash = generate_mock_rss_id(&rss_link.url);
                 let feed_link_count = sqlx::query_scalar!(
                     "SELECT COUNT(*) FROM article_links WHERE url LIKE $1",
                     format!("https://{}.example.com/%", hash)
@@ -111,24 +111,24 @@ mod tests {
 
         #[sqlx::test]
         async fn test_with_errors(pool: PgPool) -> Result<(), anyhow::Error> {
-            use crate::core::feed::Feed;
+            use crate::core::rss::RssLink;
             use crate::infra::api::http::MockHttpClient;
 
             let test_feeds = vec![
-                Feed {
+                RssLink {
                     group: "success".to_string(),
                     name: "working_feed".to_string(),
-                    rss_link: "https://working.example.com/rss.xml".to_string(),
+                    url: "https://working.example.com/rss.xml".to_string(),
                 },
-                Feed {
+                RssLink {
                     group: "error1".to_string(),
                     name: "timeout_feed".to_string(),
-                    rss_link: "https://timeout.example.com/rss.xml".to_string(),
+                    url: "https://timeout.example.com/rss.xml".to_string(),
                 },
-                Feed {
+                RssLink {
                     group: "error2".to_string(),
                     name: "server_error_feed".to_string(),
-                    rss_link: "https://servererror.example.com/rss.xml".to_string(),
+                    url: "https://servererror.example.com/rss.xml".to_string(),
                 },
             ];
 
@@ -157,25 +157,25 @@ mod tests {
 
         #[sqlx::test]
         async fn test_duplicate_handling(pool: PgPool) -> Result<(), anyhow::Error> {
-            use crate::core::feed::Feed;
+            use crate::core::rss::RssLink;
             use crate::infra::api::http::MockHttpClient;
 
             let same_rss_url = "https://shared.example.com/common.xml";
             let duplicate_feeds = vec![
-                Feed {
+                RssLink {
                     group: "group1".to_string(),
                     name: "shared_feed_1".to_string(),
-                    rss_link: same_rss_url.to_string(),
+                    url: same_rss_url.to_string(),
                 },
-                Feed {
+                RssLink {
                     group: "group2".to_string(),
                     name: "shared_feed_2".to_string(),
-                    rss_link: same_rss_url.to_string(),
+                    url: same_rss_url.to_string(),
                 },
-                Feed {
+                RssLink {
                     group: "group3".to_string(),
                     name: "shared_feed_3".to_string(),
-                    rss_link: same_rss_url.to_string(),
+                    url: same_rss_url.to_string(),
                 },
             ];
 
@@ -300,10 +300,10 @@ mod tests {
             }
 
             // 異なるURLのフィードを追加して、重複処理が新規リンクをブロックしないことを確認
-            let unique_feed = vec![Feed {
+            let unique_feed = vec![RssLink {
                 group: "unique".to_string(),
                 name: "unique_feed".to_string(),
-                rss_link: "https://unique.example.com/different.xml".to_string(),
+                url: "https://unique.example.com/different.xml".to_string(),
             }];
 
             let unique_result = task_collect_article_links(&mock_client, &unique_feed, &pool).await;
@@ -344,17 +344,17 @@ mod tests {
             let mock_client = MockHttpClient::new_success();
 
             // フィード1: 技術ニュース（3記事）
-            let tech_feeds = vec![Feed {
+            let tech_feeds = vec![RssLink {
                 group: "tech".to_string(),
                 name: "tech_news".to_string(),
-                rss_link: "https://tech-concurrent.example.com/rss.xml".to_string(),
+                url: "https://tech-concurrent.example.com/rss.xml".to_string(),
             }];
 
             // フィード2: ビジネスニュース（3記事）
-            let business_feeds = vec![Feed {
+            let business_feeds = vec![RssLink {
                 group: "business".to_string(),
                 name: "business_news".to_string(),
-                rss_link: "https://business-concurrent.example.com/rss.xml".to_string(),
+                url: "https://business-concurrent.example.com/rss.xml".to_string(),
             }];
 
             // 初期状態確認
@@ -432,15 +432,15 @@ mod tests {
             // 同じURLを持つ複数のフィードをシミュレート
             // Vecではなく固定長配列で十分なため、Clippyに従い配列に変更
             let competing_feeds = [
-                Feed {
+                RssLink {
                     group: "source1".to_string(),
                     name: "competing_feed_1".to_string(),
-                    rss_link: "https://race-condition-test.example.com/same.xml".to_string(),
+                    url: "https://race-condition-test.example.com/same.xml".to_string(),
                 },
-                Feed {
+                RssLink {
                     group: "source2".to_string(),
                     name: "competing_feed_2".to_string(),
-                    rss_link: "https://race-condition-test.example.com/same.xml".to_string(),
+                    url: "https://race-condition-test.example.com/same.xml".to_string(),
                 },
             ];
 
@@ -540,17 +540,17 @@ mod tests {
             let error_client = MockHttpClient::new_error("ネットワークエラー");
 
             // 成功するフィード
-            let success_feeds = vec![Feed {
+            let success_feeds = vec![RssLink {
                 group: "success".to_string(),
                 name: "working_feed".to_string(),
-                rss_link: "https://success-recovery.example.com/feed.xml".to_string(),
+                url: "https://success-recovery.example.com/feed.xml".to_string(),
             }];
 
             // エラーになるフィード
-            let error_feeds = vec![Feed {
+            let error_feeds = vec![RssLink {
                 group: "error".to_string(),
                 name: "failing_feed".to_string(),
-                rss_link: "https://error-recovery.example.com/feed.xml".to_string(),
+                url: "https://error-recovery.example.com/feed.xml".to_string(),
             }];
 
             let initial_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
@@ -602,10 +602,10 @@ mod tests {
             let mock_client = MockHttpClient::new_success();
 
             // 大量フィード処理用のフィードを作成（実際には10記事しか生成しない）
-            let batch_feeds = vec![Feed {
+            let batch_feeds = vec![RssLink {
                 group: "batch".to_string(),
                 name: "large_batch_feed".to_string(),
-                rss_link: "https://batch-boundary-test.example.com/feed.xml".to_string(),
+                url: "https://batch-boundary-test.example.com/feed.xml".to_string(),
             }];
 
             let initial_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
