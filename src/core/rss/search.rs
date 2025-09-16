@@ -10,25 +10,25 @@ use anyhow::{Context, Result};
 /// 内部でcore/rss/link.ymlファイルを読み込み、指定されたクエリでフィルタリングする
 pub fn search_rss_links(query: Option<&RssLinkQuery>) -> Result<Vec<RssLink>> {
     let rss_links = load_rss_links_from_yaml("src/core/rss/link.yml")?;
-    let query = query.cloned().unwrap_or_default();
 
     let filtered_rss_links = rss_links
         .iter()
         .filter(|rss_link| {
-            // groupフィルター
-            if let Some(ref group_filter) = query.group {
-                if rss_link.group != *group_filter {
-                    return false;
+            if let Some(query) = query {
+                // groupフィルター
+                if let Some(ref group_filter) = query.group {
+                    if rss_link.group != *group_filter {
+                        return false;
+                    }
+                }
+
+                // nameフィルター（groupが指定されている場合のみ適用）
+                if let Some(ref name_filter) = query.name {
+                    if rss_link.name != *name_filter {
+                        return false;
+                    }
                 }
             }
-
-            // nameフィルター（groupが指定されている場合のみ適用）
-            if let Some(ref name_filter) = query.name {
-                if rss_link.name != *name_filter {
-                    return false;
-                }
-            }
-
             true
         })
         .cloned()
