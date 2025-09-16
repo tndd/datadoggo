@@ -1,14 +1,7 @@
 {
-    "sqltools.connections": [
-        {
-            "previewLimit": 50,
-            "server": "localhost",
-            "port": 15432,
-            "driver": "PostgreSQL",
-            "name": "datadoggo",
-            "database": "datadoggo",
-            "username": "datadoggo",
-            "password": "datadoggo"
-        }
-    ]
+    "code-runner.executorMap": {
+        "rust": "cd $workspaceRoot && cargo test"
+    },
+    "code-runner.clearPreviousOutput": true,
+    "code-runner.runInTerminal": true
 }
