@@ -185,7 +185,7 @@ mod tests {
         mod error_recovery {
             use super::*;
 
-            #[sqlx::test(fixtures("error_recovery_scenarios"))]
+            #[sqlx::test(fixtures("common_error_recovery_scenarios"))]
             async fn test_error_article_reprocessing(pool: PgPool) -> Result<(), anyhow::Error> {
                 // エラー記事の再処理テスト
                 let mock_client = MockFirecrawlClient::new_success("再処理成功内容");
@@ -269,7 +269,7 @@ mod tests {
                 Ok(())
             }
 
-            #[sqlx::test(fixtures("error_recovery_scenarios"))]
+            #[sqlx::test(fixtures("common_error_recovery_scenarios"))]
             async fn test_partial_failure_continuation(pool: PgPool) -> Result<(), anyhow::Error> {
                 // 一部失敗でも処理継続するテスト
                 let error_client = MockFirecrawlClient::new_error("一部記事でAPI障害");
@@ -334,12 +334,12 @@ mod tests {
                 Ok(())
             }
 
-            #[sqlx::test(fixtures("concurrent_processing"))]
+            #[sqlx::test(fixtures("common_concurrent_processing"))]
             async fn test_mixed_result_handling(pool: PgPool) -> Result<(), anyhow::Error> {
                 // 成功・失敗混在結果の処理テスト
                 let success_client = MockFirecrawlClient::new_success("成功記事内容");
 
-                // concurrent_processing fixtureには処理済み・未処理の混在データが含まれる
+                // common_concurrent_processing fixtureには処理済み・未処理の混在データが含まれる
                 let initial_backlog = search_backlog_urls(&pool).await?;
                 let initial_backlog_count = initial_backlog.len();
 

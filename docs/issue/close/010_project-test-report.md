@@ -39,7 +39,7 @@
 
 - `src/task/rss.rs`
   - 対象: `task_collect_article_links`
-  - 乖離: テストサブモジュール名が `{関数名}` ベースで統一されていない（例: `concurrent_processing_tests`）。
+  - 乖離: テストサブモジュール名が `{関数名}` ベースで統一されていない（例: `common_concurrent_processing_tests`）。
   - 提案: `mod task_collect_article_links { ... }` 配下に「成功/エラー/重複/並行」の4テストを整理し、名前規約を統一。
 
 - `src/task/article.rs`
@@ -186,5 +186,5 @@
 
 - fixtures SQL の使い回し
   - フィクスチャは“モジュール近接・同階層参照”の方針に沿っており、過度な使い回しは見当たらない。
-  - `task` 配下で `concurrent_processing`/`error_recovery_scenarios` を複数テストから参照しているが、対象ドメインが同一であり妥当。
+  - `task` 配下で `common_concurrent_processing`/`common_error_recovery_scenarios` を複数テストから参照しているが、対象ドメインが同一であり妥当。
   - 参照されていない孤立フィクスチャは現状なし（grep調査済み）。

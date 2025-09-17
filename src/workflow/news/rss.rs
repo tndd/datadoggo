@@ -336,7 +336,7 @@ mod tests {
         use super::*;
         use crate::infra::api::http::MockHttpClient;
 
-        #[sqlx::test(fixtures("concurrent_processing"))]
+        #[sqlx::test(fixtures("common_concurrent_processing"))]
         async fn test_concurrent_feed_processing_simulation(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
@@ -422,7 +422,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("concurrent_processing"))]
+        #[sqlx::test(fixtures("common_concurrent_processing"))]
         async fn test_duplicate_url_race_condition_handling(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
@@ -531,7 +531,7 @@ mod tests {
         use super::*;
         use crate::infra::api::http::MockHttpClient;
 
-        #[sqlx::test(fixtures("error_recovery_scenarios"))]
+        #[sqlx::test(fixtures("common_error_recovery_scenarios"))]
         async fn test_mixed_success_error_feed_processing(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
@@ -594,7 +594,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("error_recovery_scenarios"))]
+        #[sqlx::test(fixtures("common_error_recovery_scenarios"))]
         async fn test_batch_processing_boundary_conditions(
             pool: PgPool,
         ) -> Result<(), anyhow::Error> {
