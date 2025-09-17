@@ -20,7 +20,7 @@ pub async fn workflow_news<H: HttpClient, F: FirecrawlClient>(
     http_client: &H,
     firecrawl_client: &F,
     pool: &PgPool,
-    query: Option<RssLinkQuery>,
+    query: Option<&RssLinkQuery>,
 ) -> Result<()> {
     match &query {
         Some(rss_query) => {
@@ -32,7 +32,7 @@ pub async fn workflow_news<H: HttpClient, F: FirecrawlClient>(
         }
     }
 
-    let rss_links = search_rss_links(query.as_ref()).context("フィード設定の読み込みに失敗")?;
+    let rss_links = search_rss_links(query).context("フィード設定の読み込みに失敗")?;
 
     if rss_links.is_empty() {
         println!("対象のフィードが見つかりませんでした");
@@ -100,8 +100,13 @@ mod tests {
             );
 
             // workflow_newsを実行（実際のrss/link.ymlを使用してBBCグループを指定）
-            let result =
-                workflow_news(&mock_http_client, &mock_firecrawl_client, &pool, bbc_query).await;
+            let result = workflow_news(
+                &mock_http_client,
+                &mock_firecrawl_client,
+                &pool,
+                bbc_query.as_ref(),
+            )
+            .await;
 
             assert!(
                 result.is_ok(),
@@ -176,7 +181,7 @@ mod tests {
                 &error_http_client,
                 &success_firecrawl_client,
                 &pool,
-                bbc_query,
+                bbc_query.as_ref(),
             )
             .await;
 
@@ -230,7 +235,7 @@ mod tests {
                 &success_http_client,
                 &error_firecrawl_client,
                 &pool,
-                bbc_query,
+                bbc_query.as_ref(),
             )
             .await;
 
