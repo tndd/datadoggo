@@ -52,11 +52,11 @@ impl FirecrawlClient for ReqwestFirecrawlClient {
 /// テスト用のモック実装
 pub struct MockFirecrawlClient {
     /// モック時に返すマークダウン内容
-    pub mock_content: String,
+    mock_content: String,
     /// モック時に成功を返すかどうか
-    pub simulate_success: bool,
+    simulate_success: bool,
     /// エラー時に返すメッセージ
-    pub error_message: Option<String>,
+    error_message: Option<String>,
 }
 
 impl MockFirecrawlClient {

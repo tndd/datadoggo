@@ -140,7 +140,7 @@ mod tests {
         use super::*;
 
         /// URLだけの配列に変換（可読性向上用）
-        pub fn get_urls<T, F>(items: &[T], f: F) -> Vec<String>
+        pub(super) fn get_urls<T, F>(items: &[T], f: F) -> Vec<String>
         where
             F: Fn(&T) -> &str,
         {
@@ -148,7 +148,7 @@ mod tests {
         }
 
         /// 期間指定のためのユーティリティ
-        pub fn ts(s: &str) -> DateTime<Utc> {
+        pub(super) fn ts(s: &str) -> DateTime<Utc> {
             s.parse::<DateTime<Utc>>().expect("RFC3339に準拠した日時")
         }
     }

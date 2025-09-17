@@ -62,9 +62,9 @@ impl HttpClient for ReqwestHttpClient {
 /// URL依存の動的XMLまたはエラーを返します。
 pub struct MockHttpClient {
     /// モック時に成功を返すかどうか
-    pub simulate_success: bool,
+    simulate_success: bool,
     /// エラー時に返すメッセージ
-    pub error_message: Option<String>,
+    error_message: Option<String>,
 }
 
 impl MockHttpClient {

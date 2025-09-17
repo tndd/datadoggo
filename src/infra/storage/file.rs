@@ -6,7 +6,7 @@ use std::io::BufReader;
 
 /// ファイルパスからBufReaderを作成する
 /// パースやデータ変換は各ドメインで行う
-pub fn load_file(file_path: &str) -> Result<BufReader<File>> {
+pub(crate) fn load_file(file_path: &str) -> Result<BufReader<File>> {
     let file = File::open(file_path)
         .with_context(|| format!("ファイルの読み込みに失敗しました: {}", file_path))?;
     let buf_reader = BufReader::new(file);
@@ -14,21 +14,21 @@ pub fn load_file(file_path: &str) -> Result<BufReader<File>> {
 }
 
 /// xmlファイルからchannelを読み込む
-pub fn load_channel_from_xml_file(file_path: &str) -> Result<Channel> {
+pub(crate) fn load_channel_from_xml_file(file_path: &str) -> Result<Channel> {
     let buf_reader = load_file(file_path)?;
     parse_channel_from_reader(buf_reader)
         .with_context(|| format!("RSSファイルの解析に失敗: {}", file_path))
 }
 
 /// JSONファイルからserde_json::Valueを読み込む
-pub fn load_json_from_file(file_path: &str) -> Result<serde_json::Value> {
+pub(crate) fn load_json_from_file(file_path: &str) -> Result<serde_json::Value> {
     let buf_reader = load_file(file_path)?;
     serde_json::from_reader(buf_reader)
         .with_context(|| format!("JSONファイルの解析に失敗: {}", file_path))
 }
 
 /// YAMLファイルからserde_yaml::Valueを読み込む
-pub fn load_yaml_from_file(file_path: &str) -> Result<serde_yaml::Value> {
+pub(crate) fn load_yaml_from_file(file_path: &str) -> Result<serde_yaml::Value> {
     let buf_reader = load_file(file_path)?;
     serde_yaml::from_reader(buf_reader)
         .with_context(|| format!("YAMLファイルの解析に失敗: {}", file_path))

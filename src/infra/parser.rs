@@ -23,7 +23,7 @@ use std::io::{BufRead, BufReader, Cursor};
 /// # 戻り値
 /// - `Ok(DateTime<Utc>)`: 解析が成功した場合
 /// - `Err(anyhow::Error)`: 解析に失敗した場合
-pub fn parse_date(date_str: &str) -> Result<DateTime<Utc>> {
+pub(crate) fn parse_date(date_str: &str) -> Result<DateTime<Utc>> {
     // `dateparser`はタイムゾーンを持つ`DateTime`を返すため、UTCに変換する
     match dateparser::parse(date_str) {
         Ok(dt) => Ok(dt.with_timezone(&Utc)),
@@ -32,13 +32,13 @@ pub fn parse_date(date_str: &str) -> Result<DateTime<Utc>> {
 }
 
 /// xml文字列からchannelをパースする
-pub fn parse_channel_from_xml_str(xml: &str) -> Result<Channel> {
+pub(crate) fn parse_channel_from_xml_str(xml: &str) -> Result<Channel> {
     Channel::read_from(BufReader::new(Cursor::new(xml.as_bytes())))
         .context("XMLからのRSSチャンネル解析に失敗")
 }
 
 /// BufReaderからRSSチャンネルをパースする
-pub fn parse_channel_from_reader<R: BufRead>(reader: R) -> Result<Channel> {
+pub(crate) fn parse_channel_from_reader<R: BufRead>(reader: R) -> Result<Channel> {
     Channel::read_from(reader).context("ReaderからのRSSチャンネル解析に失敗")
 }
 
