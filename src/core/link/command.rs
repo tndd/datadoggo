@@ -47,13 +47,15 @@ pub async fn store_article_links(article_links: &[ArticleLink], pool: &PgPool) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::storage::db::setup_test_db;
 
     // データベース保存機能のテスト（関数名ベースに統一）
     mod store_article_links {
         use super::*;
 
-        #[sqlx::test]
-        async fn test_save_links_to_db(pool: PgPool) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_save_links_to_db() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             // テスト用リンクデータを作成（必須フィールドのみ）
             let rss_basic = vec![
                 ArticleLink {

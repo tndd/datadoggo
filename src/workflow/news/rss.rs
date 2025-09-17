@@ -45,13 +45,14 @@ pub(super) async fn collect_article_links_with_rss_links<H: HttpClient>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::PgPool;
+    use crate::infra::storage::db::setup_test_db;
 
     // 関数名ベースのモジュールでテストを集約
     mod collect_article_links_with_rss_links {
         use super::*;
-        #[sqlx::test]
-        async fn test_success(pool: PgPool) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_success() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             use crate::core::rss::RssLink;
             use crate::infra::api::http::MockHttpClient;
 
@@ -110,8 +111,9 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
-        async fn test_with_errors(pool: PgPool) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_with_errors() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             use crate::core::rss::RssLink;
             use crate::infra::api::http::MockHttpClient;
 
@@ -158,8 +160,9 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
-        async fn test_duplicate_handling(pool: PgPool) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_duplicate_handling() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             use crate::core::rss::RssLink;
             use crate::infra::api::http::MockHttpClient;
 
@@ -342,10 +345,9 @@ mod tests {
         use super::*;
         use crate::infra::api::http::MockHttpClient;
 
-        #[sqlx::test(fixtures("common_concurrent_processing"))]
-        async fn test_concurrent_feed_processing_simulation(
-            pool: PgPool,
-        ) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_concurrent_feed_processing_simulation() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             // 並行処理シミュレーション：異なるフィードを順次処理
             let mock_client = MockHttpClient::new_success();
 
@@ -430,10 +432,9 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("common_concurrent_processing"))]
-        async fn test_duplicate_url_race_condition_handling(
-            pool: PgPool,
-        ) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_duplicate_url_race_condition_handling() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             // 競合状態テスト：同一URLの記事が複数回処理される場合
             let mock_client = MockHttpClient::new_success();
 
@@ -541,10 +542,9 @@ mod tests {
         use super::*;
         use crate::infra::api::http::MockHttpClient;
 
-        #[sqlx::test(fixtures("common_error_recovery_scenarios"))]
-        async fn test_mixed_success_error_feed_processing(
-            pool: PgPool,
-        ) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_mixed_success_error_feed_processing() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             // 成功・エラー混在処理のテスト
             let success_client = MockHttpClient::new_success();
             let error_client = MockHttpClient::new_error("ネットワークエラー");
@@ -605,10 +605,9 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(fixtures("common_error_recovery_scenarios"))]
-        async fn test_batch_processing_boundary_conditions(
-            pool: PgPool,
-        ) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_batch_processing_boundary_conditions() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             // バッチ処理境界条件のテスト（LIMIT 100の動作確認）
             let mock_client = MockHttpClient::new_success();
 

@@ -13,34 +13,15 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: postgres://datadoggo:datadoggo@localhost:5432/datadoggo
       CARGO_INCREMENTAL: "0"
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: datadoggo
-          POSTGRES_USER: datadoggo
-          POSTGRES_PASSWORD: datadoggo
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U datadoggo -d datadoggo"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
-          --tmpfs /var/lib/postgresql/data:rw
 
     steps:
     - uses: actions/checkout@v4
 
     # Common Rust environment setup (toolchain, cache, sqlx CLI)
     - uses: ./.github/actions/setup-rust
- 
-    - name: Reset database and run migrations
-      run: sqlx database reset -y
-        
-    - name: Run tests
+
+    - name: Run tests with test containers
       run: cargo test --verbose
       
     - name: Run clippy

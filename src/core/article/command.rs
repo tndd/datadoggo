@@ -43,16 +43,17 @@ pub async fn fetch_via_firecrawl_and_store_article_content(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::storage::db::setup_test_db;
     use chrono::Utc;
-    use sqlx::PgPool;
 
     mod store_article_content {
         use super::*;
 
         /// 基本的な新規挿入テスト
         /// 目的: 空のテーブルへの記事挿入動作を確認
-        #[sqlx::test]
-        async fn test_basic_insert(pool: PgPool) -> Result<()> {
+        #[tokio::test]
+        async fn test_basic_insert() -> Result<()> {
+            let (_container, pool) = setup_test_db().await;
             let article = ArticleContent {
                 url: "https://new.com/article".to_string(),
                 timestamp: Utc::now(),
@@ -191,8 +192,9 @@ mod tests {
 
         /// 複数記事の連続挿入テスト
         /// 目的: 複数の記事を連続で処理する動作を確認
-        #[sqlx::test]
-        async fn test_multiple_inserts(pool: PgPool) -> Result<()> {
+        #[tokio::test]
+        async fn test_multiple_inserts() -> Result<()> {
+            let (_container, pool) = setup_test_db().await;
             let articles = vec![
                 ArticleContent {
                     url: "https://multi1.com/article".to_string(),
@@ -230,8 +232,9 @@ mod tests {
 
         /// 成功ケースでの記事取得と保存テスト
         /// 目的: MockFirecrawlClientでの成功処理とDB保存を確認
-        #[sqlx::test]
-        async fn test_fetch_and_store_success(pool: PgPool) -> Result<()> {
+        #[tokio::test]
+        async fn test_fetch_and_store_success() -> Result<()> {
+            let (_container, pool) = setup_test_db().await;
             let client = MockFirecrawlClient::new_success("モック記事内容");
             let url = "https://success.com/article";
 
@@ -259,8 +262,9 @@ mod tests {
 
         /// エラーケースでの記事取得と保存テスト
         /// 目的: MockFirecrawlClientでのエラー処理とDB保存を確認
-        #[sqlx::test]
-        async fn test_fetch_and_store_error(pool: PgPool) -> Result<()> {
+        #[tokio::test]
+        async fn test_fetch_and_store_error() -> Result<()> {
+            let (_container, pool) = setup_test_db().await;
             let client = MockFirecrawlClient::new_error("取得エラー");
             let url = "https://error.com/article";
 
@@ -288,8 +292,9 @@ mod tests {
 
         /// 複数URLの連続処理テスト
         /// 目的: 複数のURLを連続で取得・保存する動作を確認
-        #[sqlx::test]
-        async fn test_multiple_fetch_and_store(pool: PgPool) -> Result<()> {
+        #[tokio::test]
+        async fn test_multiple_fetch_and_store() -> Result<()> {
+            let (_container, pool) = setup_test_db().await;
             let success_client = MockFirecrawlClient::new_success("成功内容");
             let error_client = MockFirecrawlClient::new_error("失敗内容");
 
@@ -344,8 +349,9 @@ mod tests {
             /// 実際のHTTP通信での記事取得テスト
             /// 目的: 本番環境での動作確認（onlineフィーチャーフラグ必須）
             /// 注意: このテストは通常のテスト実行時には実行されない
-            #[sqlx::test]
-            async fn test_online_fetch_and_store(pool: PgPool) -> Result<()> {
+            #[tokio::test]
+            async fn test_online_fetch_and_store() -> Result<()> {
+                let (_container, pool) = setup_test_db().await;
                 // 実在のテスト用URL（レスポンス保証のあるサイト）
                 let url = "https://httpbin.org/html";
 

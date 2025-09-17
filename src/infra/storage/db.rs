@@ -27,3 +27,46 @@ pub async fn setup_database() -> Result<PgPool> {
     initialize_database(&pool).await?;
     Ok(pool)
 }
+
+#[cfg(test)]
+mod test_utils {
+    use sqlx::PgPool;
+    use std::time::Duration;
+    use testcontainers_modules::{postgres::Postgres, testcontainers::runners::AsyncRunner};
+
+    /// テスト用PostgreSQLコンテナの設定とプール接続を返す
+    pub async fn setup_test_db() -> (
+        testcontainers_modules::testcontainers::ContainerAsync<Postgres>,
+        PgPool,
+    ) {
+        let container = Postgres::default()
+            .with_db_name("datadoggo_test")
+            .with_user("test_user")
+            .with_password("test_password")
+            .start()
+            .await
+            .unwrap();
+
+        let host_port = container.get_host_port_ipv4(5432).await.unwrap();
+
+        let database_url = format!(
+            "postgres://test_user:test_password@localhost:{}/datadoggo_test",
+            host_port
+        );
+
+        // データベースが作成されるまで待機
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        // マイグレーションを実行
+        let temp_pool = PgPool::connect(&database_url).await.unwrap();
+        sqlx::migrate!("./migrations")
+            .run(&temp_pool)
+            .await
+            .unwrap();
+
+        (container, temp_pool)
+    }
+}
+
+#[cfg(test)]
+pub use test_utils::setup_test_db;

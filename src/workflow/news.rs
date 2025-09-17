@@ -54,15 +54,16 @@ mod tests {
     use super::*;
     use crate::core::rss::{search_rss_links, RssLinkQuery};
     use crate::infra::api::{firecrawl::MockFirecrawlClient, http::MockHttpClient};
-    use sqlx::PgPool;
+    use crate::infra::storage::db::setup_test_db;
 
     // 関数名ベースのモジュールへ統一
     mod workflow_news {
         use super::*;
 
         /// 実際のrss/link.ymlを使用して、workflow_newsが正しく動作することをテスト
-        #[sqlx::test]
-        async fn test_basic(pool: PgPool) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_basic() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             // 実際のrss/link.ymlからBBCグループのフィード数を取得
             let bbc_query = Some(RssLinkQuery::from_group("bbc"));
             let bbc_rss_links = search_rss_links(bbc_query.as_ref())?;
@@ -170,8 +171,9 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
-        async fn test_http_error(pool: PgPool) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_http_error() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             // エラーシナリオ: HTTP取得エラー（実際のrss/link.yml使用）
             let error_http_client = MockHttpClient::new_error("RSS取得接続エラー");
             let success_firecrawl_client = MockFirecrawlClient::new_success("記事内容");
@@ -220,8 +222,9 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
-        async fn test_firecrawl_error(pool: PgPool) -> Result<(), anyhow::Error> {
+        #[tokio::test]
+        async fn test_firecrawl_error() -> Result<(), anyhow::Error> {
+            let (_container, pool) = setup_test_db().await;
             // エラーシナリオ: RSS取得成功 + 記事取得エラー
             let success_http_client = MockHttpClient::new_success();
             let error_firecrawl_client = MockFirecrawlClient::new_error("記事取得API障害");
