@@ -14,7 +14,22 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: "0"
-      SQLX_OFFLINE: "true"
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/datadoggo_test"
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: datadoggo_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
 
     steps:
     - uses: actions/checkout@v4
@@ -22,7 +37,10 @@ jobs:
     # Common Rust environment setup (toolchain, cache, sqlx CLI)
     - uses: ./.github/actions/setup-rust
 
-    - name: Run tests with test containers
+    - name: Run database migrations
+      run: sqlx migrate run
+
+    - name: Run tests with PostgreSQL service
       run: cargo test --verbose
       
     - name: Run clippy
