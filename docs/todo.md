@@ -7,7 +7,9 @@
 - [x] Article構造体がドメインとDB両方の間で板挟みになってる問題
 - [x] search_backlog_articles_light, search_backlog_urlsの類似
 - [x] sqlx fixturesディレクトリの一元管理をやめる？
-- [ ] src/core/article/service.rsのサイズがデカすぎる。分割して
+- [x] src/core/article/service.rsのサイズがデカすぎる。分割して
+- [ ] test container
+- [ ] logging 
 
 # Summary
 Todoの内容を具体化する。
