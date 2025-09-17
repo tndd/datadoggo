@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 ///
 /// # Returns
 /// 指定された長さに制限されたSHA256ハッシュ文字列（16進数）
-pub fn calc_hash(input: &str, length: usize) -> String {
+pub(crate) fn calc_hash(input: &str, length: usize) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
     let hash_bytes = hasher.finalize();
@@ -29,7 +29,7 @@ pub fn calc_hash(input: &str, length: usize) -> String {
 ///
 /// # Returns
 /// 6文字のSHA256ベース16進数識別子
-pub fn generate_mock_rss_id(url: &str) -> String {
+pub(crate) fn generate_mock_rss_id(url: &str) -> String {
     calc_hash(url, 6)
 }
 

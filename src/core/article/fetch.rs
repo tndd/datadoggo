@@ -6,7 +6,7 @@ use anyhow::Result;
 ///
 /// これが標準の取得関数です。DIにより `FirecrawlClient` を受け取り、
 /// モック/実装を切り替え可能にします。
-pub async fn fetch_article_content_via_firecrawl(
+pub async fn fetch_article_content_with_firecrawl(
     url: &str,
     client: &dyn FirecrawlClient,
 ) -> Result<ArticleContent> {
@@ -54,7 +54,7 @@ mod tests {
         async fn test_fetch_article_content() {
             let client = ReqwestFirecrawlClient::new().expect("クライアント初期化失敗");
             let result =
-                fetch_article_content_via_firecrawl("https://httpbin.org/html", &client).await;
+                fetch_article_content_with_firecrawl("https://httpbin.org/html", &client).await;
             assert!(result.is_ok());
         }
     }
@@ -69,7 +69,7 @@ mod tests {
         #[tokio::test]
         async fn test_success() {
             let client = MockFirecrawlClient::new_success("モック成功内容");
-            let result = fetch_article_content_via_firecrawl("https://example.com", &client)
+            let result = fetch_article_content_with_firecrawl("https://example.com", &client)
                 .await
                 .unwrap();
             assert_eq!(result.status_code, 200);
@@ -81,7 +81,7 @@ mod tests {
         #[tokio::test]
         async fn test_error() {
             let client = MockFirecrawlClient::new_error("モック失敗");
-            let result = fetch_article_content_via_firecrawl("https://example.com", &client)
+            let result = fetch_article_content_with_firecrawl("https://example.com", &client)
                 .await
                 .unwrap();
             assert_eq!(result.status_code, 500);

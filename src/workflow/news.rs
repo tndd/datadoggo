@@ -1,60 +1,51 @@
 use crate::{
     core::rss::{search_rss_links, RssLinkQuery},
     infra::api::{firecrawl::FirecrawlClient, http::HttpClient},
-    task::{task_collect_article_links, task_collect_articles},
 };
 use anyhow::{Context, Result};
 use sqlx::PgPool;
 
-/// RSSワークフローのメイン実行関数（依存性を注入）
+pub mod article;
+pub mod rss;
+
+use article::collect_backlog_articles_with_firecrawl;
+use rss::collect_article_links_with_rss_links;
+
+/// ニュースワークフローのメイン実行関数（依存性を注入）
 ///
 /// 1. rss/link.ymlからフィード設定を読み込み
 /// 2. 各RSSフィードからリンクを取得してDBに保存
 /// 3. 未処理のリンクから記事内容を取得してDBに保存
-pub async fn execute_rss_workflow<H: HttpClient, F: FirecrawlClient>(
+pub async fn workflow_news<H: HttpClient, F: FirecrawlClient>(
     http_client: &H,
     firecrawl_client: &F,
     pool: &PgPool,
-    group: Option<&str>,
+    query: Option<&RssLinkQuery>,
 ) -> Result<()> {
-    match group {
-        Some(group_name) => {
-            println!("=== RSSワークフロー開始（グループ: {}）===", group_name);
+    match &query {
+        Some(rss_query) => {
+            println!("=== ニュースワークフロー開始（クエリ指定）===");
+            println!("対象クエリ: {:?}", rss_query);
         }
         None => {
-            println!("=== RSSワークフロー開始 ===");
+            println!("=== ニュースワークフロー開始 ===");
         }
     }
 
-    let query = group.map(RssLinkQuery::from_group);
     let rss_links = search_rss_links(query).context("フィード設定の読み込みに失敗")?;
 
-    if let Some(group_name) = group {
-        if rss_links.is_empty() {
-            println!(
-                "指定されたグループ '{}' のフィードが見つかりませんでした",
-                group_name
-            );
-            return Ok(());
-        }
-        println!("対象フィード数: {}件", rss_links.len());
-    } else {
-        println!("フィード設定読み込み完了: {}件", rss_links.len());
+    if rss_links.is_empty() {
+        println!("対象のフィードが見つかりませんでした");
+        return Ok(());
     }
+    println!("対象フィード数: {}件", rss_links.len());
 
     // 段階1: RSSフィードからリンクを取得
-    task_collect_article_links(http_client, &rss_links, pool).await?;
+    collect_article_links_with_rss_links(http_client, &rss_links, pool).await?;
     // 段階2: 未処理のリンクから記事内容を取得
-    task_collect_articles(firecrawl_client, pool).await?;
+    collect_backlog_articles_with_firecrawl(firecrawl_client, pool).await?;
 
-    match group {
-        Some(group_name) => {
-            println!("=== RSSワークフロー完了（グループ: {}）===", group_name);
-        }
-        None => {
-            println!("=== RSSワークフロー完了 ===");
-        }
-    }
+    println!("=== ニュースワークフロー完了 ===");
     Ok(())
 }
 
@@ -66,15 +57,15 @@ mod tests {
     use sqlx::PgPool;
 
     // 関数名ベースのモジュールへ統一
-    mod execute_rss_workflow {
+    mod workflow_news {
         use super::*;
 
-        /// 実際のrss/link.ymlを使用して、execute_rss_workflowが正しく動作することをテスト
+        /// 実際のrss/link.ymlを使用して、workflow_newsが正しく動作することをテスト
         #[sqlx::test]
         async fn test_basic(pool: PgPool) -> Result<(), anyhow::Error> {
             // 実際のrss/link.ymlからBBCグループのフィード数を取得
             let bbc_query = Some(RssLinkQuery::from_group("bbc"));
-            let bbc_rss_links = search_rss_links(bbc_query)?;
+            let bbc_rss_links = search_rss_links(bbc_query.as_ref())?;
             let expected_bbc_links_count = bbc_rss_links.len();
 
             assert!(
@@ -108,12 +99,12 @@ mod tests {
                 "初期状態でarticlesが空ではありません"
             );
 
-            // execute_rss_workflowを実行（実際のrss/link.ymlを使用してBBCグループを指定）
-            let result = execute_rss_workflow(
+            // workflow_newsを実行（実際のrss/link.ymlを使用してBBCグループを指定）
+            let result = workflow_news(
                 &mock_http_client,
                 &mock_firecrawl_client,
                 &pool,
-                Some("bbc"),
+                bbc_query.as_ref(),
             )
             .await;
 
@@ -170,7 +161,7 @@ mod tests {
                 first_article_content
             );
 
-            println!("✅ execute_rss_workflow BBC統合テスト完了");
+            println!("✅ workflow_news BBC統合テスト完了");
             println!("  BBCフィード数: {}", expected_bbc_links_count);
             println!("  保存されたRSSリンク数: {}", final_rss_count.unwrap_or(0));
             println!("  保存された記事数: {}", final_article_count.unwrap_or(0));
@@ -185,11 +176,12 @@ mod tests {
             let error_http_client = MockHttpClient::new_error("RSS取得接続エラー");
             let success_firecrawl_client = MockFirecrawlClient::new_success("記事内容");
 
-            let result_http_error = execute_rss_workflow(
+            let bbc_query = Some(RssLinkQuery::from_group("bbc"));
+            let result_http_error = workflow_news(
                 &error_http_client,
                 &success_firecrawl_client,
                 &pool,
-                Some("bbc"),
+                bbc_query.as_ref(),
             )
             .await;
 
@@ -221,7 +213,7 @@ mod tests {
                 "HTTP取得エラー時は記事も保存されないべきです"
             );
 
-            println!("✅ execute_rss_workflow エラーハンドリングテスト完了");
+            println!("✅ workflow_news エラーハンドリングテスト完了");
             println!("  実際のBBCフィード設定でのエラーハンドリング: 成功");
             println!("  HTTP取得エラー時の継続処理: 確認済み");
 
@@ -236,14 +228,14 @@ mod tests {
 
             // 実際のrss/link.ymlからBBCグループのフィード数を取得
             let bbc_query = Some(RssLinkQuery::from_group("bbc"));
-            let bbc_feeds = search_rss_links(bbc_query)?;
+            let bbc_feeds = search_rss_links(bbc_query.as_ref())?;
             let expected_bbc_feed_count = bbc_feeds.len();
 
-            let result_firecrawl_error = execute_rss_workflow(
+            let result_firecrawl_error = workflow_news(
                 &success_http_client,
                 &error_firecrawl_client,
                 &pool,
-                Some("bbc"),
+                bbc_query.as_ref(),
             )
             .await;
 
@@ -296,12 +288,13 @@ mod tests {
             assert!(
                 error_content
                     .as_ref()
-                    .is_some_and(|content| content.contains("記事取得APIエラー:")),
-                "エラー記事の内容に記事取得APIエラーメッセージが含まれるべきです: {:?}",
+                    .is_some_and(|content| content.contains("取得エラー:")
+                        || content.contains("記事取得APIエラー:")),
+                "エラー記事の内容に取得エラーメッセージが含まれるべきです: {:?}",
                 error_content
             );
 
-            println!("✅ execute_rss_workflow 記事取得エラーテスト完了");
+            println!("✅ workflow_news 記事取得エラーテスト完了");
             println!("  BBCフィード数: {}", expected_bbc_feed_count);
             println!(
                 "  RSS収集成功: {}件のリンク",

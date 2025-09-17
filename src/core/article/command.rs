@@ -1,7 +1,7 @@
 use anyhow::Result;
 use sqlx::PgPool;
 
-use crate::core::article::fetch::fetch_article_content_via_firecrawl;
+use crate::core::article::fetch::fetch_article_content_with_firecrawl;
 use crate::core::article::model::ArticleContent;
 use crate::infra::api::firecrawl::FirecrawlClient;
 
@@ -35,7 +35,7 @@ pub async fn fetch_via_firecrawl_and_store_article_content(
     client: &dyn FirecrawlClient,
     pool: &PgPool,
 ) -> Result<ArticleContent> {
-    let article = fetch_article_content_via_firecrawl(url, client).await?;
+    let article = fetch_article_content_with_firecrawl(url, client).await?;
     store_article_content(&article, pool).await?;
     Ok(article)
 }
