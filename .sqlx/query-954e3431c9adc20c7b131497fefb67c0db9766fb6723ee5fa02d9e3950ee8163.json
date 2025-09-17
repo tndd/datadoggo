@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE articles SET status_code = 200 WHERE status_code != 200",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "954e3431c9adc20c7b131497fefb67c0db9766fb6723ee5fa02d9e3950ee8163"
+}
