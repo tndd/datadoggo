@@ -1,6 +1,6 @@
 use crate::{
     core::article::{
-        fetch_article_content_via_firecrawl, search_backlog_urls, store_article_content,
+        fetch_article_content_with_firecrawl, search_backlog_urls, store_article_content,
         ArticleContent,
     },
     infra::api::firecrawl::FirecrawlClient,
@@ -9,7 +9,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 /// バックログ対象リンクから処理待ちの記事を収集してDBに保存する
-pub(super) async fn task_collect_articles<F: FirecrawlClient>(
+pub(super) async fn collect_backlog_articles_with_firecrawl<F: FirecrawlClient>(
     firecrawl_client: &F,
     pool: &PgPool,
 ) -> Result<()> {
@@ -22,7 +22,7 @@ pub(super) async fn task_collect_articles<F: FirecrawlClient>(
         println!("記事処理中: {}", article_link);
 
         let article_result =
-            fetch_article_content_via_firecrawl(&article_link, firecrawl_client).await;
+            fetch_article_content_with_firecrawl(&article_link, firecrawl_client).await;
 
         match article_result {
             Ok(article) => match store_article_content(&article, pool).await {
@@ -62,7 +62,7 @@ mod tests {
     use sqlx::PgPool;
 
     // 関数名ベースのモジュールに統一
-    mod task_collect_articles {
+    mod collect_backlog_articles_with_firecrawl {
         use super::*;
 
         #[sqlx::test(fixtures("article"))]
@@ -72,7 +72,7 @@ mod tests {
             // 全URL成功のモッククライアントを設定（基本テスト用）
             let mock_client = MockFirecrawlClient::new_success("基本テスト記事の内容です");
             // 記事取得を実行（未処理の6件が処理される）
-            let result = task_collect_articles(&mock_client, &pool).await;
+            let result = collect_backlog_articles_with_firecrawl(&mock_client, &pool).await;
             assert!(
                 result.is_ok(),
                 "記事取得処理が失敗しました: {:?}",
@@ -130,7 +130,7 @@ mod tests {
             // 全URL成功のモッククライアントを設定（混在テスト用）
             let mock_client = MockFirecrawlClient::new_success("混在テスト記事の内容です");
             // 記事取得を実行（未処理の11件が処理される）
-            let result = task_collect_articles(&mock_client, &pool).await;
+            let result = collect_backlog_articles_with_firecrawl(&mock_client, &pool).await;
             assert!(
                 result.is_ok(),
                 "混在シナリオの処理が失敗しました: {:?}",
@@ -210,7 +210,7 @@ mod tests {
                 .await?;
 
                 // 記事処理を実行（エラー記事を再処理）
-                let result = task_collect_articles(&mock_client, &pool).await;
+                let result = collect_backlog_articles_with_firecrawl(&mock_client, &pool).await;
                 assert!(
                     result.is_ok(),
                     "エラー記事再処理が失敗しました: {:?}",
@@ -284,7 +284,7 @@ mod tests {
                 );
 
                 // エラークライアントで処理実行（全記事でエラーが発生する予定）
-                let result = task_collect_articles(&error_client, &pool).await;
+                let result = collect_backlog_articles_with_firecrawl(&error_client, &pool).await;
                 assert!(
                     result.is_ok(),
                     "エラーが発生しても処理は継続されるべきです: {:?}",
@@ -354,7 +354,7 @@ mod tests {
                         .await?;
 
                 // 成功クライアントで処理実行
-                let result = task_collect_articles(&success_client, &pool).await;
+                let result = collect_backlog_articles_with_firecrawl(&success_client, &pool).await;
                 assert!(
                     result.is_ok(),
                     "混在結果処理が失敗しました: {:?}",

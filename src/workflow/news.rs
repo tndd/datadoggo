@@ -8,8 +8,8 @@ use sqlx::PgPool;
 pub mod article;
 pub mod rss;
 
-use article::task_collect_articles;
-use rss::task_collect_article_links;
+use article::collect_backlog_articles_with_firecrawl;
+use rss::collect_article_links_with_rss_links;
 
 /// ニュースワークフローのメイン実行関数（依存性を注入）
 ///
@@ -41,9 +41,9 @@ pub async fn workflow_news<H: HttpClient, F: FirecrawlClient>(
     println!("対象フィード数: {}件", rss_links.len());
 
     // 段階1: RSSフィードからリンクを取得
-    task_collect_article_links(http_client, &rss_links, pool).await?;
+    collect_article_links_with_rss_links(http_client, &rss_links, pool).await?;
     // 段階2: 未処理のリンクから記事内容を取得
-    task_collect_articles(firecrawl_client, pool).await?;
+    collect_backlog_articles_with_firecrawl(firecrawl_client, pool).await?;
 
     println!("=== ニュースワークフロー完了 ===");
     Ok(())

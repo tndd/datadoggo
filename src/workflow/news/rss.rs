@@ -9,7 +9,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 /// RSSフィードからリンクを収集してDBに保存する
-pub(super) async fn task_collect_article_links<H: HttpClient>(
+pub(super) async fn collect_article_links_with_rss_links<H: HttpClient>(
     client: &H,
     rss_links: &[RssLink],
     pool: &PgPool,
@@ -48,7 +48,7 @@ mod tests {
     use sqlx::PgPool;
 
     // 関数名ベースのモジュールでテストを集約
-    mod task_collect_article_links {
+    mod collect_article_links_with_rss_links {
         use super::*;
         #[sqlx::test]
         async fn test_success(pool: PgPool) -> Result<(), anyhow::Error> {
@@ -84,7 +84,8 @@ mod tests {
             assert_eq!(initial_count.unwrap_or(0), 0);
 
             // 実行
-            let result = task_collect_article_links(&mock_client, &test_feeds, &pool).await;
+            let result =
+                collect_article_links_with_rss_links(&mock_client, &test_feeds, &pool).await;
             assert!(result.is_ok());
 
             // 件数確認（3フィード × 3記事 = 9件）
@@ -136,7 +137,8 @@ mod tests {
 
             // 成功フィードのみ処理
             let success_feeds = vec![test_feeds[0].clone()];
-            let result = task_collect_article_links(&success_client, &success_feeds, &pool).await;
+            let result =
+                collect_article_links_with_rss_links(&success_client, &success_feeds, &pool).await;
             assert!(result.is_ok());
             let success_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
@@ -145,7 +147,8 @@ mod tests {
 
             // 以降はエラークライアントで全フィード処理（追加されない）
             let error_client = MockHttpClient::new_error("接続タイムアウト");
-            let all_result = task_collect_article_links(&error_client, &test_feeds, &pool).await;
+            let all_result =
+                collect_article_links_with_rss_links(&error_client, &test_feeds, &pool).await;
             assert!(all_result.is_ok());
             let final_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
@@ -189,7 +192,8 @@ mod tests {
 
             // 1回目
             let first_feed = vec![duplicate_feeds[0].clone()];
-            let result1 = task_collect_article_links(&mock_client, &first_feed, &pool).await;
+            let result1 =
+                collect_article_links_with_rss_links(&mock_client, &first_feed, &pool).await;
             assert!(result1.is_ok());
             let after_first_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
                 .fetch_one(&pool)
@@ -212,7 +216,8 @@ mod tests {
 
             // 2回目の実行：同一URLのフィードを再度処理（重複発生）
             let second_feed = vec![duplicate_feeds[1].clone()];
-            let result2 = task_collect_article_links(&mock_client, &second_feed, &pool).await;
+            let result2 =
+                collect_article_links_with_rss_links(&mock_client, &second_feed, &pool).await;
             assert!(result2.is_ok(), "2回目のRSS収集処理が失敗しました");
 
             // 2回目実行後の件数確認（重複により件数は変わらず3件のまま）
@@ -261,7 +266,7 @@ mod tests {
 
             // 3回目の実行：全ての重複フィードを一度に処理
             let all_result =
-                task_collect_article_links(&mock_client, &duplicate_feeds, &pool).await;
+                collect_article_links_with_rss_links(&mock_client, &duplicate_feeds, &pool).await;
             assert!(all_result.is_ok(), "全重複フィードの処理が失敗しました");
 
             // 最終的な件数確認（依然として3件のまま）
@@ -306,7 +311,8 @@ mod tests {
                 url: "https://unique.example.com/different.xml".to_string(),
             }];
 
-            let unique_result = task_collect_article_links(&mock_client, &unique_feed, &pool).await;
+            let unique_result =
+                collect_article_links_with_rss_links(&mock_client, &unique_feed, &pool).await;
             assert!(
                 unique_result.is_ok(),
                 "ユニークフィードの処理が失敗しました"
@@ -332,7 +338,7 @@ mod tests {
     }
 
     // 並行処理テスト（関数名ベースの配下）
-    mod task_collect_article_links_concurrent {
+    mod collect_article_links_with_rss_links_concurrent {
         use super::*;
         use crate::infra::api::http::MockHttpClient;
 
@@ -363,7 +369,8 @@ mod tests {
                 .await?;
 
             // 第1回目：技術フィード処理
-            let result1 = task_collect_article_links(&mock_client, &tech_feeds, &pool).await;
+            let result1 =
+                collect_article_links_with_rss_links(&mock_client, &tech_feeds, &pool).await;
             assert!(result1.is_ok(), "技術フィード処理が失敗しました");
 
             let _after_tech_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
@@ -371,7 +378,8 @@ mod tests {
                 .await?;
 
             // 第2回目：ビジネスフィード処理
-            let result2 = task_collect_article_links(&mock_client, &business_feeds, &pool).await;
+            let result2 =
+                collect_article_links_with_rss_links(&mock_client, &business_feeds, &pool).await;
             assert!(result2.is_ok(), "ビジネスフィード処理が失敗しました");
 
             let after_business_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
@@ -446,7 +454,8 @@ mod tests {
 
             // 1回目の処理
             let result1 =
-                task_collect_article_links(&mock_client, &competing_feeds[0..1], &pool).await;
+                collect_article_links_with_rss_links(&mock_client, &competing_feeds[0..1], &pool)
+                    .await;
             assert!(result1.is_ok(), "1回目の処理が失敗しました");
 
             let first_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
@@ -472,7 +481,8 @@ mod tests {
 
             // 2回目の処理（同じURLのフィード）
             let result2 =
-                task_collect_article_links(&mock_client, &competing_feeds[1..2], &pool).await;
+                collect_article_links_with_rss_links(&mock_client, &competing_feeds[1..2], &pool)
+                    .await;
             assert!(result2.is_ok(), "2回目の処理が失敗しました");
 
             let second_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
@@ -559,7 +569,7 @@ mod tests {
 
             // 成功フィード処理
             let success_result =
-                task_collect_article_links(&success_client, &success_feeds, &pool).await;
+                collect_article_links_with_rss_links(&success_client, &success_feeds, &pool).await;
             assert!(success_result.is_ok(), "成功フィード処理が失敗しました");
 
             let after_success_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")
@@ -572,7 +582,8 @@ mod tests {
             );
 
             // エラーフィード処理（内部でエラーハンドリングされるため、関数自体は成功）
-            let error_result = task_collect_article_links(&error_client, &error_feeds, &pool).await;
+            let error_result =
+                collect_article_links_with_rss_links(&error_client, &error_feeds, &pool).await;
             assert!(
                 error_result.is_ok(),
                 "エラーフィード処理（エラーハンドリング）が失敗しました"
@@ -612,7 +623,8 @@ mod tests {
                 .fetch_one(&pool)
                 .await?;
 
-            let batch_result = task_collect_article_links(&mock_client, &batch_feeds, &pool).await;
+            let batch_result =
+                collect_article_links_with_rss_links(&mock_client, &batch_feeds, &pool).await;
             assert!(batch_result.is_ok(), "バッチ処理が失敗しました");
 
             let after_batch_count = sqlx::query_scalar!("SELECT COUNT(*) FROM article_links")

@@ -42,7 +42,7 @@ INSERT INTO articles (url, timestamp, status_code, content) VALUES
 ('https://mixed-errors.example.com/server-error-503', '2025-01-21T11:33:00Z', 503, 'サービス利用不可');
 
 -- エラー回復の継続処理テスト用
--- task_collect_articles が途中で失敗しても残りの記事を処理し続けることを確認
+-- collect_backlog_articles_with_firecrawl が途中で失敗しても残りの記事を処理し続けることを確認
 INSERT INTO article_links (url, title, pub_date, source) VALUES
 ('https://continuity-test.example.com/process-1', '継続処理テスト1', '2025-01-21T12:00:00Z', 'continuity'),
 ('https://continuity-test.example.com/process-2', '継続処理テスト2', '2025-01-21T12:01:00Z', 'continuity'),

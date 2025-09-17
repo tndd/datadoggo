@@ -38,14 +38,14 @@
 “インラインテスト維持・fixturesは同階層参照” を前提に列挙します。
 
 - `src/task/rss.rs`
-  - 対象: `task_collect_article_links`
+  - 対象: `collect_article_links_with_rss_links`
   - 乖離: テストサブモジュール名が `{関数名}` ベースで統一されていない（例: `common_concurrent_processing_tests`）。
-  - 提案: `mod task_collect_article_links { ... }` 配下に「成功/エラー/重複/並行」の4テストを整理し、名前規約を統一。
+  - 提案: `mod collect_article_links_with_rss_links { ... }` 配下に「成功/エラー/重複/並行」の4テストを整理し、名前規約を統一。
 
 - `src/task/article.rs`
-  - 対象: `task_collect_articles`
+  - 対象: `collect_backlog_articles_with_firecrawl`
   - 乖離: `error_recovery_tests` のような任意名の中間モジュールがあり、関数名ベースの粒度とずれている。
-  - 提案: `mod task_collect_articles { basic, mixed, error_reprocessing, partial_failure, mixed_result }` のようにフラット化。
+  - 提案: `mod collect_backlog_articles_with_firecrawl { basic, mixed, error_reprocessing, partial_failure, mixed_result }` のようにフラット化。
 
 - `src/core/rss.rs`
   - 対象: `get_article_links_from_channel`, `get_article_links_from_feed`, `store_article_links`, `search_article_links`
@@ -97,7 +97,7 @@
   - 先頭: `mod helper`（ある場合）
   - 次: `mod online`（`#[cfg(feature = "online")]` をモジュールに付与）
   - 続けて: `{関数名}` ごとのサブモジュール（複数テストがある関数のみモジュール化）
-    - 例: `mod task_collect_article_links { success, errors, duplicate, concurrent }`
+    - 例: `mod collect_article_links_with_rss_links { success, errors, duplicate, concurrent }`
     - 例: `mod search_article_links { basic, pattern, date_boundary, case_insensitive, edge }`（最大5件）
 
 - フィクスチャ運用
@@ -116,10 +116,10 @@
 ## 具体的な修正マッピング（同一ファイル内での再編）
 
 - `src/task/rss.rs`
-  - `mod tests` 内を `mod task_collect_article_links { … }` に再編（サブテスト: success/errors/duplicate/concurrent）
+  - `mod tests` 内を `mod collect_article_links_with_rss_links { … }` に再編（サブテスト: success/errors/duplicate/concurrent）
 
 - `src/task/article.rs`
-  - `error_recovery_tests` を `mod task_collect_articles { … }` 配下に統一（basic/mixed/error_reprocessing/partial_failure/mixed_result）
+  - `error_recovery_tests` を `mod collect_backlog_articles_with_firecrawl { … }` 配下に統一（basic/mixed/error_reprocessing/partial_failure/mixed_result）
 
 - `src/app/workflow.rs`
   - 変更なし（rss/link.yml 依存は現状維持）。`mod online` の位置づけ明確化のみ検討可
