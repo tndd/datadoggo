@@ -1,6 +1,6 @@
 {
     "code-runner.executorMap": {
-        "rust": "cd $workspaceRoot && cargo test"
+        "rust": "cd $workspaceRoot && just test"
     },
     "code-runner.clearPreviousOutput": true,
     "code-runner.runInTerminal": true,
