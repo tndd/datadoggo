@@ -1,6 +1,7 @@
 name: datadoggo
 
 services:
+  # 本番/開発用PostgreSQL（従来の設定を維持）
   postgres:
     image: postgres:16
     environment:
@@ -17,62 +18,23 @@ services:
       timeout: 3s
       retries: 3
 
-  # Firecrawl services
-  firecrawl-redis:
-    image: redis:alpine
-    command: redis-server --bind 0.0.0.0 --port 6379
-    ports:
-      - "16379:6379"
+  # テスト用PostgreSQL
+  postgres-test:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: datadoggo_test
+      POSTGRES_USER: datadoggo
+      POSTGRES_PASSWORD: datadoggo
     volumes:
-      - firecrawl_redis_data:/data
+      - postgres_test_data:/var/lib/postgresql/data
+    ports:
+      - "16432:5432"
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
+      test: [ "CMD-SHELL", "pg_isready -U datadoggo" ]
+      interval: 5s
+      timeout: 3s
       retries: 3
-
-  firecrawl-playwright:
-    image: ghcr.io/firecrawl/firecrawl:latest
-    platform: linux/amd64
-    env_file:
-      - .env.firecrawl
-    environment:
-      - PORT=3000
-      - PROXY_SERVER=
-      - BLOCK_MEDIA=true
-    ports:
-      - "13000:3000"
-    command: pnpm run start:playwright-service
-    depends_on:
-      firecrawl-redis:
-        condition: service_healthy
-
-  firecrawl-api:
-    image: ghcr.io/firecrawl/firecrawl:latest
-    platform: linux/amd64
-    depends_on:
-      - firecrawl-redis
-      - firecrawl-playwright
-    env_file:
-      - .env.firecrawl
-    environment:
-      - PORT=3002
-      - HOST=0.0.0.0
-    ports:
-      - "13002:3002"
-    command: pnpm run start:production
-
-  firecrawl-worker:
-    image: ghcr.io/firecrawl/firecrawl:latest
-    platform: linux/amd64
-    depends_on:
-      - firecrawl-redis
-      - firecrawl-playwright
-      - firecrawl-api
-    env_file:
-      - .env.firecrawl
-    command: pnpm run workers
 
 volumes:
   postgres_data:
-  firecrawl_redis_data:
+  postgres_test_data:
