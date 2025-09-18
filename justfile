@@ -60,14 +60,12 @@ setup:
 prepare:
     DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
 
-# コードチェック（オフラインモード）
-check:
-    SQLX_OFFLINE=true cargo check
-
-# linting
+# コード品質チェック（フォーマット → チェック → リント）
 lint:
-    cargo clippy -- -D warnings
-
-# フォーマット
-fmt:
+    #!/usr/bin/env bash
+    set -euo pipefail
     cargo fmt
+    echo "> cargo check"
+    SQLX_OFFLINE=true cargo check
+    echo "> cargo clippy"
+    cargo clippy -- -D warnings
