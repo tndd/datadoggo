@@ -32,8 +32,8 @@ migrate-prod:
     DATABASE_URL="${PROD_DB_URL}" sqlx migrate run
     echo "本番用データベースのマイグレーションが完了しました。"
 
-# テスト用データベースの完全リセット
-reset-db:
+# テスト用データベースのTruncate
+truncate:
     #!/usr/bin/env bash
     set -euo pipefail
     docker compose down postgres-test -v
@@ -41,7 +41,7 @@ reset-db:
     sleep 5
     docker compose exec postgres-test pg_isready -U datadoggo
     DATABASE_URL="${TEST_DB_URL}" sqlx migrate run
-    echo "テスト用データベースをリセットしました。"
+    echo "テスト用データベースをTruncateしました。"
 
 # プロジェクトの初期セットアップ
 setup:
