@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT timestamp FROM articles WHERE url = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "timestamp",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "126286bef6fe165504f9d037c5ac05e18074f236fed3eb1add55cc8ee74b552c"
+}

@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT status_code, content, timestamp FROM articles WHERE url = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "status_code",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "timestamp",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "636e4401687e58d981465074bd1485a816dae6340af6756dce04d1cf78989e95"
+}

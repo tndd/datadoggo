@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(*) FROM article_links al \n                 LEFT JOIN articles a ON al.url = a.url \n                 WHERE a.url IS NULL OR a.status_code != 200",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "1a8519438fea2ada4053193c8f2e4fbade49a756ff5e08683bd6b58d1f93b3cc"
+}

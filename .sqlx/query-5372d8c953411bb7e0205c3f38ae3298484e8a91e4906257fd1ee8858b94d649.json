@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO article_links (url, title, pub_date, source)\n        SELECT * FROM UNNEST($1::text[], $2::text[], $3::timestamptz[], $4::text[])\n        ON CONFLICT (url) DO UPDATE SET\n            title = EXCLUDED.title,\n            pub_date = EXCLUDED.pub_date,\n            source = EXCLUDED.source\n        WHERE (article_links.title, article_links.pub_date, article_links.source)\n            IS DISTINCT FROM (EXCLUDED.title, EXCLUDED.pub_date, EXCLUDED.source)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "TimestamptzArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5372d8c953411bb7e0205c3f38ae3298484e8a91e4906257fd1ee8858b94d649"
+}
