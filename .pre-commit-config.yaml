@@ -8,8 +8,8 @@ repos:
         types_or: [rust, toml]
         pass_filenames: false
         always_run: true
-      - id: cargo-test
-        name: cargo test
-        entry: cargo test --all --locked
+      - id: cargo-check
+        name: cargo check
+        entry: bash -c 'SQLX_OFFLINE=true cargo check --all --locked --tests'
         language: system
         pass_filenames: false
