@@ -28,6 +28,41 @@ is_production_env env:
     #!/usr/bin/env bash
     [ "{{env}}" = "prod" ] || [ "{{env}}" = "all" ]
 
+# PostgreSQLコンテナの起動完了を待機
+[private]
+wait_for_postgres container:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    max_attempts=30
+    attempt=1
+
+    echo "Waiting for {{container}} to be ready..."
+    while ! docker compose exec {{container}} pg_isready -U datadoggo >/dev/null 2>&1; do
+        if [ $attempt -ge $max_attempts ]; then
+            echo "Error: {{container}} failed to start within ${max_attempts} seconds"
+            exit 1
+        fi
+        echo -n "."
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    echo " ✓ {{container}} ready!"
+
+# コンテナが既に起動しているかチェック
+[private]
+is_container_running container:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # コンテナの状態をチェック（Up状態かどうか）
+    if docker compose ps {{container}} | grep -q "Up"; then
+        echo "{{container}} is already running"
+        exit 0
+    else
+        exit 1
+    fi
+
 # setup用の引数解析
 [private]
 parse_setup_args env *flags:
@@ -78,25 +113,34 @@ remove_containers env:
         docker compose down postgres-test -v
     fi
 
-# コンテナ起動処理
+# コンテナ起動処理（インテリジェント待機）
 [private]
 start_containers env:
     #!/usr/bin/env bash
     set -euo pipefail
 
     if [ "{{env}}" = "prod" ]; then
-        docker compose up -d postgres
-        sleep 5
-        docker compose exec postgres pg_isready -U datadoggo
+        if just is_container_running postgres; then
+            just wait_for_postgres postgres
+        else
+            docker compose up -d postgres
+            just wait_for_postgres postgres
+        fi
     elif [ "{{env}}" = "test" ]; then
-        docker compose up -d postgres-test
-        sleep 5
-        docker compose exec postgres-test pg_isready -U datadoggo
+        if just is_container_running postgres-test; then
+            just wait_for_postgres postgres-test
+        else
+            docker compose up -d postgres-test
+            just wait_for_postgres postgres-test
+        fi
     elif [ "{{env}}" = "all" ]; then
+        # 並列起動
         docker compose up -d postgres postgres-test
-        sleep 10
-        docker compose exec postgres pg_isready -U datadoggo
-        docker compose exec postgres-test pg_isready -U datadoggo
+
+        # 並列待機
+        (just wait_for_postgres postgres) &
+        (just wait_for_postgres postgres-test) &
+        wait  # 両方の完了を待機
     else
         echo "エラー: 無効なenv '{{env}}'. 'prod', 'test', 'all'のいずれかを指定してください。"
         exit 1
