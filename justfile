@@ -1,5 +1,5 @@
 # just test - 包括的テスト実行（品質チェック + テスト）
-# just setup [env] [--clear] - 環境セットアップ（デフォルト: both）
+# just setup [env] [--clear] - 環境セットアップ（デフォルト: test）
 # just lint - コード品質チェック（フォーマット → チェック → リント）
 
 set dotenv-load
@@ -12,10 +12,10 @@ compose_up db_type clean="false":
 
     # クリーンフラグが設定されている場合はコンテナを再作成
     if [ "{{clean}}" = "true" ]; then
-        if [ "{{db_type}}" = "prod" ] || [ "{{db_type}}" = "both" ]; then
+        if [ "{{db_type}}" = "prod" ] || [ "{{db_type}}" = "all" ]; then
             docker compose down postgres -v
         fi
-        if [ "{{db_type}}" = "test" ] || [ "{{db_type}}" = "both" ]; then
+        if [ "{{db_type}}" = "test" ] || [ "{{db_type}}" = "all" ]; then
             docker compose down postgres-test -v
         fi
     fi
@@ -29,13 +29,13 @@ compose_up db_type clean="false":
         docker compose up -d postgres-test
         sleep 5
         docker compose exec postgres-test pg_isready -U datadoggo
-    elif [ "{{db_type}}" = "both" ]; then
+    elif [ "{{db_type}}" = "all" ]; then
         docker compose up -d postgres postgres-test
         sleep 10
         docker compose exec postgres pg_isready -U datadoggo
         docker compose exec postgres-test pg_isready -U datadoggo
     else
-        echo "エラー: 無効なdb_type '{{db_type}}'. 'prod', 'test', 'both'のいずれかを指定してください。"
+        echo "エラー: 無効なdb_type '{{db_type}}'. 'prod', 'test', 'all'のいずれかを指定してください。"
         exit 1
     fi
 
@@ -51,10 +51,10 @@ migrate db_type:
     elif [ "{{db_type}}" = "test" ]; then
         DATABASE_URL="${TEST_DB_URL}" sqlx migrate run
         echo "テスト用データベースのマイグレーションが完了しました。"
-    elif [ "{{db_type}}" = "both" ]; then
+    elif [ "{{db_type}}" = "all" ]; then
         DATABASE_URL="${PROD_DB_URL}" sqlx migrate run
         DATABASE_URL="${TEST_DB_URL}" sqlx migrate run
-        echo "両方のデータベースのマイグレーションが完了しました。"
+        echo "すべてのデータベースのマイグレーションが完了しました。"
     fi
 
 # sqlx prepare実行の共通処理
@@ -91,8 +91,8 @@ test:
     DATABASE_URL="${TEST_DB_URL}" cargo test --lib
     echo "Complete: just test"
 
-# 環境セットアップ（env: prod/test/both, --clearでコンテナ再作成）
-setup env="both" *flags="":
+# 環境セットアップ（env: prod/test/all, --clearでコンテナ再作成）
+setup env="test" *flags="":
     #!/usr/bin/env bash
     set -euo pipefail
 

@@ -29,7 +29,9 @@ TEST_DB_URL=postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test
 ## 開発ワークフロー
 ```bash
 # 1. 初回セットアップ
-just setup both    # 両方のDBコンテナを起動・マイグレーション
+just setup         # デフォルト：テスト用DBのみ
+just setup all     # すべてのDBコンテナを起動・マイグレーション
+just setup prod    # 本番/開発用DBのみ
 
 # 2. 開発時の品質チェック
 just lint          # fmt + check + clippy
@@ -43,5 +45,5 @@ just sqlx_prepare  # キャッシュ更新（必須）
 
 ### よくあるエラーと解決方法
 1. **`SQLX_OFFLINE` エラー** → `just sqlx_prepare`でキャッシュ更新
-2. **DB接続エラー** → `just setup both`でコンテナ確認
+2. **DB接続エラー** → `just setup all`でコンテナ確認
 3. **pre-commitエラー** → fmtによる自動修正後、`git add .`して再コミット
