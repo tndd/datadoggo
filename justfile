@@ -1,12 +1,12 @@
-# シンプルなデータベース＆テストタスク
-# - just test - 包括的テスト実行（品質チェック + prepare + テスト）
-# - just setup [env] [--clear] - 環境セットアップ（デフォルト: both）
+# just test - 包括的テスト実行（品質チェック + prepare + テスト）
+# just setup [env] [--clear] - 環境セットアップ（デフォルト: both）
+# just lint - コード品質チェック（フォーマット → チェック → リント）
 
 set dotenv-load
 
-# データベース準備の共通処理
+# DBコンテナcomposeコマンド
 [private]
-prepare_database db_type clean="false":
+compose_up db_type clean="false":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -41,7 +41,7 @@ prepare_database db_type clean="false":
 
 # マイグレーション実行の共通処理
 [private]
-run_migration db_type:
+migrate db_type:
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -57,19 +57,25 @@ run_migration db_type:
         echo "両方のデータベースのマイグレーションが完了しました。"
     fi
 
-# 包括的テスト実行（コード品質チェック + sqlx prepare + テスト実行）
-test:
+# コード品質チェック（フォーマット → チェック → リント）
+lint:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "=== コード品質チェック開始 ==="
     cargo fmt
     echo "> cargo check"
     SQLX_OFFLINE=true cargo check
     echo "> cargo clippy"
     cargo clippy -- -D warnings
 
+# 包括的テスト実行（コード品質チェック + sqlx prepare + テスト実行）
+test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== コード品質チェック開始 ==="
+    just lint
+
     echo "=== テスト環境準備 ==="
-    just prepare_database test false
+    just compose_up test false
 
     echo "=== sqlx prepare実行 ==="
     DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
@@ -93,8 +99,8 @@ setup env="both" *flags="":
     done
 
     echo "=== {{env}}環境のセットアップを開始します ==="
-    just prepare_database {{env}} $clear
-    just run_migration {{env}}
+    just compose_up {{env}} $clear
+    just migrate {{env}}
 
     echo "=== sqlx prepare実行 ==="
     DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
