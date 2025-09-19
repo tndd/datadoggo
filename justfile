@@ -1,4 +1,4 @@
-# just test - 包括的テスト実行（品質チェック + prepare + テスト）
+# just test - 包括的テスト実行（品質チェック + テスト）
 # just setup [env] [--clear] - 環境セットアップ（デフォルト: both）
 # just lint - コード品質チェック（フォーマット → チェック → リント）
 
@@ -58,7 +58,6 @@ migrate db_type:
     fi
 
 # sqlx prepare実行の共通処理
-[private]
 sqlx_prepare:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -72,7 +71,7 @@ lint:
     echo "> cargo fmt"
     cargo fmt
     echo "> cargo check"
-    SQLX_OFFLINE=true cargo check
+    SQLX_OFFLINE=true cargo check --all --locked
     echo "> cargo clippy"
     cargo clippy -- -D warnings
 
@@ -85,8 +84,6 @@ test:
 
     echo "> just compose"
     just compose_up test false
-
-    just sqlx_prepare
 
     echo "> cargo test"
     DATABASE_URL="${TEST_DB_URL}" cargo test --lib
@@ -109,6 +106,4 @@ setup env="both" *flags="":
     echo "=== {{env}}環境のセットアップを開始します ==="
     just compose_up {{env}} $clear
     just migrate {{env}}
-    just sqlx_prepare
-
     echo "=== {{env}}環境のセットアップが完了しました ==="

@@ -10,6 +10,6 @@ repos:
         always_run: true
       - id: cargo-check
         name: cargo check
-        entry: bash -c 'SQLX_OFFLINE=true cargo check --all --locked --tests'
+        entry: bash -c 'just lint'
         language: system
         pass_filenames: false
