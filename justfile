@@ -175,14 +175,14 @@ migrate env:
     set -euo pipefail
 
     if [ "{{env}}" = "prod" ]; then
-        DATABASE_URL="${PROD_DB_URL}" sqlx migrate run
+        DATABASE_URL="${DB_URL_PROD}" sqlx migrate run
         echo "本番用データベースのマイグレーションが完了しました。"
     elif [ "{{env}}" = "test" ]; then
-        DATABASE_URL="${TEST_DB_URL}" sqlx migrate run
+        DATABASE_URL="${DB_URL}" sqlx migrate run
         echo "テスト用データベースのマイグレーションが完了しました。"
     elif [ "{{env}}" = "all" ]; then
-        DATABASE_URL="${PROD_DB_URL}" sqlx migrate run
-        DATABASE_URL="${TEST_DB_URL}" sqlx migrate run
+        DATABASE_URL="${DB_URL_PROD}" sqlx migrate run
+        DATABASE_URL="${DB_URL}" sqlx migrate run
         echo "すべてのデータベースのマイグレーションが完了しました。"
     fi
 
@@ -195,7 +195,7 @@ sqlx_prepare:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "> cargo sqlx prepare"
-    DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
+    DATABASE_URL="${DB_URL}" cargo sqlx prepare
 
 # コード品質チェック
 # （compose up + fmt → clippy）
@@ -223,7 +223,7 @@ test:
     just lint  # この時点でcompose upが保証される
 
     echo "> cargo test"
-    DATABASE_URL="${TEST_DB_URL}" cargo test --lib
+    DATABASE_URL="${DB_URL}" cargo test --lib
     echo "Complete: just test"
 
 # ========================================

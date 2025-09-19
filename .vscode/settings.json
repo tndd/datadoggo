@@ -10,15 +10,9 @@
         "./Cargo.toml"
     ],
     "rust-analyzer.server.extraEnv": {
-        "ENVIRONMENT": "test",
-        "DATABASE_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
-        "TEST_DB_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
-        "PROD_DB_URL": "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo",
+        "DB_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
     },
     "rust-analyzer.cargo.extraEnv": {
-        "ENVIRONMENT": "test",
-        "DATABASE_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
-        "TEST_DB_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
-        "PROD_DB_URL": "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo",
+        "DB_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
     }
 }
