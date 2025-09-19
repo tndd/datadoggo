@@ -156,7 +156,6 @@ sqlx_prepare:
 # コード品質チェック
 # （compose up + fmt → clippy）
 # NOTE: compose upを先にするのはsqlxのため
-# NOTE: cargo clippyがcargo checkを内包するため、明示的なcheckは不要
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
