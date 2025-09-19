@@ -57,10 +57,19 @@ migrate db_type:
         echo "両方のデータベースのマイグレーションが完了しました。"
     fi
 
+# sqlx prepare実行の共通処理
+[private]
+sqlx_prepare:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "> cargo sqlx prepare"
+    DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
+
 # コード品質チェック（フォーマット → チェック → リント）
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
+    echo "> cargo fmt"
     cargo fmt
     echo "> cargo check"
     SQLX_OFFLINE=true cargo check
@@ -71,18 +80,17 @@ lint:
 test:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "=== コード品質チェック開始 ==="
+    echo "> just lint"
     just lint
 
-    echo "=== テスト環境準備 ==="
+    echo "> just compose"
     just compose_up test false
 
-    echo "=== sqlx prepare実行 ==="
-    DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
+    just sqlx_prepare
 
-    echo "=== テスト実行 ==="
+    echo "> cargo test"
     DATABASE_URL="${TEST_DB_URL}" cargo test --lib
-    echo "全ての検証が完了しました。"
+    echo "Complete: just test"
 
 # 環境セットアップ（env: prod/test/both, --clearでコンテナ再作成）
 setup env="both" *flags="":
@@ -101,8 +109,6 @@ setup env="both" *flags="":
     echo "=== {{env}}環境のセットアップを開始します ==="
     just compose_up {{env}} $clear
     just migrate {{env}}
+    just sqlx_prepare
 
-    echo "=== sqlx prepare実行 ==="
-    DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
-
-    echo "{{env}}環境のセットアップが完了しました。"
+    echo "=== {{env}}環境のセットアップが完了しました ==="
