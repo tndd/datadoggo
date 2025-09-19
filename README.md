@@ -7,14 +7,13 @@ webからニュース等のを集め、保存・分析を行う。
 
 ```bash
 # .envファイルに以下が設定されている必要があります
-PROD_DB_URL=postgresql://datadoggo:datadoggo@localhost:15432/datadoggo
-TEST_DB_URL=postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test
+DATABASE_URL=postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test
+DATABASE_URL_PROD=postgresql://datadoggo:datadoggo@localhost:15432/datadoggo
 ```
 
 ## 環境変数`ENVIRONMENT`による切り替えの仕組み
-- `ENVIRONMENT=prod` → `PROD_DB_URL`を使用（本番/開発用DB）
-- `ENVIRONMENT=test` → `TEST_DB_URL`を使用（テスト用DB）
-- その他の場合はエラーとなるので注意。設定は明示的でなければならない。
+- `ENVIRONMENT=prod` → `DATABASE_URL_PROD`を使用（本番/開発用DB）
+- 指定なき場合はテストモードとして動作する
 
 # Justfile
 Justfileを使用した開発ワークフローを採用している。
@@ -52,9 +51,7 @@ just test
 ```
 
 # VSCode Test Explorerへの対応
-VSCodeのTest Explorerからcargo testを起動する場合も、READMEで定義している環境変数を反映させる必要がある。`.vscode/settings.json`では以下のEnvが自動的に付与されるので、環境が変わったらここも更新すること。
-
-- `ENVIRONMENT=test`
-- `DATABASE_URL=TEST_DB_URL`
-- `TEST_DB_URL`
-- `PROD_DB_URL`
+VSCodeのTest Explorerを有効にするには、`.vscode/settings.json`に以下の設定が必要。
+```bash
+DATABASE_URL="postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test"
+```

@@ -2,15 +2,8 @@ repos:
   - repo: local
     hooks:
       - id: cargo-lint
-        name: cargo lint (fmt + check + clippy)
+        name: cargo lint (fmt + clippy)
         entry: bash -c 'just lint'
         language: system
         pass_filenames: false
         types_or: [rust, toml]
-
-      - id: sqlx-prepare
-        name: sqlx prepare
-        entry: bash -c 'just sqlx_prepare'
-        language: system
-        pass_filenames: false
-        files: \.(rs|sql)$

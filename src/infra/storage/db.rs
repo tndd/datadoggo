@@ -3,7 +3,7 @@ use sqlx::PgPool;
 use std::env;
 
 /// データベース接続プールを作成
-/// 環境変数に基づいて適切なDB_URLを選択します
+/// 環境変数に基づいて適切なDATABASE_URLを選択します
 /// ENVIRONMENT=prod の場合は本番用DB、デフォルトはテスト/開発用DBを使用
 pub async fn create_pool() -> Result<PgPool> {
     let database_url = get_database_url()?;
@@ -13,20 +13,20 @@ pub async fn create_pool() -> Result<PgPool> {
         .context("データベースへの接続に失敗しました")
 }
 
-/// 環境変数に基づいて適切なDB_URLを取得
+/// 環境変数に基づいて適切なDATABASE_URLを取得
 fn get_database_url() -> Result<String> {
     // 環境変数ENVIRONMENTをチェック
     let environment = env::var("ENVIRONMENT").unwrap_or_default();
 
     let url = match environment.as_str() {
         "prod" => {
-            // 本番環境: DB_URL_PRODのみを使用、フォールバックなし
-            env::var("DB_URL_PROD")
-                .context("DB_URL_PROD is not configured for production environment")?
+            // 本番環境: DATABASE_URL_PRODのみを使用、フォールバックなし
+            env::var("DATABASE_URL_PROD")
+                .context("DATABASE_URL_PROD is not configured for production environment")?
         }
         _ => {
-            // デフォルト（テスト・開発）: DB_URLを使用
-            env::var("DB_URL").context("DB_URL is not configured")?
+            // デフォルト（テスト・開発）: DATABASE_URLを使用
+            env::var("DATABASE_URL").context("DATABASE_URL is not configured")?
         }
     };
 
