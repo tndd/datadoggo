@@ -19,7 +19,7 @@ compose_up env clean="false":
             read -p "続行しますか？ (y/N): " confirm
             if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
                 echo "操作をキャンセルしました。"
-                exit 0
+                exit 1
             fi
         fi
 
@@ -128,6 +128,9 @@ setup env="test" *flags="":
     fi
 
     echo "=== ${actual_env}環境のセットアップを開始します ==="
-    just compose_up $actual_env $clear
+    if ! just compose_up $actual_env $clear; then
+        echo "セットアップがキャンセルまたは失敗しました。"
+        exit 1
+    fi
     just migrate $actual_env
     echo "=== ${actual_env}環境のセットアップが完了しました ==="
