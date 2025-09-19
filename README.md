@@ -16,34 +16,34 @@ TEST_DB_URL=postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test
 - `ENVIRONMENT=test` → `TEST_DB_URL`を使用（テスト用DB）
 - その他の場合はエラーとなるので注意。設定は明示的でなければならない。
 
-## SQLXキャッシュの重要性
-- `SQLX_OFFLINE=true`でオフラインモード（キャッシュファイル必須）
-- キャッシュ更新: `just sqlx_prepare`（テスト用DBが必要）
-- キャッシュファイル: `.sqlx/query-*.json`（コミット対象）
+# Justfile
+Justfileを使用した開発ワークフローを採用している。
+基本的なコマンドは以下の通り。
 
-### 4. Dockerコンテナのポート分離
-- **本番/開発用DB**: ポート15432
-- **テスト用DB**: ポート16432
-- 両方のコンテナが必要な理由：並行実行でのデータ競合防止
-
-## 開発ワークフロー
+## setup
+コンテナの立ち上げからマイグレーションまでを行う。
 ```bash
-# 1. 初回セットアップ
 just setup         # デフォルト：テスト用DBのみ
+just setup prod    # 本番DBのみ
 just setup all     # すべてのDBコンテナを起動・マイグレーション
-just setup prod    # 本番/開発用DBのみ
-
-# 2. 開発時の品質チェック
-just lint          # fmt + check + clippy
-
-# 3. テスト実行
-just test          # lint + テスト実行
-
-# 4. SQLクエリ変更時
-just sqlx_prepare  # キャッシュ更新（必須）
 ```
 
-### よくあるエラーと解決方法
-1. **`SQLX_OFFLINE` エラー** → `just sqlx_prepare`でキャッシュ更新
-2. **DB接続エラー** → `just setup all`でコンテナ確認
-3. **pre-commitエラー** → fmtによる自動修正後、`git add .`して再コミット
+### clearフラグによるDBの削除
+clearフラグは既存のDBの内容を削除しながら再セットアップを行う。
+```bash
+just setup --clear # テスト用DBの内容を削除し再構成
+just setup --all   # テスト・本番両方のDBの内容を削除し再構成
+
+```
+
+## lint
+fmt + check + clippyという3つのチェックを行う。
+```bash
+just lint
+```
+
+## test
+compose up + lintを行い、テストを実行する・
+```bash
+just test
+```
