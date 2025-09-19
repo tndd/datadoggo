@@ -1,15 +1,9 @@
 repos:
   - repo: local
     hooks:
-      - id: rustfmt
-        name: rustfmt (auto-fix)
-        entry: bash -c 'cargo fmt --all && git add $(git diff --name-only)'
+      - id: cargo-lint
+        name: cargo lint (fmt + clippy)
+        entry: bash -c 'just lint'
         language: system
+        pass_filenames: false
         types_or: [rust, toml]
-        pass_filenames: false
-        always_run: true
-      - id: cargo-test
-        name: cargo test
-        entry: cargo test --all --locked
-        language: system
-        pass_filenames: false

@@ -1,39 +1,57 @@
-# プロジェクト概要
-このプロジェクトはwebからニュース等のを集め、保存・分析を行うこと。
-もっと言うとwebの主要な情報を監視すること。
+# Datadoggo
+webからニュース等のを集め、保存・分析を行う。
 
-# 情報源
-- 公開rssフィードによるニュース監視
-- blueskyのrssフィード
-- google newsのrssフィード
-- 指定サイトへの直接スクレイピング
+# 環境変数の設定
+このプロジェクトは**環境変数でのテスト・本番切り替え**の仕組みがあります。
+初見での混乱を避けるため、以下を必ず理解してください。
 
-## RSS
-- bbc
-- cbs
-- the_guardian
-- cnbc
-- yahoo_japan
-- rss_club
-- grand_fleet
-- japan_government
-- ...
+```bash
+# .envファイルに以下が設定されている必要があります
+DATABASE_URL=postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test
+DATABASE_URL_PROD=postgresql://datadoggo:datadoggo@localhost:15432/datadoggo
+```
 
-## Bluesky
-WIP
+## 環境変数`ENVIRONMENT`による切り替えの仕組み
+- `ENVIRONMENT=prod` → `DATABASE_URL_PROD`を使用（本番/開発用DB）
+- 指定なき場合はテストモードとして動作する
 
-## Google News
-WIP
+# Justfile
+Justfileを使用した開発ワークフローを採用している。
+基本的なコマンドは以下の通り。
 
-## Scrape
-- BIS（国際決済銀行） - 四半期報告書、年次経済報告書で中銀政策の知的枠組みを提供
-- Federal Reserve System - FOMC議事録、経済分析、Beige Bookなど市場を動かす情報発信
-- IMF - World Economic Outlook、国別審査報告書で各国政策を「採点」
-- ECB（欧州中央銀行） - 金融政策決定の詳細な説明、研究論文の大量発信
-- World Bank - 開発報告書、データベース公開で「開発」の定義を独占
-- BlackRock - Investment Instituteのレポートで市場認識を形成
-- Bank of England - 金融安定報告書、インフレ報告書で政策論議を主導
-- OECD - 経済見通し、政策提言で先進国スタンダードを設定
-- WEF（世界経済フォーラム） - Global Risks Report、ダボス会議で議題設定
-- CFR（外交問題評議会） - Foreign Affairs誌、CFR報告書で米国外交思想を形成
-- ...
+## setup
+コンテナの立ち上げからマイグレーションまでを行う。
+```bash
+just setup         # デフォルト：テスト用DBのみ
+just setup prod    # 本番DBのみ
+just setup all     # すべてのDBコンテナを起動・マイグレーション
+```
+
+### clearフラグによるDBの削除
+- clearフラグは既存のDBの内容を削除しながら再セットアップを行う。
+- prod環境のDBの削除が含まれる場合、確認プロンプトが表示される。
+```bash
+# 暗黙的
+just setup --clear       # テスト用DBの内容を削除し再構成（暗黙的）
+# 明示的
+just setup test --clear  # テスト用DBの内容を削除し再構成（明示的）
+just setup prod --clear  # 本番用DBの内容を削除し再構成（注意！）
+```
+
+## lint
+fmt + check + clippyという3つのチェックを行う。
+```bash
+just lint
+```
+
+## test
+compose up + lintを行い、テストを実行する・
+```bash
+just test
+```
+
+# VSCode Test Explorerへの対応
+VSCodeのTest Explorerを有効にするには、`.vscode/settings.json`に以下の設定が必要。
+```bash
+DATABASE_URL="postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test"
+```

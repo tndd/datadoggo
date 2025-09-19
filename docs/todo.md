@@ -8,11 +8,15 @@
 - [x] search_backlog_articles_light, search_backlog_urlsの類似
 - [x] sqlx fixturesディレクトリの一元管理をやめる？
 - [x] src/core/article/service.rsのサイズがデカすぎる。分割して
-- [ ] test container
 - [ ] logging 
+- [ ] .vscode/settings.jsonの環境変数ベタ書き修正
 
 # Summary
 Todoの内容を具体化する。
+
+## .vscode/settings.jsonの環境変数ベタ書き修正
+.envrcを使ってみたが、いまいち上手く行かなかった。
+これ以上時間もかけられないので、ひとまず.vscode/settings.jsonに直接書き込むことにする。
 
 ---
 

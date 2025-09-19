@@ -1,6 +1,6 @@
 {
     "code-runner.executorMap": {
-        "rust": "cd $workspaceRoot && cargo test"
+        "rust": "cd $workspaceRoot && just test"
     },
     "code-runner.clearPreviousOutput": true,
     "code-runner.runInTerminal": true,
@@ -8,5 +8,11 @@
     "rust-analyzer.testExplorer": true,
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml"
-    ]
+    ],
+    "rust-analyzer.server.extraEnv": {
+        "DATABASE_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
+    },
+    "rust-analyzer.cargo.extraEnv": {
+        "DATABASE_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
+    }
 }
