@@ -154,8 +154,9 @@ sqlx_prepare:
     DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
 
 # コード品質チェック
-# （compose up + fmt → check → clippy）
+# （compose up + fmt → clippy）
 # NOTE: compose upを先にするのはsqlxのため
+# NOTE: cargo clippyがcargo checkを内包するため、明示的なcheckは不要
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -167,8 +168,6 @@ lint:
     if ! cargo fmt --check; then
         cargo fmt
     fi
-    echo "> cargo check"
-    cargo check --all --locked
     echo "> cargo clippy"
     cargo clippy -- -D warnings
 
