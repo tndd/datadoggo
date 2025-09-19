@@ -29,11 +29,11 @@ just setup all     # すべてのDBコンテナを起動・マイグレーショ
 ```
 
 ### clearフラグによるDBの削除
-clearフラグは既存のDBの内容を削除しながら再セットアップを行う。
+- clearフラグは既存のDBの内容を削除しながら再セットアップを行う。
+- `just setup all --clear` は不許可。削除は明示的な指定が必要。
 ```bash
-just setup --clear # テスト用DBの内容を削除し再構成
-just setup --all   # テスト・本番両方のDBの内容を削除し再構成
-
+just setup test --clear  # テスト用DBの内容を削除し再構成（明示的）
+just setup prod --clear  # 本番用DBの内容を削除し再構成（注意！）
 ```
 
 ## lint

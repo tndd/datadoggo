@@ -10,6 +10,15 @@ compose_up env clean="false":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # all + --clearの組み合わせを禁止（削除対象は明示的な指定）
+    if [ "{{env}}" = "all" ] && [ "{{clean}}" = "true" ]; then
+        echo "エラー: 'all --clear' は危険なため禁止されています。"
+        echo "代わりに以下を使用してください："
+        echo "  just setup test --clear  # テスト用DBのみ削除"
+        echo "  just setup prod --clear  # 本番用DBのみ削除"
+        exit 1
+    fi
+
     # クリーンフラグが設定されている場合はコンテナを再作成
     if [ "{{clean}}" = "true" ]; then
         if [ "{{env}}" = "prod" ] || [ "{{env}}" = "all" ]; then
