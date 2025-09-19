@@ -69,7 +69,9 @@ lint:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "> cargo fmt"
-    cargo fmt
+    if ! cargo fmt --check; then
+        cargo fmt
+    fi
     echo "> cargo check"
     SQLX_OFFLINE=true cargo check --all --locked
     echo "> cargo clippy"
