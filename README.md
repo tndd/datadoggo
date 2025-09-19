@@ -47,3 +47,12 @@ compose up + lintを行い、テストを実行する・
 ```bash
 just test
 ```
+
+# VSCode Test Explorerへの対応
+VSCodeのTest Explorerからcargo testを起動する場合も、READMEで定義している環境変数を反映させる必要がある。`.vscode/settings.json`では以下のEnvが自動的に付与されるので、環境が変わったらここも更新すること。
+
+- `ENVIRONMENT=test`
+- `DATABASE_URL=TEST_DB_URL`
+- `TEST_DB_URL`
+- `PROD_DB_URL`
+- `SQLX_OFFLINE=true`

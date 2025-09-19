@@ -8,5 +8,19 @@
     "rust-analyzer.testExplorer": true,
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml"
-    ]
+    ],
+    "rust-analyzer.server.extraEnv": {
+        "ENVIRONMENT": "test",
+        "DATABASE_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
+        "TEST_DB_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
+        "PROD_DB_URL": "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo",
+        "SQLX_OFFLINE": "false"
+    },
+    "rust-analyzer.cargo.extraEnv": {
+        "ENVIRONMENT": "test",
+        "DATABASE_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
+        "TEST_DB_URL": "postgresql://datadoggo:datadoggo@localhost:16432/datadoggo_test",
+        "PROD_DB_URL": "postgresql://datadoggo:datadoggo@localhost:15432/datadoggo",
+        "SQLX_OFFLINE": "false"
+    }
 }
