@@ -10,17 +10,19 @@ compose_up env clean="false":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # all + --clearの組み合わせを禁止（削除対象は明示的な指定）
-    if [ "{{env}}" = "all" ] && [ "{{clean}}" = "true" ]; then
-        echo "エラー: 'all --clear' は危険なため禁止されています。"
-        echo "代わりに以下を使用してください："
-        echo "  just setup test --clear  # テスト用DBのみ削除"
-        echo "  just setup prod --clear  # 本番用DBのみ削除"
-        exit 1
-    fi
-
     # クリーンフラグが設定されている場合はコンテナを再作成
     if [ "{{clean}}" = "true" ]; then
+        # 本番環境削除時の確認プロンプト
+        if [ "{{env}}" = "prod" ] || [ "{{env}}" = "all" ]; then
+            echo "警告: 本番環境のデータベースを削除しようとしています。"
+            echo "環境: {{env}}"
+            read -p "続行しますか？ (y/N): " confirm
+            if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+                echo "操作をキャンセルしました。"
+                exit 0
+            fi
+        fi
+
         if [ "{{env}}" = "prod" ] || [ "{{env}}" = "all" ]; then
             docker compose down postgres -v
         fi
@@ -110,16 +112,22 @@ setup env="test" *flags="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # --clearフラグの確認
-    clear="false"
-    for flag in {{flags}}; do
-        if [ "$flag" = "--clear" ]; then
-            clear="true"
-            break
-        fi
-    done
+    # 引数解析: 最初の引数が--clearの場合の処理
+    if [ "{{env}}" = "--clear" ]; then
+        actual_env="test"
+        clear="true"
+    else
+        actual_env="{{env}}"
+        clear="false"
+        for flag in {{flags}}; do
+            if [ "$flag" = "--clear" ]; then
+                clear="true"
+                break
+            fi
+        done
+    fi
 
-    echo "=== {{env}}環境のセットアップを開始します ==="
-    just compose_up {{env}} $clear
-    just migrate {{env}}
-    echo "=== {{env}}環境のセットアップが完了しました ==="
+    echo "=== ${actual_env}環境のセットアップを開始します ==="
+    just compose_up $actual_env $clear
+    just migrate $actual_env
+    echo "=== ${actual_env}環境のセットアップが完了しました ==="
