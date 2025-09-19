@@ -1,37 +1,89 @@
-# just test - 包括的テスト実行（品質チェック + テスト）
-# just setup [env] [--clear] - 環境セットアップ（デフォルト: test）
-# just lint - コード品質チェック（フォーマット → チェック → リント）
+# ========================================
+# datadoggo プロジェクト justfile
+# ========================================
+#
+# 主要コマンド:
+#   just test                    - 包括的テスト実行（品質チェック + テスト）
+#   just setup [env] [--clear]   - 環境セットアップ（デフォルト: test）
+#   just lint                    - コード品質チェック（フォーマット → チェック → リント）
+#
+# 環境:
+#   test  - テスト環境（デフォルト）
+#   prod  - 本番環境
+#   all   - 両方の環境
+#
+# フラグ:
+#   --clear  - コンテナを削除して再作成（本番環境では確認プロンプト表示）
+#
 
 set dotenv-load
 
-# DBコンテナcomposeコマンド
+# ========================================
+# ヘルパー関数
+# ========================================
+
+# 本番環境かどうかを判定
 [private]
-compose_up env clean="false":
+is_production_env env:
+    #!/usr/bin/env bash
+    [ "{{env}}" = "prod" ] || [ "{{env}}" = "all" ]
+
+# setup用の引数解析
+[private]
+parse_setup_args env *flags:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # クリーンフラグが設定されている場合はコンテナを再作成
-    if [ "{{clean}}" = "true" ]; then
-        # 本番環境削除時の確認プロンプト
-        if [ "{{env}}" = "prod" ] || [ "{{env}}" = "all" ]; then
-            echo "警告: 本番環境のデータベースを削除しようとしています。"
-            echo "環境: {{env}}"
-            read -p "続行しますか？ (y/N): " confirm
-            if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-                echo "操作をキャンセルしました。"
-                exit 1
-            fi
-        fi
+    # 引数解析結果を環境変数として出力
+    if [ "{{env}}" = "--clear" ]; then
+        echo "ENV_NAME=test"
+        echo "CLEAR_FLAG=true"
+    else
+        env_name="{{env}}"
+        clear_flag="false"
 
-        if [ "{{env}}" = "prod" ] || [ "{{env}}" = "all" ]; then
-            docker compose down postgres -v
-        fi
-        if [ "{{env}}" = "test" ] || [ "{{env}}" = "all" ]; then
-            docker compose down postgres-test -v
-        fi
+        for flag in {{flags}}; do
+            if [ "$flag" = "--clear" ]; then
+                clear_flag="true"
+                break
+            fi
+        done
+
+        echo "ENV_NAME=$env_name"
+        echo "CLEAR_FLAG=$clear_flag"
     fi
 
-    # 指定されたデータベースコンテナを起動
+# 本番環境削除時の確認プロンプト
+[private]
+confirm_production_deletion env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "警告: 本番環境のデータベースを削除しようとしています。"
+    echo "環境: {{env}}"
+    read -p "続行しますか？ (y/N): " confirm
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+        echo "操作をキャンセルしました。"
+        exit 1
+    fi
+
+# コンテナ削除処理
+[private]
+remove_containers env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{env}}" = "prod" ] || [ "{{env}}" = "all" ]; then
+        docker compose down postgres -v
+    fi
+    if [ "{{env}}" = "test" ] || [ "{{env}}" = "all" ]; then
+        docker compose down postgres-test -v
+    fi
+
+# コンテナ起動処理
+[private]
+start_containers env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
     if [ "{{env}}" = "prod" ]; then
         docker compose up -d postgres
         sleep 5
@@ -50,6 +102,28 @@ compose_up env clean="false":
         exit 1
     fi
 
+# ========================================
+# DBコンテナ管理
+# ========================================
+
+# DBコンテナcomposeコマンド
+[private]
+compose_up env clean="false":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # クリーンフラグが設定されている場合はコンテナを再作成
+    if [ "{{clean}}" = "true" ]; then
+        # 本番環境の場合は確認プロンプトを表示
+        if just is_production_env {{env}}; then
+            just confirm_production_deletion {{env}}
+        fi
+        just remove_containers {{env}}
+    fi
+
+    # 指定されたデータベースコンテナを起動
+    just start_containers {{env}}
+
 # マイグレーション実行の共通処理
 [private]
 migrate env:
@@ -67,6 +141,10 @@ migrate env:
         DATABASE_URL="${TEST_DB_URL}" sqlx migrate run
         echo "すべてのデータベースのマイグレーションが完了しました。"
     fi
+
+# ========================================
+# 開発ツール
+# ========================================
 
 # sqlx prepare実行の共通処理
 sqlx_prepare:
@@ -105,6 +183,10 @@ test:
     DATABASE_URL="${TEST_DB_URL}" cargo test --lib
     echo "Complete: just test"
 
+# ========================================
+# メインコマンド
+# ========================================
+
 # 環境セットアップ
 # env: prod,test,all
 # flags: --clearでコンテナ再作成）
@@ -112,25 +194,13 @@ setup env="test" *flags="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # 引数解析: 最初の引数が--clearの場合の処理
-    if [ "{{env}}" = "--clear" ]; then
-        actual_env="test"
-        clear="true"
-    else
-        actual_env="{{env}}"
-        clear="false"
-        for flag in {{flags}}; do
-            if [ "$flag" = "--clear" ]; then
-                clear="true"
-                break
-            fi
-        done
-    fi
+    # 引数解析
+    eval $(just parse_setup_args {{env}} {{flags}})
 
-    echo "=== ${actual_env}環境のセットアップを開始します ==="
-    if ! just compose_up $actual_env $clear; then
+    echo "=== ${ENV_NAME}環境のセットアップを開始します ==="
+    if ! just compose_up $ENV_NAME $CLEAR_FLAG; then
         echo "セットアップがキャンセルまたは失敗しました。"
         exit 1
     fi
-    just migrate $actual_env
-    echo "=== ${actual_env}環境のセットアップが完了しました ==="
+    just migrate $ENV_NAME
+    echo "=== ${ENV_NAME}環境のセットアップが完了しました ==="
