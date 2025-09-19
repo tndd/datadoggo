@@ -64,11 +64,13 @@ sqlx_prepare:
     echo "> cargo sqlx prepare"
     DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
 
-# コード品質チェック（フォーマット → チェック → リント）
+# コード品質チェック
+# （フォーマット → チェック → リント）
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "> cargo fmt"
+    # fmt対象箇所表示のため
     if ! cargo fmt --check; then
         cargo fmt
     fi
@@ -77,7 +79,8 @@ lint:
     echo "> cargo clippy"
     cargo clippy -- -D warnings
 
-# 包括的テスト実行（コード品質チェック + sqlx prepare + テスト実行）
+# 包括的テスト実行
+# (コード品質チェック + compose up + テスト実行）
 test:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -91,7 +94,9 @@ test:
     DATABASE_URL="${TEST_DB_URL}" cargo test --lib
     echo "Complete: just test"
 
-# 環境セットアップ（env: prod/test/all, --clearでコンテナ再作成）
+# 環境セットアップ
+# env: prod,test,all
+# flags: --clearでコンテナ再作成）
 setup env="test" *flags="":
     #!/usr/bin/env bash
     set -euo pipefail
