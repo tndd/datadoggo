@@ -58,4 +58,3 @@ VSCodeのTest Explorerからcargo testを起動する場合も、READMEで定義
 - `DATABASE_URL=TEST_DB_URL`
 - `TEST_DB_URL`
 - `PROD_DB_URL`
-- `SQLX_OFFLINE=true`

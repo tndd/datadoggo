@@ -154,30 +154,31 @@ sqlx_prepare:
     DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
 
 # コード品質チェック
-# （フォーマット → チェック → リント）
+# （compose up + fmt → check → clippy）
+# NOTE: compose upを先にするのはsqlxのため
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
+    echo "> just compose"
+    just compose_up test false
+
     echo "> cargo fmt"
     # fmt対象箇所表示のため
     if ! cargo fmt --check; then
         cargo fmt
     fi
     echo "> cargo check"
-    SQLX_OFFLINE=true cargo check --all --locked
+    cargo check --all --locked
     echo "> cargo clippy"
     cargo clippy -- -D warnings
 
 # 包括的テスト実行
-# (コード品質チェック + compose up + テスト実行）
+# (コード品質チェック + テスト実行）
 test:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "> just lint"
-    just lint
-
-    echo "> just compose"
-    just compose_up test false
+    just lint  # この時点でcompose upが保証される
 
     echo "> cargo test"
     DATABASE_URL="${TEST_DB_URL}" cargo test --lib
