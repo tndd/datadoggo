@@ -1,60 +1,69 @@
 # just test - 包括的テスト実行（品質チェック + テスト）
-# just setup [env] [--clear] - 環境セットアップ（デフォルト: both）
+# just setup [env] [--clear] - 環境セットアップ（デフォルト: test）
 # just lint - コード品質チェック（フォーマット → チェック → リント）
 
 set dotenv-load
 
 # DBコンテナcomposeコマンド
 [private]
-compose_up db_type clean="false":
+compose_up env clean="false":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # all + --clearの組み合わせを禁止（削除対象は明示的な指定）
+    if [ "{{env}}" = "all" ] && [ "{{clean}}" = "true" ]; then
+        echo "エラー: 'all --clear' は危険なため禁止されています。"
+        echo "代わりに以下を使用してください："
+        echo "  just setup test --clear  # テスト用DBのみ削除"
+        echo "  just setup prod --clear  # 本番用DBのみ削除"
+        exit 1
+    fi
+
     # クリーンフラグが設定されている場合はコンテナを再作成
     if [ "{{clean}}" = "true" ]; then
-        if [ "{{db_type}}" = "prod" ] || [ "{{db_type}}" = "both" ]; then
+        if [ "{{env}}" = "prod" ] || [ "{{env}}" = "all" ]; then
             docker compose down postgres -v
         fi
-        if [ "{{db_type}}" = "test" ] || [ "{{db_type}}" = "both" ]; then
+        if [ "{{env}}" = "test" ] || [ "{{env}}" = "all" ]; then
             docker compose down postgres-test -v
         fi
     fi
 
     # 指定されたデータベースコンテナを起動
-    if [ "{{db_type}}" = "prod" ]; then
+    if [ "{{env}}" = "prod" ]; then
         docker compose up -d postgres
         sleep 5
         docker compose exec postgres pg_isready -U datadoggo
-    elif [ "{{db_type}}" = "test" ]; then
+    elif [ "{{env}}" = "test" ]; then
         docker compose up -d postgres-test
         sleep 5
         docker compose exec postgres-test pg_isready -U datadoggo
-    elif [ "{{db_type}}" = "both" ]; then
+    elif [ "{{env}}" = "all" ]; then
         docker compose up -d postgres postgres-test
         sleep 10
         docker compose exec postgres pg_isready -U datadoggo
         docker compose exec postgres-test pg_isready -U datadoggo
     else
-        echo "エラー: 無効なdb_type '{{db_type}}'. 'prod', 'test', 'both'のいずれかを指定してください。"
+        echo "エラー: 無効なenv '{{env}}'. 'prod', 'test', 'all'のいずれかを指定してください。"
         exit 1
     fi
 
 # マイグレーション実行の共通処理
 [private]
-migrate db_type:
+migrate env:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if [ "{{db_type}}" = "prod" ]; then
+    if [ "{{env}}" = "prod" ]; then
         DATABASE_URL="${PROD_DB_URL}" sqlx migrate run
         echo "本番用データベースのマイグレーションが完了しました。"
-    elif [ "{{db_type}}" = "test" ]; then
+    elif [ "{{env}}" = "test" ]; then
         DATABASE_URL="${TEST_DB_URL}" sqlx migrate run
         echo "テスト用データベースのマイグレーションが完了しました。"
-    elif [ "{{db_type}}" = "both" ]; then
+    elif [ "{{env}}" = "all" ]; then
         DATABASE_URL="${PROD_DB_URL}" sqlx migrate run
         DATABASE_URL="${TEST_DB_URL}" sqlx migrate run
-        echo "両方のデータベースのマイグレーションが完了しました。"
+        echo "すべてのデータベースのマイグレーションが完了しました。"
     fi
 
 # sqlx prepare実行の共通処理
@@ -64,11 +73,13 @@ sqlx_prepare:
     echo "> cargo sqlx prepare"
     DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
 
-# コード品質チェック（フォーマット → チェック → リント）
+# コード品質チェック
+# （フォーマット → チェック → リント）
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "> cargo fmt"
+    # fmt対象箇所表示のため
     if ! cargo fmt --check; then
         cargo fmt
     fi
@@ -77,7 +88,8 @@ lint:
     echo "> cargo clippy"
     cargo clippy -- -D warnings
 
-# 包括的テスト実行（コード品質チェック + sqlx prepare + テスト実行）
+# 包括的テスト実行
+# (コード品質チェック + compose up + テスト実行）
 test:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -91,8 +103,10 @@ test:
     DATABASE_URL="${TEST_DB_URL}" cargo test --lib
     echo "Complete: just test"
 
-# 環境セットアップ（env: prod/test/both, --clearでコンテナ再作成）
-setup env="both" *flags="":
+# 環境セットアップ
+# env: prod,test,all
+# flags: --clearでコンテナ再作成）
+setup env="test" *flags="":
     #!/usr/bin/env bash
     set -euo pipefail
 
