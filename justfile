@@ -1,10 +1,6 @@
-# データベース関連タスク
-# - just migrate - テスト用DB（デフォルト）
-# - just migrate prod - 本番用DB
-# - just migrate both - 両方のDB
-# - just migrate test --clean - テスト用DB（クリーン再作成）
-# - just setup - 初期セットアップ（両方のDBをクリーン作成）
-# - just test - テスト実行（共通処理を利用）
+# シンプルなデータベース＆テストタスク
+# - just test - 包括的テスト実行（品質チェック + prepare + テスト）
+# - just setup [env] [--clear] - 環境セットアップ（デフォルト: both）
 
 set dotenv-load
 
@@ -61,49 +57,46 @@ run_migration db_type:
         echo "両方のデータベースのマイグレーションが完了しました。"
     fi
 
-# テスト用データベースでテスト実行
+# 包括的テスト実行（コード品質チェック + sqlx prepare + テスト実行）
 test:
     #!/usr/bin/env bash
     set -euo pipefail
-    just prepare_database test false
-    DATABASE_URL="${TEST_DB_URL}" cargo test --lib
-
-# データベースマイグレーション実行（デフォルト: テスト用、--cleanでコンテナ再作成）
-migrate db_type="test" *flags="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # --cleanフラグの確認
-    clean="false"
-    for flag in {{flags}}; do
-        if [ "$flag" = "--clean" ]; then
-            clean="true"
-            break
-        fi
-    done
-
-    just prepare_database {{db_type}} $clean
-    just run_migration {{db_type}}
-
-# プロジェクトの初期セットアップ（両方のDBをクリーン作成してマイグレーション）
-setup:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "プロジェクトの初期セットアップを開始します..."
-    just prepare_database both true
-    just run_migration both
-    echo "初期セットアップが完了しました。"
-
-# sqlx の prepare (オフラインコンパイル用)
-prepare:
-    DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
-
-# コード品質チェック（フォーマット → チェック → リント）
-lint:
-    #!/usr/bin/env bash
-    set -euo pipefail
+    echo "=== コード品質チェック開始 ==="
     cargo fmt
     echo "> cargo check"
     SQLX_OFFLINE=true cargo check
     echo "> cargo clippy"
     cargo clippy -- -D warnings
+
+    echo "=== テスト環境準備 ==="
+    just prepare_database test false
+
+    echo "=== sqlx prepare実行 ==="
+    DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
+
+    echo "=== テスト実行 ==="
+    DATABASE_URL="${TEST_DB_URL}" cargo test --lib
+    echo "全ての検証が完了しました。"
+
+# 環境セットアップ（env: prod/test/both, --clearでコンテナ再作成）
+setup env="both" *flags="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # --clearフラグの確認
+    clear="false"
+    for flag in {{flags}}; do
+        if [ "$flag" = "--clear" ]; then
+            clear="true"
+            break
+        fi
+    done
+
+    echo "=== {{env}}環境のセットアップを開始します ==="
+    just prepare_database {{env}} $clear
+    just run_migration {{env}}
+
+    echo "=== sqlx prepare実行 ==="
+    DATABASE_URL="${TEST_DB_URL}" cargo sqlx prepare
+
+    echo "{{env}}環境のセットアップが完了しました。"
