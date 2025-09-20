@@ -101,6 +101,20 @@ impl FirecrawlClient for MockFirecrawlClient {
 mod tests {
     use super::*;
 
+    mod fixtures {
+        use crate::infra::storage::file::load_json_from_file;
+
+        /// # テスト目的
+        /// - FirecrawlモックJSONの基本構造が保持されているか確認
+        /// # 検証観点
+        /// - metadataフィールドが存在すること
+        #[test]
+        fn test_firecrawl_mock_json_shape() {
+            let json = load_json_from_file("./mock/firecrawl_bbc.json").unwrap();
+            assert!(json.get("metadata").is_some());
+        }
+    }
+
     // 関数名ベースのモジュールへ統一
     mod scrape_url {
         use super::*;

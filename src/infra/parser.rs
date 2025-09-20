@@ -90,7 +90,7 @@ mod tests {
             assert!(parse_date("").is_err());
         }
 
-        // mock/rss/*.rss ファイルの日付形式を模倣したテスト
+        // rss ファイルの日付形式を模倣したテスト
         #[test]
         fn test_parse_from_mock_rss_files() {
             // bbc.rss: "Sun, 27 Jul 2025 07:36:19 GMT"の形式
