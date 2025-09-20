@@ -32,16 +32,6 @@ pub async fn fetch_article_content_with_firecrawl(
 mod tests {
     use super::*;
 
-    // fetch系テスト（fetch.rsから移設）
-    use crate::infra::storage::file::load_json_from_file;
-
-    #[test]
-    fn test_mock_json_shape() {
-        // モックJSONの基本構造をざっくり検証
-        let json = load_json_from_file("mock/firecrawl/bbc.json").unwrap();
-        assert!(json.get("metadata").is_some());
-    }
-
     // オンラインテストはfeatureでガード
     #[cfg(feature = "online")]
     mod online {

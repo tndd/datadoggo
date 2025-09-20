@@ -100,9 +100,9 @@ mod tests {
         fn test_extract_article_links_from_files() {
             // 複数の実際のRSSファイルからリンクを抽出するテスト
             let test_feeds = [
-                ("mock/rss/bbc.rss", "BBC"),
-                ("mock/rss/cbs.rss", "CBS"),
-                ("mock/rss/guardian.rss", "Guardian"),
+                ("./mock/bbc.rss", "BBC"),
+                ("./mock/cbs.rss", "CBS"),
+                ("./mock/guardian.rss", "Guardian"),
             ];
 
             for (file_path, feed_name) in &test_feeds {
