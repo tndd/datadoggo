@@ -65,18 +65,30 @@ mod tests {
     mod helper {
         use super::*;
 
-        #[test]
-        fn test_load_existing_file() {
-            let result = load_file("./mock/sample.json");
-            assert!(result.is_ok());
-        }
-
+        /// # テスト目的
+        /// - 呼び出し元モジュールからの相対パス(`./`始まり)が解決されることを確認
+        /// # 検証観点
+        /// - `src/infra/storage/mock/sample.json` が相対参照で開けること
         #[test]
         fn test_load_existing_file_relative() {
             let result = load_file("./mock/sample.json");
             assert!(result.is_ok());
         }
 
+        /// # テスト目的
+        /// - プロジェクトルート基準のパスが解決されることを確認
+        /// # 検証観点
+        /// - `CARGO_MANIFEST_DIR` + `src/infra/storage/mock/sample.json` が開けること
+        #[test]
+        fn test_load_existing_file_from_manifest_dir() {
+            let result = load_file("src/infra/storage/mock/sample.json");
+            assert!(result.is_ok());
+        }
+
+        /// # テスト目的
+        /// - 不正パス時にエラーが返ることを確認
+        /// # 検証観点
+        /// - 存在しないファイルに対して`Result::Err`になること
         #[test]
         fn test_load_non_existing_file() {
             let result = load_file("./mock/non_existent_file.txt");

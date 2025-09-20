@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 /// Playwright APIからレンダリング済みHTMLを取得するための抽象トレイト
 #[async_trait]
@@ -75,7 +76,7 @@ impl ReqwestPlaywrightClient {
     /// 既定のエンドポイント(http://localhost:13003)で新規作成
     pub fn new() -> Self {
         Self {
-            client: Client::new(),
+            client: Self::build_http_client(),
             base_url: "http://localhost:13003".to_string(),
         }
     }
@@ -83,7 +84,7 @@ impl ReqwestPlaywrightClient {
     /// 任意のbase_urlでクライアントを生成
     pub fn new_with_base_url(base_url: &str) -> Self {
         Self {
-            client: Client::new(),
+            client: Self::build_http_client(),
             base_url: base_url.trim_end_matches('/').to_string(),
         }
     }
@@ -98,6 +99,13 @@ impl ReqwestPlaywrightClient {
 
     fn endpoint(&self) -> String {
         format!("{}/render", self.base_url)
+    }
+
+    fn build_http_client() -> Client {
+        Client::builder()
+            .timeout(Duration::from_secs(60))
+            .build()
+            .expect("Playwright HTTPクライアントの初期化に失敗")
     }
 }
 
@@ -157,7 +165,7 @@ impl PlaywrightClient for ReqwestPlaywrightClient {
 
         let html = dto
             .html
-            .ok_or_else(|| anyhow!("Playwright APIレスポンスにhtmlが含まれていません"))?;
+            .context("Playwright APIレスポンスにhtmlが含まれていません")?;
 
         let status = dto.status.unwrap_or_else(|| status_code.as_u16());
         let final_url = dto.final_url.unwrap_or_else(|| url.to_string());
@@ -177,6 +185,7 @@ pub struct MockPlaywrightClient {
     mock_status: u16,
     mock_final_url: Option<String>,
     error_message: Option<String>,
+    delay: Option<Duration>,
 }
 
 impl MockPlaywrightClient {
@@ -188,6 +197,7 @@ impl MockPlaywrightClient {
             mock_status: 200,
             mock_final_url: None,
             error_message: None,
+            delay: None,
         }
     }
 
@@ -199,6 +209,7 @@ impl MockPlaywrightClient {
             mock_status: 500,
             mock_final_url: None,
             error_message: Some(error_message.to_string()),
+            delay: None,
         }
     }
 
@@ -211,6 +222,19 @@ impl MockPlaywrightClient {
     /// 成功時に最終URLを上書き
     pub fn with_final_url(mut self, final_url: &str) -> Self {
         self.mock_final_url = Some(final_url.to_string());
+        self
+    }
+
+    /// レンダリングまでの遅延を擬似的に発生させる
+    pub fn with_delay_ms(mut self, delay_ms: u64) -> Self {
+        self.delay = Some(Duration::from_millis(delay_ms));
+        self
+    }
+
+    /// 302リダイレクトを模擬する
+    pub fn with_redirect(mut self, redirect_url: &str) -> Self {
+        self.mock_status = 302;
+        self.mock_final_url = Some(redirect_url.to_string());
         self
     }
 }
@@ -230,6 +254,10 @@ impl PlaywrightClient for MockPlaywrightClient {
             return Err(anyhow!("モックPlaywrightエラー: {}", error_msg));
         }
 
+        if let Some(delay) = self.delay {
+            tokio::time::sleep(delay).await;
+        }
+
         Ok(RenderedPage {
             html: self.mock_html.clone(),
             status: self.mock_status,
@@ -247,6 +275,7 @@ mod tests {
 
     mod fetch_rendered_html {
         use super::*;
+        use tokio::time::Instant;
 
         /// # テスト目的
         /// - モッククライアントが成功時に設定したHTMLを返すことを確認
@@ -301,6 +330,44 @@ mod tests {
 
             assert_eq!(result.status, 302);
             assert_eq!(result.final_url, "https://example.com/redirected");
+        }
+
+        /// # テスト目的
+        /// - リダイレクト用ユーティリティで302と最終URLが設定されることを確認
+        /// # 検証観点
+        /// - with_redirectで上書きしたステータス・URLが結果に反映されること
+        #[tokio::test]
+        async fn test_redirect_accessor_sets_status_and_url() {
+            let client = MockPlaywrightClient::new_success("<html>ok</html>")
+                .with_redirect("https://example.com/final");
+            let options = PlaywrightRenderOptions::default();
+
+            let result = client
+                .fetch_rendered_html("https://example.com/original", &options)
+                .await
+                .unwrap();
+
+            assert_eq!(result.status, 302);
+            assert_eq!(result.final_url, "https://example.com/final");
+        }
+
+        /// # テスト目的
+        /// - モックに設定した遅延が実際に待機されることを確認
+        /// # 検証観点
+        /// - fetch_rendered_htmlの完了までに指定ミリ秒以上かかること
+        #[tokio::test]
+        async fn test_delay_simulation_waits_for_configured_duration() {
+            let client = MockPlaywrightClient::new_success("<html>ok</html>").with_delay_ms(20);
+            let options = PlaywrightRenderOptions::default();
+
+            let start = Instant::now();
+            let _ = client
+                .fetch_rendered_html("https://example.com", &options)
+                .await
+                .unwrap();
+            let elapsed = start.elapsed();
+
+            assert!(elapsed >= Duration::from_millis(20));
         }
     }
 
