@@ -67,19 +67,19 @@ mod tests {
 
         #[test]
         fn test_load_existing_file() {
-            let result = load_file("mock/firecrawl/bbc.json");
+            let result = load_file("./mock/sample.json");
             assert!(result.is_ok());
         }
 
         #[test]
         fn test_load_existing_file_relative() {
-            let result = load_file("./file.rs");
+            let result = load_file("./mock/sample.json");
             assert!(result.is_ok());
         }
 
         #[test]
         fn test_load_non_existing_file() {
-            let result = load_file("non_existent_file.txt");
+            let result = load_file("./mock/non_existent_file.txt");
             assert!(result.is_err());
         }
     }
